@@ -1,16 +1,29 @@
 {
   "name": "collab-tex",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
     "build": "tsc -b && npm run build -w apps/web",
     "clean": "tsc -b --clean",
     "start": "npm run start -w apps/api",
-    "typecheck": "tsc -b --noEmit"
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc -b --emitDeclarationOnly"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.3",
     "concurrently": "^9.0.0",
-    "typescript": "^5.9.3"
+    "eslint": "^9.39.3",
+    "eslint-plugin-jsonc": "^3.1.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.3.0",
+    "jsonc-eslint-parser": "^3.1.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
   }
 }

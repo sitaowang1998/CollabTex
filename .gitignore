@@ -2,8 +2,10 @@ node_modules
 **/node_modules
 
 **/dist
+**/dist-types
 apps/web/dist
 apps/web/.vite
+**/*.tsbuildinfo
 
 .env
-**/.env.idea
+.idea
