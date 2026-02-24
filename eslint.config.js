@@ -10,6 +10,7 @@ module.exports = defineConfig([
   globalIgnores([
     "**/node_modules/**",
     "**/dist/**",
+    "**/dist-types/**",
     "**/.vite/**",
     "**/*.tsbuildinfo",
   ]),
