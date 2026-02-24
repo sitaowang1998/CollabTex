@@ -21,306 +21,386 @@ number of charts and images.
 
 # Objective and Key Features
 
-This project aims to build a collaborative web platform for LaTeX projects, enabling users to share and edit LaTeX
-source files together in a single workspace.
+## Objective
 
-The platform must satisfy the following feature requirements:
+The objective of this project is to design and implement a full-stack, collaborative web platform for LaTeX authoring.
+The system enables multiple users to edit, manage, compile, and review LaTeX projects within a shared workspace in real
+time.
 
-- **Real-time collaboration:** Propagate edits instantly across all collaborators.
-- **Role-based access control:** Provide per-project roles and permissions (for example, admin, editor, commenter,
-  viewer).
-- **File management:** Support uploading and organizing project files, including figures and other assets.
-- **Backend compilation:** Compile LaTeX projects into PDF on the server.
-- **Side-by-side viewing:** Allow users to view and edit LaTeX source while simultaneously viewing the rendered PDF.
-- **Commenting:** Enable users to attach comments to specific locations in the source files.
-- **Versioning:** Maintain a revision history so users can track changes and restore earlier versions.
+Unlike traditional local LaTeX workflows, this platform centralizes project files, supports fine-grained collaboration
+control, and provides live PDF preview with version tracking. The system is designed to be consistent under concurrent 
+edits, while maintaining low latency.
 
-## Core Features
+## Key Features
 
-### Authentication & Authorization
-
-Users must register and log in to access the main functionalities. User can only view projects they belong to.  
-All functionality routes are protected by authentication. Sessions persisted across refresh and the webpage reopened.
-
-#### Implementation
-
-All users must sign in with email and password. The email and hashed password are stored in the backend database. The
-backend issues JWT to frontend, which will be included in all requests. Backend uses middleware to check the user
-identity.
-
-### RBAC
-
-All collaborators are granted one of the role:
-
-* Admin: Manage members, delete the project, etc. The owner that created the project has the admin role by default.
-* Editor: Edit and upload files.
-* Commenter: Add comment to source files.
-* Reader: Read only access.
-
-Backend checks the permission based on the user, and rejects unauthorized requests.
-
-#### Implementation
-
-The database has a table that stores the project, user and the role assigned. The backend has a middleware that checks
-if the user initiating the request has the permission to perform the operation. Websock handshake loads the role once,
-and the backend message handler checks the permission on each update.
-
-### File Tree
-
-Inside a project, admin and editor can
-
-* Create folder and files
-* Rename and move folder and files
-* Delete folder and files
-
-The frontend needs to load and update the file tree correctly and with little delay. The backend needs to guarantee that
-there is no name collision.
-
-#### Implementation
-
-Backend stores just the list of files with absolute path. Similar to S3, the directory is just computed from the path.
+To achieve this objective, the platform implements the following core features:
 
 ### Real-Time Collaborative Editing
 
-Users can see each other’s edits and comments live with low delay. Two browsers editing the same file must converge.
+Multiple users can simultaneously edit the same LaTeX document and observe changes with minimal delay. The system
+guarantees convergence: all collaborators will eventually see the same document state regardless of edit order.
 
-#### Implementation
+**Technical approach:**
+We use a Conflict-free Replicated Data Type (CRDT) model (Yjs) to ensure deterministic conflict resolution without
+centralized locking. Updates are transmitted via WebSocket for low-latency bidirectional communication. The backend
+maintains an in-memory CRDT instance per active document and periodically persists state to disk.
 
-We choose CRDT as the main method. Websocket is used for transport to minimize the delay. The backend maintains an
-in-memory CRDT per active document. The in-memory doc is saved to disk periodically and when the document closes.
+**Feasibility:**
+CRDT-based synchronization avoids operational transformation complexity and ensures consistency under concurrent edits,
+making it suitable for distributed collaborative environments.
 
-### Comments
+### Role-Based Access Control (RBAC)
 
-Users can select a range of text and add a comment thread. Users can reply and resolve a comment thread. Threads
-selected text range changes as the texts are edited. Threads stay accessible even if the text is deleted.
+Each project enforces fine-grained permissions through predefined roles:
 
-#### Implementation
+* **Admin:** Manage members and project settings.
+* **Editor:** Modify and upload files.
+* **Commenter:** Add and reply to comments.
+* **Reader:** View-only access.
 
-Backend stores in the database a table for comment thread with relative start and end indices for each. Frontend
-converts relative anchors into absolute positions in the current doc state. If the anchor can’t be resolved, show the
-thread as orphaned in the sidebar.
+Users can only access projects to which they created or are shared with.
 
-### Versioning
+**Technical approach:**
+A project-membership table maps users to roles. Middleware enforces authorization at both REST and WebSocket levels.
+Permission validation occurs:
 
-A version is committed on a set interval. Users can view a previous version and diff against another version or the
-current working copy, and restore a previous version.
+* On each REST request
+* During WebSocket handshake
+* On every document update event
 
-#### Implementation
+**Feasibility:**
+Centralized permission checks at the backend ensure consistent enforcement and prevent unauthorized operations, even if
+frontend logic is bypassed.
 
-Backend commits a snapshot periodically by writing the files to the disk. The snapshot metadata is stored in the
-database.  
-On reset, the current working copy in the database is replaced, and an event is broadcasted through websocket, and the
-frontend can sync with the server.
+### Secure Authentication
 
-### LaTeX Compile \+ PDF Preview
+Users must register and authenticate before accessing any project resources.
 
-Users can view live changes in the PDF review. If the compile fails, user can view the error logs.
+**Technical approach:**
 
-#### Implementation
+* Credentials (email + hashed password) are stored securely in the database.
+* The backend issues a JWT upon login.
+* All protected endpoints validate JWTs via middleware.
+* Sessions persist across refreshes using secure cookies.
 
-Backend runs LaTeX compile periodically for each active project. The compilation is orchestrated by Apache AirFlow,
-where workers are containerized. The output artifacts (PDFs and logs) are cached in the file system, and metadata are
-stored in the database. Frontend polls build status and load PDF periodically.
+This approach provides stateless authentication and scalable session management.
 
-## Technical Implementation
+### File Management and Project Structure
 
-### Separate Frontend and Backend
+Each project supports hierarchical file organization, including:
 
-We choose to use React and Vite for the front end, and separate Express.js for the backend. To support the live
-collaborations, the backend needs to expose a RESTful API and a WebSocket API. It is easier to use the split approach.
+* Creating, renaming, moving, and deleting files/folders
+* Uploading assets (e.g., figures, binary files)
 
-### Database Schema
+**Technical approach:**
+The backend stores documents using absolute paths. Folder structure is logically derived from path prefixes (similar to
+object storage systems such as S3). Name collisions are prevented via backend validation.
 
-The database needs to store the following tables.
+**Feasibility:**
+Path-based storage simplifies implementation while supporting nested project organization without complex directory
+schemas.
 
-#### User
+### Backend LaTeX Compilation with Live PDF Preview
 
-| name      | type          |                             |
-|:----------|:--------------|:----------------------------|
-| id        | UUID          | auto increment, primary key |
-| email     | VARCHAR(256)  | unique                      |
-| password  | VARCHAR(1024) |                             |
-| createdAt | TIMESTAMP     |                             |
-| updatedAt | TIMESTAMP     |                             |
+Users can compile projects into PDF and view rendered output alongside the source editor. If compilation fails, error
+logs are available for debugging.
 
-#### Project
+**Technical approach:**
 
-| name        | type                 |                             |
-|:------------|:---------------------|:----------------------------|
-| id          | UUID                 | auto increment, primary key |
-| name        | VARCHAR(256)         |                             |
-| createdAt   | TIMESTAMP            |                             |
-| updatedAt   | TIMESTAMP            |                             |
-| tombstoneAt | TIMESTAMP (nullable) |                             |
+* Compilation jobs are scheduled and executed in containerized workers.
+* Apache Airflow orchestrates build workflows.
+* Build artifacts (PDF and logs) are cached in the filesystem.
+* Build metadata is stored in the database.
+* The frontend polls build status and updates the preview dynamically.
 
-#### Project Membership
+**Feasibility:**
+Containerized builds isolate execution environments, ensuring safety and reproducibility. Asynchronous job orchestration
+prevents blocking user interactions.
 
-| name      | type                                           |                    |
-|:----------|:-----------------------------------------------|:-------------------|
-| projectId | UUID                                           | FK \-\> Project.id |
-| userId    | UUID                                           | FK \-\> User.id    |
-| role      | ENUM('admin', 'editor', 'commenter', 'reader') |                    |
+### Side-by-Side Editing and Preview
 
-unique('projectId', 'userId')
+The workspace presents:
 
-#### Document
+* A file tree (left panel)
+* Source editor (center)
+* Live PDF preview (right panel)
+* Optional comment sidebar
 
-| name      | type                   |                             |
-|-----------|------------------------|-----------------------------|
-| id        | UUID                   | auto increment, primary key |
-| projectId | UUID                   | FK -> Project.id            |
-| kind      | ENUM('text', 'binary') |                             |
-| createdAt | TIMESTAMP              |                             |
-| path      | VARCHAR(1024)          |                             |
-| hash      | VARCHAR(512)           |                             |
+This layout improves workflow efficiency by allowing users to edit and validate formatting simultaneously.
 
-#### Snapshot
+### Commenting System with Anchored Threads
 
-| name      | type          |                             |
-|-----------|---------------|-----------------------------|
-| id        | UUID          | auto increment, primary key |
-| projectId | UUID          | FK -> Project.id            |
-| path      | VARCHAR(1024) |                             |
-| createdAt | TIMESTAMP     |                             |
+Users can attach comment threads to specific text ranges within documents. Threads support:
 
-#### Comment Thread
+* Replies
+* Resolution
+* Persistent anchors even when text shifts
 
-| name       | type         |                             |
-|------------|--------------|-----------------------------|
-| id         | UUID         | auto increment, primary key |
-| projectId  | UUID         | FK -> Project.id            |
-| documentId | UUID         | FK -> Document.id           |
-| createdAt  | TIMESTAMP    |                             |
-| startIndex | VARCHAR(512) |                             |
-| endIndex   | VARCHAR(512) |                             |
+**Technical approach:**
+Comment threads store relative start and end indices. The frontend resolves anchors against the current CRDT state. If
+anchor resolution fails (e.g., text deleted), the thread is marked as orphaned but remains accessible.
 
-#### Comment
+**Feasibility:**
+Using relative indices ensures comments remain stable across document mutations, integrating cleanly with the CRDT
+model.
 
-| name      | type      |                        |
-|-----------|-----------|------------------------|
-| threaId   | UUID      | FK -> CommentThread.id |
-| index     | UUID      |                        |
-| createdAt | TIMESTAMP |                        |
-| content   | TEXT      |                        |
+### Versioning and Snapshot Management
 
-UNIQUE KEY('threaId', 'index')
+The platform maintains periodic project snapshots to support:
 
-#### Build
+* Viewing historical versions
+* Diffing between versions
+* Restoring previous states
 
-| name       | type                                             |                             |
-|------------|--------------------------------------------------|-----------------------------|
-| id         | UUID                                             | auto increment, primary key |
-| projectId  | UUID                                             | FK -> Project.Id            |
-| status     | ENUM('Queued', 'Running', 'Succeeded', 'Failed') |                             |
-| createdAt  | TIMESTAMP                                        |                             |
-| finishedAt | TIMESTAMP (nullable)                             |                             |
-| pdfPath    | VARCHAR(1024) (nullable)                         |                             |
-| logPath    | VARCHAR(1024)                                    |                             |
+**Technical approach:**
 
-### File Storage
+* Snapshots are periodically committed to disk.
+* Metadata is recorded in the database.
+* Restoring a version replaces the working state and triggers a `doc.reset` WebSocket event to resynchronize clients.
 
-File storage are used to store:
+**Feasibility:**
+Snapshot-based versioning provides reliable rollback without requiring full Git integration, balancing functionality and
+implementation complexity.
 
-- Project Snapshots
-- Project build artifacts
+## System Architecture Overview
+
+The system follows a clear separation of concerns:
+
+* **Frontend:** React + Vite
+* **Backend:** Express.js (REST + WebSocket APIs)
+* **Database:** Relational schema for users, projects, documents, builds, comments, and snapshots
+* **File Storage:** Snapshots and build artifacts
+* **Real-time Layer:** WebSocket + CRDT
+* **Build Orchestration:** Containerized LaTeX compilation via Airflow
+
+This modular architecture improves maintainability, scalability, and fault isolation.
+
+## Database Schema
+
+Below is the database schema.
+
+### `users`
+
+| column       | type          | constraints / notes    |
+| ------------ | ------------- | ---------------------- |
+| id           | UUID          | PK, generated UUID     |
+| email        | VARCHAR(256)  | UNIQUE, NOT NULL       |
+| name         | VARCHAR(256)  | NOT NULL               |
+| passwordHash | VARCHAR(1024) | NOT NULL (salted hash) |
+| createdAt    | TIMESTAMP     | NOT NULL               |
+| updatedAt    | TIMESTAMP     | NOT NULL               |
+
+### `projects`
+
+| column      | type                 | constraints / notes |
+| ----------- | -------------------- | ------------------- |
+| id          | UUID                 | PK, generated UUID  |
+| name        | VARCHAR(256)         | NOT NULL            |
+| createdAt   | TIMESTAMP            | NOT NULL            |
+| updatedAt   | TIMESTAMP            | NOT NULL            |
+| tombstoneAt | TIMESTAMP (nullable) | soft delete marker  |
+
+### `project_memberships`
+
+| column    | type                                        | constraints / notes        |
+| --------- | ------------------------------------------- | -------------------------- |
+| projectId | UUID                                        | FK → projects.id, NOT NULL |
+| userId    | UUID                                        | FK → users.id, NOT NULL    |
+| role      | ENUM('admin','editor','commenter','reader') | NOT NULL                   |
+| createdAt | TIMESTAMP                                   | NOT NULL                   |
+
+Constraints:
+
+* `PRIMARY KEY (projectId, userId)`
+
+### `documents`
+
+Represents a file entry in the project tree (text or binary).
+
+| column      | type                  | constraints / notes                                 |
+| ----------- | --------------------- | --------------------------------------------------- |
+| id          | UUID                  | PK, generated UUID                                  |
+| projectId   | UUID                  | FK → projects.id, NOT NULL                          |
+| path        | VARCHAR(1024)         | NOT NULL (absolute within project)                  |
+| kind        | ENUM('text','binary') | NOT NULL                                            |
+| mime        | VARCHAR(256)          | nullable (useful for binary assets)                 |
+| contentHash | VARCHAR(512)          | nullable for text (or computed), useful for caching |
+| createdAt   | TIMESTAMP             | NOT NULL                                            |
+| updatedAt   | TIMESTAMP             | NOT NULL                                            |
+
+Constraints:
+
+* `UNIQUE(projectId, path)`
+
+### `snapshots`
+
+A snapshot represents a committed project state stored externally (filesystem/object store).
+
+| column      | type          | constraints / notes                              |
+| ----------- | ------------- | ------------------------------------------------ |
+| id          | UUID          | PK, generated UUID                               |
+| projectId   | UUID          | FK → projects.id, NOT NULL                       |
+| storagePath | VARCHAR(1024) | NOT NULL                                         |
+| message     | VARCHAR(512)  | nullable (optional commit msg)                   |
+| authorId    | UUID          | FK → users.id, nullable (system commits allowed) |
+| createdAt   | TIMESTAMP     | NOT NULL                                         |
+
+### `comment_threads`
+
+Anchors are stored as **encoded relative positions** (e.g., base64 Yjs RelativePosition).
+
+| column      | type                    | constraints / notes                      |
+| ----------- | ----------------------- | ---------------------------------------- |
+| id          | UUID                    | PK, generated UUID                       |
+| projectId   | UUID                    | FK → projects.id, NOT NULL               |
+| documentId  | UUID                    | FK → documents.id, NOT NULL              |
+| status      | ENUM('open','resolved') | NOT NULL                                 |
+| startAnchor | VARCHAR(1024)           | NOT NULL (encoded relative position)     |
+| endAnchor   | VARCHAR(1024)           | NOT NULL (encoded relative position)     |
+| createdAt   | TIMESTAMP               | NOT NULL                                 |
+| updatedAt   | TIMESTAMP               | NOT NULL                                 |
+
+### `comments`
+
+| column    | type      | constraints / notes               |
+| --------- | --------- | --------------------------------- |
+| id        | UUID      | PK, generated UUID                |
+| threadId  | UUID      | FK → comment_threads.id, NOT NULL |
+| authorId  | UUID      | FK → users.id, NOT NULL           |
+| body      | TEXT      | NOT NULL                          |
+| createdAt | TIMESTAMP | NOT NULL                          |
+
+Indexing:
+
+* `INDEX(threadId, createdAt)`
+
+### `builds`
+
+| column       | type                                          | constraints / notes                   |
+| ------------ | --------------------------------------------- | ------------------------------------- |
+| id           | UUID                                          | PK, generated UUID                    |
+| projectId    | UUID                                          | FK → projects.id, NOT NULL            |
+| status       | ENUM('queued','running','succeeded','failed') | NOT NULL                              |
+| createdAt    | TIMESTAMP                                     | NOT NULL                              |
+| finishedAt   | TIMESTAMP (nullable)                          |                                       |
+| pdfPath      | VARCHAR(1024) (nullable)                      | artifact path                         |
+| logPath      | VARCHAR(1024)                                 | NOT NULL (even success may store log) |
+| errorSummary | VARCHAR(1024) (nullable)                      | quick UI display                      |
 
 ## Backend API
 
-The backend provides two sets of APIs, a RESTful APIs for normal operations, and WebSocket messages for live update.
+Two interfaces are exposed:
 
-### RESTful API
+* **REST** for standard operations (`/api/...`)
+* **WebSocket** for real-time collaboration and synchronization (`/ws`)
 
-RESTful API are grouped under `/api` namespace.
+### REST API
 
 #### Auth
 
-| API                  | Method | Auth | Request (fields)        | Response (fields)           | Notes               |
-|----------------------|--------|------|-------------------------|-----------------------------|---------------------|
-| `/api/auth/register` | POST   | No   | `email, password, name` | `user{id,email,name}` + JWT | 409 if email exists |
-| `/api/auth/login`    | POST   | No   | `email, password`       | `user{...}` + JWT           | 401 on bad creds    |
-| `/api/auth/logout`   | POST   | Yes  | —                       | 204                         | clears cookie       |
-| `/api/me`            | GET    | Yes  | —                       | `user{...}`                 | —                   |
+| Endpoint             | Method | Auth | Request                 | Response                      | Notes                              |
+| -------------------- | ------ | ---- | ----------------------- | ----------------------------- | ---------------------------------- |
+| `/api/auth/register` | POST   | No   | `email, password, name` | `user{id,email,name}` + `jwt` | 409 if email exists                |
+| `/api/auth/login`    | POST   | No   | `email, password`       | `user{...}` + `jwt`           | 401 on bad creds                   |
+| `/api/auth/logout`   | POST   | Yes  | —                       | 204                           | clears cookie if using cookie auth |
+| `/api/me`            | GET    | Yes  | —                       | `user{id,email,name}`         | —                                  |
 
 #### Projects
 
-| API                        | Method | Role         | Request | Response                               | Notes                       |
-|----------------------------|--------|--------------|---------|----------------------------------------|-----------------------------|
-| `/api/projects`            | POST   | —            | `name`  | `project{id,name,mainDocId,createdAt}` | creator becomes ADMIN       |
-| `/api/projects`            | GET    | —            | —       | `projects[{id,name,role,updatedAt}]`   | role included               |
-| `/api/projects/:projectId` | GET    | Member       | —       | `project{...}, myRole`                 | 404 if not member           |
-| `/api/projects/:projectId` | PATCH  | COLLAB/ADMIN | `name`  | `project{...}`                         | Rename project              |
-| `/api/projects/:projectId` | DELETE | ADMIN        | —       | 204                                    | set he project as tombstone |
+| Endpoint                   | Method | Role            | Request | Response                                       | Notes                   |
+| -------------------------- | ------ | --------------- | ------- | ---------------------------------------------- | ----------------------- |
+| `/api/projects`            | POST   | any authed user | `name`  | `project{id,name,createdAt}`                   | creator becomes `admin` |
+| `/api/projects`            | GET    | any authed user | —       | `projects[{id,name,myRole,updatedAt}]`         | only member projects    |
+| `/api/projects/:projectId` | GET    | member          | —       | `project{id,name,createdAt,updatedAt}, myRole` | 404 if not member       |
+| `/api/projects/:projectId` | PATCH  | admin           | `name`  | `project{...}`                                 | rename                  |
+| `/api/projects/:projectId` | DELETE | admin           | —       | 204                                            | set `tombstoneAt`       |
 
 #### Members (RBAC)
 
-| API                                        | Method | Role          | Request       | Response                            | Notes                                         |
-|--------------------------------------------|--------|---------------|---------------|-------------------------------------|-----------------------------------------------|
-| `/api/projects/:projectId/members`         | GET    | Member        | —             | `members[{userId,email,name,role}]` | —                                             |
-| `/api/projects/:projectId/members`         | POST   | ADMIN         | `email, role` | `member{userId,role}`               | user must exist                               |
-| `/api/projects/:projectId/members/:userId` | PATCH  | ADMIN         | `role`        | `member{userId,role}`               | —                                             |
-| `/api/projects/:projectId/members/:userId` | DELETE | ADMIN or self | —             | 204                                 | self-leave allowed, except for the last ADMIN |
+| Endpoint                                   | Method | Role          | Request       | Response                            | Notes                               |
+| ------------------------------------------ | ------ | ------------- | ------------- | ----------------------------------- | ----------------------------------- |
+| `/api/projects/:projectId/members`         | GET    | member        | —             | `members[{userId,email,name,role}]` | —                                   |
+| `/api/projects/:projectId/members`         | POST   | admin         | `email, role` | `member{userId,role}`               | user must exist                     |
+| `/api/projects/:projectId/members/:userId` | PATCH  | admin         | `role`        | `member{userId,role}`               | —                                   |
+| `/api/projects/:projectId/members/:userId` | DELETE | admin or self | —             | 204                                 | self-leave disallowed if last admin |
 
-#### Files
+#### Files / Documents
 
-| API                             | Method | Role         | Request              | Response           | Notes                  |
-|---------------------------------|--------|--------------|----------------------|--------------------|------------------------|
-| `/api/projects/:projectId/docs` | POST   | COLLAB/ADMIN | `path`               | `[{id,kind,mime}]` | creates doc + snapshot |
-| `/api/projects/:projectId/docs` | PATCH  | COLLAB/ADMIN | `[{docId, newPath}]` | 204                |                        |
-| `/api/projects/:projectId/docs` | DELETE | COLLAB/ADMIN | `[docId]`            | 204                |                        |
+| Endpoint                        | Method | Role         | Request             | Response                      | Notes                          |
+| ------------------------------- | ------ | ------------ | ------------------- | ----------------------------- | ------------------------------ |
+| `/api/projects/:projectId/docs` | POST   | editor+admin | `path, kind, mime?` | `document{id,path,kind,mime}` | create new document entry      |
+| `/api/projects/:projectId/docs` | PATCH  | editor+admin | `[{docId,newPath}]` | 204                           | rename/move; checks collisions |
+| `/api/projects/:projectId/docs` | DELETE | editor+admin | `[docId]`           | 204                           | delete docs                    |
 
 #### Comments
 
-| API                                                | Method | Role       | Request                                 | Response                                       | Notes                    |
-|----------------------------------------------------|--------|------------|-----------------------------------------|------------------------------------------------|--------------------------|
-| `/api/projects/:projectId/docs/:docId/comments`    | GET    | Member     | —                                       | `threads[{threadId,status,anchor,comments[]}]` |                          |
-| `/api/projects/:projectId/docs/:docId/comments`    | POST   | COMMENTER+ | `startRelB64,endRelB64,quotedText,body` | `thread{...}, comment{...}`                    | creates thread + 1st msg |
-| `/api/projects/:projectId/threads/:threadId/reply` | POST   | COMMENTER+ | `body`                                  | `comment{...}`                                 | —                        |
+| Endpoint                                             | Method | Role       | Request                                       | Response                                                           |
+| ---------------------------------------------------- | ------ | ---------- | --------------------------------------------- | ------------------------------------------------------------------ |
+| `/api/projects/:projectId/docs/:docId/comments`      | GET    | member     | —                                             | `threads[{id,status,startAnchor,endAnchor,quotedText,comments[]}]` |
+| `/api/projects/:projectId/docs/:docId/comments`      | POST   | commenter+ | `startAnchorB64,endAnchorB64,quotedText,body` | `thread{...}, comment{...}`                                        |
+| `/api/projects/:projectId/threads/:threadId/reply`   | POST   | commenter+ | `body`                                        | `comment{...}`                                                     |
 
-#### Versioning
+#### Versioning (Snapshots)
 
-| API                                                  | Method | Role         | Request | Response                                 | Notes                  |
-|------------------------------------------------------|--------|--------------|---------|------------------------------------------|------------------------|
-| `/api/projects/:projectId/commits`                   | GET    | Member       | —       | `commits[{id,message,author,createdAt}]` | —                      |
-| `/api/projects/:projectId/commits/:commitId`<br>     | GET    | Member       | —       | `snapshot files`                         | —                      |
-| `/api/projects/:projectId/commits/:commitId/restore` | POST   | COLLAB/ADMIN | —       | `restoredCommitId`                       | broadcasts `doc.reset` |
+| Endpoint                                                 | Method | Role         | Request | Response                                      | Notes                     |
+| -------------------------------------------------------- | ------ | ------------ | ------- | --------------------------------------------- | ------------------------- |
+| `/api/projects/:projectId/snapshots`                     | GET    | member       | —       | `snapshots[{id,message,authorId?,createdAt}]` | list history              |
+| `/api/projects/:projectId/snapshots/:snapshotId`         | GET    | member       | —       | `snapshot files / manifest`                   | retrieve snapshot content |
+| `/api/projects/:projectId/snapshots/:snapshotId/restore` | POST   | editor+admin | —       | `{restoredSnapshotId}`                        | broadcasts `doc.reset`    |
 
 #### Build / Compile (PDF)
 
-| API                                            | Method | Auth | Role   | Request | Response                                              | Notes            |
-|------------------------------------------------|--------|------|--------|---------|-------------------------------------------------------|------------------|
-| `/api/projects/:projectId/builds/:buildId`     | GET    | Yes  | Member | —       | `build{id,status,finishedAt?,errorSummary?,pdfReady}` | FE polls         |
-| `/api/projects/:projectId/builds/:buildId/pdf` | GET    | Yes  | Member | —       | `application/pdf` stream                              | 404 if not ready |
-| `/api/projects/:projectId/builds/:buildId/log` | GET    | Yes  | Member | —       | `text/plain` or `{log}`                               | show on failure  |
-
----
+| Endpoint                                       | Method | Role   | Response                                              | Notes            |
+| ---------------------------------------------- | ------ | ------ | ----------------------------------------------------- | ---------------- |
+| `/api/projects/:projectId/builds/:buildId`     | GET    | member | `build{id,status,finishedAt?,errorSummary?,pdfReady}` | FE polls         |
+| `/api/projects/:projectId/builds/:buildId/pdf` | GET    | member | `application/pdf` stream                              | 404 if not ready |
+| `/api/projects/:projectId/builds/:buildId/log` | GET    | member | `text/plain` stream (or `{log}`)                      | show on failure  |
 
 ### WebSocket API
 
-WS connect: `ws://host/ws?projectId=...&docId=...` (auth via cookie/JWT)
+Connection:
+`ws://host/ws?projectId=...&docId=...`
+Authentication: JWT (cookie or header during upgrade)
 
-| Type                | Direction | Role         | Payload                | Notes                          |
-|---------------------|-----------|--------------|------------------------|--------------------------------|
-| `doc.sync.request`  | C→S       | Member       | `{docId}`              | ask for full state             |
-| `doc.sync.response` | S→C       | Member       | `{docId,stateB64}`     | full Yjs state                 |
-| `doc.update`        | C→S       | COLLAB/ADMIN | `{docId,updateB64}`    | server applies + broadcasts    |
-| `doc.update`        | S→C       | Member       | `{docId,updateB64}`    | incremental updates            |
-| `presence.update`   | C→S       | Member       | `{docId,awarenessB64}` | optional                       |
-| `presence.update`   | S→C       | Member       | `{docId,awarenessB64}` | optional                       |
-| `doc.reset`         | S→C       | Member       | `{docId,reason}`       | after restore; client re-syncs |
-| `error`             | S→C       | Member       | `{code,message}`       | permission/validation          |
+Message types:
 
-## UI
+| Type                | Dir | Role         | Payload                | Purpose                        |
+| ------------------- | --- | ------------ | ---------------------- | ------------------------------ |
+| `doc.sync.request`  | C→S | member       | `{docId}`              | request full state             |
+| `doc.sync.response` | S→C | member       | `{docId,stateB64}`     | send full CRDT state           |
+| `doc.update`        | C→S | editor+admin | `{docId,updateB64}`    | apply & broadcast update       |
+| `doc.update`        | S→C | member       | `{docId,updateB64}`    | incremental updates            |
+| `presence.update`   | C→S | member       | `{docId,awarenessB64}` | cursor/selection presence      |
+| `presence.update`   | S→C | member       | `{docId,awarenessB64}` | broadcast presence             |
+| `doc.reset`         | S→C | member       | `{docId,reason}`       | after restore; clients re-sync |
+| `error`             | S→C | member       | `{code,message}`       | validation/permission errors   |
 
-The user interface consists of three main pages:
+---
 
-- Login / Register page: allow user to create an account and log in.
-- Project list page: show the projects the user belongs to, and allow user to create new projects.
-- Project workspace: the main editor interface, with a file tree on the left, a source editor in the middle, and a PDF
-  preview on the right. A comment sidebar can be toggled on the right of the source editor.
+## UI Summary
 
-The three pages have the following look:
-![Login / Register page](login.png "Login / Register page")
-![Project list page](dashboard.png "Project list page")
-![Project workspace](editor.png "Project workspace")
+The UI consists of three pages:
 
-# Timeline
+1. **Login / Register:** account creation and authentication.
+![Login Page](login.png)
+2. **Project List:** displays projects the user belongs to; supports project creation.
+![Project List](dashboard.png)
+3. **Workspace:** file tree (left), source editor (center), PDF preview (right), plus an optional comment sidebar.
+![Workspace](editor.png)
+
+## Summary
+
+This project delivers a fully functional collaborative LaTeX platform that integrates:
+
+* Real-time CRDT-based editing
+* Secure authentication and RBAC
+* Structured file management
+* Backend PDF compilation
+* Anchored commenting
+* Snapshot-based version control
+
+Each feature is backed by a concrete technical implementation that ensures practical feasibility within the project 
+scope.
+
+# Tentative Plan
+
