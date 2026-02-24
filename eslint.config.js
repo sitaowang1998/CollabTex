@@ -15,7 +15,7 @@ module.exports = defineConfig([
     "**/*.tsbuildinfo",
   ]),
   {
-    files: ["**/*.{ts,tsx}"],
+    files: ["apps/api/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: 2020,
@@ -27,9 +27,23 @@ module.exports = defineConfig([
   },
   {
     files: ["apps/web/**/*.{ts,tsx}"],
-    extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
     languageOptions: {
+      ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+  {
+    files: ["*.{ts,tsx}"],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
     },
   },
   ...jsonc.configs["flat/recommended-with-json"],
