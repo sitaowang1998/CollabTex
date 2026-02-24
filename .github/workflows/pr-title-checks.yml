@@ -1,0 +1,26 @@
+name: "pr-title-checks"
+
+on:
+  pull_request:
+    types: ["edited", "opened", "reopened", "synchronize"]
+    branches: ["main"]
+
+permissions: {}
+
+concurrency:
+  group: "${{ github.workflow }}-pr-${{ github.event.pull_request.number }}"
+
+  # Cancel in-progress jobs for efficiency
+  cancel-in-progress: true
+
+jobs:
+  conventional-commits:
+    name: "conventional-commits"
+    permissions:
+      # For amannn/action-semantic-pull-request
+      pull-requests: "read"
+    runs-on: "ubuntu-24.04"
+    steps:
+      - uses: "amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017"
+        env:
+          GITHUB_TOKEN: "${{ github.token }}"
