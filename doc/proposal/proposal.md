@@ -28,7 +28,7 @@ The system enables multiple users to edit, manage, compile, and review LaTeX pro
 time.
 
 Unlike traditional local LaTeX workflows, this platform centralizes project files, supports fine-grained collaboration
-control, and provides live PDF preview with version tracking. The system is designed to be consistent under concurrent 
+control, and provides live PDF preview with version tracking. The system is designed to be consistent under concurrent
 edits, while maintaining low latency.
 
 ## Key Features
@@ -182,7 +182,7 @@ Below is the database schema.
 ### `users`
 
 | column       | type          | constraints / notes    |
-| ------------ | ------------- | ---------------------- |
+|--------------|---------------|------------------------|
 | id           | UUID          | PK, generated UUID     |
 | email        | VARCHAR(256)  | UNIQUE, NOT NULL       |
 | name         | VARCHAR(256)  | NOT NULL               |
@@ -193,7 +193,7 @@ Below is the database schema.
 ### `projects`
 
 | column      | type                 | constraints / notes |
-| ----------- | -------------------- | ------------------- |
+|-------------|----------------------|---------------------|
 | id          | UUID                 | PK, generated UUID  |
 | name        | VARCHAR(256)         | NOT NULL            |
 | createdAt   | TIMESTAMP            | NOT NULL            |
@@ -203,7 +203,7 @@ Below is the database schema.
 ### `project_memberships`
 
 | column    | type                                        | constraints / notes        |
-| --------- | ------------------------------------------- | -------------------------- |
+|-----------|---------------------------------------------|----------------------------|
 | projectId | UUID                                        | FK → projects.id, NOT NULL |
 | userId    | UUID                                        | FK → users.id, NOT NULL    |
 | role      | ENUM('admin','editor','commenter','reader') | NOT NULL                   |
@@ -218,7 +218,7 @@ Constraints:
 Represents a file entry in the project tree (text or binary).
 
 | column      | type                  | constraints / notes                                 |
-| ----------- | --------------------- | --------------------------------------------------- |
+|-------------|-----------------------|-----------------------------------------------------|
 | id          | UUID                  | PK, generated UUID                                  |
 | projectId   | UUID                  | FK → projects.id, NOT NULL                          |
 | path        | VARCHAR(1024)         | NOT NULL (absolute within project)                  |
@@ -237,7 +237,7 @@ Constraints:
 A snapshot represents a committed project state stored externally (filesystem/object store).
 
 | column      | type          | constraints / notes                              |
-| ----------- | ------------- | ------------------------------------------------ |
+|-------------|---------------|--------------------------------------------------|
 | id          | UUID          | PK, generated UUID                               |
 | projectId   | UUID          | FK → projects.id, NOT NULL                       |
 | storagePath | VARCHAR(1024) | NOT NULL                                         |
@@ -249,21 +249,21 @@ A snapshot represents a committed project state stored externally (filesystem/ob
 
 Anchors are stored as **encoded relative positions** (e.g., base64 Yjs RelativePosition).
 
-| column      | type                    | constraints / notes                      |
-| ----------- | ----------------------- | ---------------------------------------- |
-| id          | UUID                    | PK, generated UUID                       |
-| projectId   | UUID                    | FK → projects.id, NOT NULL               |
-| documentId  | UUID                    | FK → documents.id, NOT NULL              |
-| status      | ENUM('open','resolved') | NOT NULL                                 |
-| startAnchor | VARCHAR(1024)           | NOT NULL (encoded relative position)     |
-| endAnchor   | VARCHAR(1024)           | NOT NULL (encoded relative position)     |
-| createdAt   | TIMESTAMP               | NOT NULL                                 |
-| updatedAt   | TIMESTAMP               | NOT NULL                                 |
+| column      | type                    | constraints / notes                  |
+|-------------|-------------------------|--------------------------------------|
+| id          | UUID                    | PK, generated UUID                   |
+| projectId   | UUID                    | FK → projects.id, NOT NULL           |
+| documentId  | UUID                    | FK → documents.id, NOT NULL          |
+| status      | ENUM('open','resolved') | NOT NULL                             |
+| startAnchor | VARCHAR(1024)           | NOT NULL (encoded relative position) |
+| endAnchor   | VARCHAR(1024)           | NOT NULL (encoded relative position) |
+| createdAt   | TIMESTAMP               | NOT NULL                             |
+| updatedAt   | TIMESTAMP               | NOT NULL                             |
 
 ### `comments`
 
 | column    | type      | constraints / notes               |
-| --------- | --------- | --------------------------------- |
+|-----------|-----------|-----------------------------------|
 | id        | UUID      | PK, generated UUID                |
 | threadId  | UUID      | FK → comment_threads.id, NOT NULL |
 | authorId  | UUID      | FK → users.id, NOT NULL           |
@@ -277,7 +277,7 @@ Indexing:
 ### `builds`
 
 | column       | type                                          | constraints / notes                   |
-| ------------ | --------------------------------------------- | ------------------------------------- |
+|--------------|-----------------------------------------------|---------------------------------------|
 | id           | UUID                                          | PK, generated UUID                    |
 | projectId    | UUID                                          | FK → projects.id, NOT NULL            |
 | status       | ENUM('queued','running','succeeded','failed') | NOT NULL                              |
@@ -299,7 +299,7 @@ Two interfaces are exposed:
 #### Auth
 
 | Endpoint             | Method | Auth | Request                 | Response                      | Notes                              |
-| -------------------- | ------ | ---- | ----------------------- | ----------------------------- | ---------------------------------- |
+|----------------------|--------|------|-------------------------|-------------------------------|------------------------------------|
 | `/api/auth/register` | POST   | No   | `email, password, name` | `user{id,email,name}` + `jwt` | 409 if email exists                |
 | `/api/auth/login`    | POST   | No   | `email, password`       | `user{...}` + `jwt`           | 401 on bad creds                   |
 | `/api/auth/logout`   | POST   | Yes  | —                       | 204                           | clears cookie if using cookie auth |
@@ -308,7 +308,7 @@ Two interfaces are exposed:
 #### Projects
 
 | Endpoint                   | Method | Role            | Request | Response                                       | Notes                   |
-| -------------------------- | ------ | --------------- | ------- | ---------------------------------------------- | ----------------------- |
+|----------------------------|--------|-----------------|---------|------------------------------------------------|-------------------------|
 | `/api/projects`            | POST   | any authed user | `name`  | `project{id,name,createdAt}`                   | creator becomes `admin` |
 | `/api/projects`            | GET    | any authed user | —       | `projects[{id,name,myRole,updatedAt}]`         | only member projects    |
 | `/api/projects/:projectId` | GET    | member          | —       | `project{id,name,createdAt,updatedAt}, myRole` | 404 if not member       |
@@ -318,7 +318,7 @@ Two interfaces are exposed:
 #### Members (RBAC)
 
 | Endpoint                                   | Method | Role          | Request       | Response                            | Notes                               |
-| ------------------------------------------ | ------ | ------------- | ------------- | ----------------------------------- | ----------------------------------- |
+|--------------------------------------------|--------|---------------|---------------|-------------------------------------|-------------------------------------|
 | `/api/projects/:projectId/members`         | GET    | member        | —             | `members[{userId,email,name,role}]` | —                                   |
 | `/api/projects/:projectId/members`         | POST   | admin         | `email, role` | `member{userId,role}`               | user must exist                     |
 | `/api/projects/:projectId/members/:userId` | PATCH  | admin         | `role`        | `member{userId,role}`               | —                                   |
@@ -327,23 +327,23 @@ Two interfaces are exposed:
 #### Files / Documents
 
 | Endpoint                        | Method | Role         | Request             | Response                      | Notes                          |
-| ------------------------------- | ------ | ------------ | ------------------- | ----------------------------- | ------------------------------ |
+|---------------------------------|--------|--------------|---------------------|-------------------------------|--------------------------------|
 | `/api/projects/:projectId/docs` | POST   | editor+admin | `path, kind, mime?` | `document{id,path,kind,mime}` | create new document entry      |
 | `/api/projects/:projectId/docs` | PATCH  | editor+admin | `[{docId,newPath}]` | 204                           | rename/move; checks collisions |
 | `/api/projects/:projectId/docs` | DELETE | editor+admin | `[docId]`           | 204                           | delete docs                    |
 
 #### Comments
 
-| Endpoint                                             | Method | Role       | Request                                       | Response                                                           |
-| ---------------------------------------------------- | ------ | ---------- | --------------------------------------------- | ------------------------------------------------------------------ |
-| `/api/projects/:projectId/docs/:docId/comments`      | GET    | member     | —                                             | `threads[{id,status,startAnchor,endAnchor,quotedText,comments[]}]` |
-| `/api/projects/:projectId/docs/:docId/comments`      | POST   | commenter+ | `startAnchorB64,endAnchorB64,quotedText,body` | `thread{...}, comment{...}`                                        |
-| `/api/projects/:projectId/threads/:threadId/reply`   | POST   | commenter+ | `body`                                        | `comment{...}`                                                     |
+| Endpoint                                           | Method | Role       | Request                                       | Response                                                           |
+|----------------------------------------------------|--------|------------|-----------------------------------------------|--------------------------------------------------------------------|
+| `/api/projects/:projectId/docs/:docId/comments`    | GET    | member     | —                                             | `threads[{id,status,startAnchor,endAnchor,quotedText,comments[]}]` |
+| `/api/projects/:projectId/docs/:docId/comments`    | POST   | commenter+ | `startAnchorB64,endAnchorB64,quotedText,body` | `thread{...}, comment{...}`                                        |
+| `/api/projects/:projectId/threads/:threadId/reply` | POST   | commenter+ | `body`                                        | `comment{...}`                                                     |
 
 #### Versioning (Snapshots)
 
 | Endpoint                                                 | Method | Role         | Request | Response                                      | Notes                     |
-| -------------------------------------------------------- | ------ | ------------ | ------- | --------------------------------------------- | ------------------------- |
+|----------------------------------------------------------|--------|--------------|---------|-----------------------------------------------|---------------------------|
 | `/api/projects/:projectId/snapshots`                     | GET    | member       | —       | `snapshots[{id,message,authorId?,createdAt}]` | list history              |
 | `/api/projects/:projectId/snapshots/:snapshotId`         | GET    | member       | —       | `snapshot files / manifest`                   | retrieve snapshot content |
 | `/api/projects/:projectId/snapshots/:snapshotId/restore` | POST   | editor+admin | —       | `{restoredSnapshotId}`                        | broadcasts `doc.reset`    |
@@ -351,7 +351,7 @@ Two interfaces are exposed:
 #### Build / Compile (PDF)
 
 | Endpoint                                       | Method | Role   | Response                                              | Notes            |
-| ---------------------------------------------- | ------ | ------ | ----------------------------------------------------- | ---------------- |
+|------------------------------------------------|--------|--------|-------------------------------------------------------|------------------|
 | `/api/projects/:projectId/builds/:buildId`     | GET    | member | `build{id,status,finishedAt?,errorSummary?,pdfReady}` | FE polls         |
 | `/api/projects/:projectId/builds/:buildId/pdf` | GET    | member | `application/pdf` stream                              | 404 if not ready |
 | `/api/projects/:projectId/builds/:buildId/log` | GET    | member | `text/plain` stream (or `{log}`)                      | show on failure  |
@@ -365,7 +365,7 @@ Authentication: JWT (cookie or header during upgrade)
 Message types:
 
 | Type                | Dir | Role         | Payload                | Purpose                        |
-| ------------------- | --- | ------------ | ---------------------- | ------------------------------ |
+|---------------------|-----|--------------|------------------------|--------------------------------|
 | `doc.sync.request`  | C→S | member       | `{docId}`              | request full state             |
 | `doc.sync.response` | S→C | member       | `{docId,stateB64}`     | send full CRDT state           |
 | `doc.update`        | C→S | editor+admin | `{docId,updateB64}`    | apply & broadcast update       |
@@ -382,11 +382,11 @@ Message types:
 The UI consists of three pages:
 
 1. **Login / Register:** account creation and authentication.
-![Login Page](login.png)
+   ![Login Page](login.png)
 2. **Project List:** displays projects the user belongs to; supports project creation.
-![Project List](dashboard.png)
+   ![Project List](dashboard.png)
 3. **Workspace:** file tree (left), source editor (center), PDF preview (right), plus an optional comment sidebar.
-![Workspace](editor.png)
+   ![Workspace](editor.png)
 
 ## Summary
 
@@ -399,8 +399,250 @@ This project delivers a fully functional collaborative LaTeX platform that integ
 * Anchored commenting
 * Snapshot-based version control
 
-Each feature is backed by a concrete technical implementation that ensures practical feasibility within the project 
+Each feature is backed by a concrete technical implementation that ensures practical feasibility within the project
 scope.
 
 # Tentative Plan
+
+## Overview
+
+**Start Date:** March 2
+**Duration:** 4 weeks
+
+**Team**
+
+* Ciliang Zhang — Frontend
+* Sitao Wang — Backend
+
+## Project Objectives
+
+Over the next few weeks, the team will deliver:
+
+* Realtime collaborative LaTeX editing
+* Comment threads anchored to text
+* Project-level versioning (commit + restore)
+* LaTeX compile with PDF preview (by end of Week 3)
+* Final week dedicated to stabilization and polish
+
+The implementation approach is incremental:
+
+1. Establish core data models and structure.
+2. Add realtime collaboration.
+3. Add versioning and compile system.
+4. Stabilize and polish for demo readiness.
+
+## Responsibility Breakdown
+
+### Frontend
+
+Responsible for:
+
+* All UI implementation
+* Editor integration
+* WebSocket client integration
+* Rendering file tree and comments
+* Version history UI
+* PDF preview UI
+* Role-based UI restrictions
+* Styling and polish
+
+### Backend
+
+Responsible for:
+
+* Database schema (Prisma + Postgres)
+* REST APIs
+* Role-based access control
+* WebSocket server and Yjs document management
+* Snapshot versioning system
+* Comment data model and APIs
+* LaTeX compile system (Docker + Airflow)
+* Workspace export logic
+* Backend testing
+
+## Week 1 — Core Structure and Workspace
+
+### Objective
+
+Build the foundational system:
+
+* Authentication
+* Projects and membership
+* File tree management
+* Basic workspace UI
+* File opens in editor (non-realtime)
+
+### Backend Focus
+
+* Finalize database schema:
+
+    * Users
+    * Projects
+    * Memberships
+    * File tree (Node model)
+    * Documents
+    * Snapshot model
+* Implement:
+
+    * Auth endpoints
+    * Project CRUD
+    * Membership management
+    * File tree CRUD
+* Implement basic WebSocket connection structure
+* Implement document snapshot loading
+
+### Frontend Focus
+
+* Build login and project list pages
+* Implement 3-column workspace layout
+* Render file tree
+* Create file/folder modals
+* Integrate editor library
+* Load document content via REST
+* Implement basic role-based UI gating
+
+### End of Week 1 Outcome
+
+* Users can log in
+* Projects can be created
+* Files and folders can be managed
+* Files open in editor
+* System structure is stable
+
+## Week 2 — Realtime Collaboration and Comments
+
+### Objective
+
+Enable collaborative editing and comments.
+Confirm compile environment works.
+
+### Backend Focus
+
+* Integrate Yjs for realtime editing
+* Maintain in-memory document instances
+* Implement `doc.update` WebSocket handling
+* Broadcast updates to connected clients
+* Implement snapshot persistence
+* Enforce role restrictions in WebSocket layer
+* Implement comment models:
+
+    * Thread
+    * Anchor (relative positions)
+    * Messages
+* Implement comment REST endpoints
+* Set up Docker LaTeX proof-of-concept compile
+* Confirm logs and timeout handling
+
+### Frontend Focus
+
+* Bind editor library to Yjs
+* Implement WebSocket client logic
+* Handle sync, update, reconnect states
+* Add read-only mode for commenter role
+* Implement comments panel:
+
+    * Create thread from selection
+    * Reply
+    * Resolve
+    * Scroll-to-anchor behavior
+* Display connection state indicator
+
+## End of Week 2 Outcome
+
+* Two users can edit the same document in realtime
+* Comments attach to text selections
+* Snapshot persistence works
+* Docker LaTeX compile works in isolation
+
+## Week 3 — Versioning and Full Compile System
+
+### Objective
+
+Complete versioning and fully integrate compile + PDF preview.
+
+### Backend Focus
+
+* Implement versioning system:
+
+    * Snapshot all documents
+    * Store version metadata
+    * Restore version logic
+    * Broadcast reset to clients
+* Implement build system:
+
+    * Build model
+    * Queue logic (one build per project)
+    * Workspace export to filesystem
+* Integrate Docker LaTeX compile for real project files
+* Implement:
+
+    * Build status endpoint
+    * PDF streaming endpoint
+    * Log retrieval endpoint
+* Add support for selecting main document
+
+### Frontend Focus
+
+* Implement History tab:
+
+    * Create version
+    * List version
+    * Restore confirmation
+* Implement PDF tab:
+
+    * Compile button
+    * Poll build status
+    * Display PDF preview
+    * Show logs on failure
+* Finalize role gating for compile and restore
+* Clean up UI consistency
+
+### End of Week 3 Outcome
+
+* Full demo working:
+
+    * Realtime editing
+    * Comments
+    * Version creation and restore
+    * Compile and PDF preview
+
+## Week 4 — Stabilization and Polish
+
+### Objective
+
+Improve reliability and presentation quality.
+
+### Backend Focus
+
+* Improve error handling
+* Improve build timeout and error summaries
+* Add WebSocket payload limits
+* Finalize folder delete behavior
+* Conduct basic smoke tests
+
+### Frontend Focus
+
+* Styling consistency pass
+* Improve empty states
+* Improve disabled states
+* Minor UX refinements
+* Fix bugs discovered during integration
+
+### End of Week 4 Outcome
+
+* Stable system suitable for demonstration
+* Clean and consistent UI
+* Reduced risk of runtime failures
+
+# Strategy Summary
+
+The team will:
+
+1. Build vertical slices in stages (structure → realtime → versioning → compile).
+2. Integrate high-risk components early (Docker compile in Week 2).
+3. Keep infrastructure simple (single-node, snapshot persistence).
+4. Allocate the final week entirely to stabilization rather than new features.
+
+This phased approach ensures that core functionality is complete by Week 3, leaving Week 4 dedicated to reliability and
+polish.
 
