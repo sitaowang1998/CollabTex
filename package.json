@@ -1,0 +1,16 @@
+{
+  "name": "collab-tex",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
+    "build": "tsc -b && npm run build -w apps/web",
+    "clean": "tsc -b --clean",
+    "start": "npm run start -w apps/api",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.9.3"
+  }
+}
