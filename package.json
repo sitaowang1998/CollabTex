@@ -12,7 +12,7 @@
     "start": "npm run start -w apps/api",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
