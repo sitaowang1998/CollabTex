@@ -380,11 +380,11 @@ Message types:
 The UI consists of three pages:
 
 1. **Login / Register:** account creation and authentication.
-   ![Login Page](login.png)
+   ![Login Page](https://github.com/sitaowang1998/CollabTex/blob/main/doc/proposal/login.png)
 2. **Project List:** displays projects the user belongs to; supports project creation.
-   ![Project List](dashboard.png)
+   ![Project List](https://github.com/sitaowang1998/CollabTex/blob/main/doc/proposal/dashboard.png)
 3. **Workspace:** file tree (left), source editor (center), PDF preview (right), plus an optional comment sidebar.
-   ![Workspace](editor.png)
+   ![Workspace](https://github.com/sitaowang1998/CollabTex/blob/main/doc/proposal/editor.png)
 
 ## Summary
 
