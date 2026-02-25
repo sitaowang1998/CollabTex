@@ -375,8 +375,6 @@ Message types:
 | `doc.reset`         | S→C | member       | `{docId,reason}`       | after restore; clients re-sync |
 | `error`             | S→C | member       | `{code,message}`       | validation/permission errors   |
 
----
-
 ## UI Summary
 
 The UI consists of three pages:
@@ -634,7 +632,7 @@ Improve reliability and presentation quality.
 * Clean and consistent UI
 * Reduced risk of runtime failures
 
-# Strategy Summary
+## Summary
 
 The team will:
 
@@ -645,4 +643,107 @@ The team will:
 
 This phased approach ensures that core functionality is complete by Week 3, leaving Week 4 dedicated to reliability and
 polish.
+
+# Initial Independent Reasoning
+
+AI does not take part in the planing process. It is only used to help write the proposal after the plan is finalized.
+
+## Application structure and architecture
+
+We chose a separate frontend backend architecture rather than a full-stack framework (e.g., Next.js) because our system
+needs both REST endpoints (projects, files, history, builds) and persistent WebSocket connections (real-time
+editing, presence, and reset events). Keeping WebSocket state, authorization, and rate/resource controls in a dedicated
+backend service is simpler to reason about and test.
+
+This split also matches our team’s skills: we can iterate quickly on the UI in React/Vite, while the backend focuses on
+Express, real-time synchronization, and build orchestration without coupling deployment concerns to frontend rendering.
+
+## Data and state design
+
+We planned the data model around three layers of state, each with different consistency and performance needs:
+
+* **Persistent metadata (PostgreSQL + Prisma):**
+  User accounts, projects, memberships/roles, document metadata (paths, types), builds, snapshots, and comment threads
+  live in a relational database. A relational schema fits naturally because the project has clear entities (
+  users/projects/docs) and many-to-many relationships (memberships), and Prisma helps us evolve the schema safely.
+
+* **File and artifact storage (filesystem initially, object storage-ready):**
+  The actual project contents (LaTeX sources and binary assets) and build outputs (PDF + logs) are stored outside the
+  database. We plan to start with the local filesystem for simplicity and faster development, but we keep the
+  interface abstract so we can later migrate to cloud object storage like S3 without changing core logic.
+
+* **Real-time collaborative state (in-memory CRDT with persistence):**
+  For active documents, the server maintains an in-memory **Yjs CRDT** instance to support low-latency collaboration
+  over WebSockets. The CRDT state is periodically persisted (and/or persisted on close) so the system remains durable
+  and supports version history. Clients can request a full sync on reconnect and then apply incremental updates.
+
+**CRDT vs. OT decision:**
+We compared OT (e.g., ShareDB) and CRDT (e.g., Yjs).
+
+Both approaches are proven in production collaborative editors. OT are used by traditional platforms like Google Docs
+and Overleaf, while CRDTs are used by newer platforms like Figma and Notion. CRDT needs more memory to keep relative
+indexing metadata, but provides scalability and offline editing. However, this project does not target scalability,
+and we don't need offline editing.
+
+Despite the overhead of CRDT, we find it a better fit for our anchored commenting requirement. CRDT supports relative
+positions that remain stable as concurrent edits occur, which makes it easier to keep comment anchors attached to the
+intended text. With OT, anchors are typically absolute offsets, which would require additional bookkeeping to update
+comment ranges on every transformation, adding more complexity.
+
+## Feature selection and scope decisions
+
+We scoped features by separating core functionality from advanced functionality:
+
+Core features includes the fundamental functionalities required for a collaborative LaTeX editor.
+
+* Authentication + project membership
+* RBAC enforcement across REST and WebSocket
+* File tree and basic project file operations
+* Real-time collaborative editing (single document working well first)
+* Server-side LaTeX build with PDF preview + logs
+
+Advanced features are important but not strictly necessary.
+
+* Anchored comment threads that survive edits and deletions
+* Snapshot-based versioning with restore
+* Presence indicators and richer collaboration UI
+
+**Tradeoffs we considered:**
+We intentionally avoided overly ambitious features, such as:
+- Detailed versioning that tracks changes for different files and users.
+- Integrating AI assistance for writing LaTeX.
+
+We focus on correctness and reliability in real-time editing and build system, rather than adding more features that
+could introduce instability or require significant additional development time.
+
+## Anticipated challenges
+
+Before implementation, we expected the hardest parts to be:
+
+* **Real-time synchronization and convergence:**
+  Even with Yjs, we still need robust WebSocket lifecycle handling (reconnects, resync, ordering, backpressure) and
+  careful state maintaining.
+
+* **Secure and reliable LaTeX compilation:**
+  Compiling arbitrary LaTeX requires isolation, resource limits, and good failure reporting. We planned containerized
+  builds (e.g., Docker workers) with explicit time/memory limits, plus clear log capture so users can debug failed
+  builds without guessing.
+
+* **Comment anchoring under edits:**
+  Maintaining stable anchors while text shifts is tricky. We expected this to be challenging even with CRDT
+  relative positions, especially for edge cases like deleted or heavily edited regions.
+
+## Early collaboration plan
+
+We planned to divide work along architectural boundaries to reduce merge conflicts and unblock parallel progress:
+
+* **Frontend track:** authentication UI, project list/workspace layout, file tree, editor + preview, and comment
+  sidebar.
+* **Backend track:** auth/RBAC middleware, REST API, WebSocket protocol, CRDT persistence, and build pipeline endpoints.
+* **Shared contracts:** early agreement on API payloads and WebSocket message types to prevent integration drift.
+
+To coordinate, we planned short, frequent syncs focused on interface alignment (schemas, endpoints, event types) rather
+than detailed schedules. We used GitHub with feature branches and pull requests, required reviews all changes, and set
+up CI for build/lint checks on each PR to keep integration stable as multiple features landed in parallel.
+
 
