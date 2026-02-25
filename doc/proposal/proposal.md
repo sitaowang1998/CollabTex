@@ -166,8 +166,8 @@ implementation complexity.
 
 The system follows a clear separation of concerns:
 
-* **Frontend:** React + Vite
-* **Backend:** Express.js (REST + WebSocket APIs)
+* **Frontend:** React + Vite + TypeScript
+* **Backend:** Express.js + TypeScript (REST + WebSocket APIs)
 * **Database:** Relational schema for users, projects, documents, builds, comments, and snapshots
 * **File Storage:** Snapshots and build artifacts
 * **Real-time Layer:** WebSocket + CRDT
