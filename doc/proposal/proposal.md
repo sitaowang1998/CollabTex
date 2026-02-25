@@ -710,6 +710,7 @@ Advanced features are important but not strictly necessary.
 
 **Tradeoffs we considered:**
 We intentionally avoided overly ambitious features, such as:
+
 - Detailed versioning that tracks changes for different files and users.
 - Integrating AI assistance for writing LaTeX.
 
@@ -746,4 +747,50 @@ To coordinate, we planned short, frequent syncs focused on interface alignment (
 than detailed schedules. We used GitHub with feature branches and pull requests, required reviews all changes, and set
 up CI for build/lint checks on each PR to keep integration stable as multiple features landed in parallel.
 
+# AI Assistance Disclosure
 
+As stated in the previous section, AI was not involved in the planning process. However, we use AI assistance to help
+improve the writing quality of the proposal. All parts of the proposal, except this part, were first written by team
+members and then refined with the help of AI. We use AI to enhance clarity and grammar, but all design decisions,
+architectural choices and technical details are the original work of the team. We have reviewed all AI-generated
+content to ensure it accurately reflects our intentions.
+
+For example, the motivation section originally written by us was:
+> Latex is widely used in scientific publication. All papers published in ACM and IEEE journals and conferences are
+> composed using Latex. Furthermore, University of Toronto provides a Latex template, from which most theses are
+> written. Given the collaborative nature of research, most papers are written by multiple authors, and theses, although
+> produced by one person, are often guided by suggestions and comments from the advisor.
+
+> Despite the need for multiple authors and commenters to work on the same Latex project together, there are not a
+> lot of platforms and tools that support the collaboration. A common platform available is Overleaf. However, the
+> community version has a strict limit on the compile time, and is not suitable for a large Latex project. Advanced
+> features like versioning, which is very useful, are also locked in the premium version. For collaboration, it lacks
+> more fine-grained access control. All collaborators have the same write access. There is no support for admin and
+> commenter.
+
+> Another widely used way to collaborate on Latex is to use shared git repo on GitHub or GitLab to store the source
+> files. All collaborators need to install Latex toolchain locally, and there is no support for real-time collaboration.
+> Git is also not designed for handling large binary files, which can be a problem for Latex projects with many figures.
+
+We ask the AI to help use improve the writing quality, and it produces the following version:
+
+> LaTeX is widely used in scientific publishing. Virtually all papers published in ACM and IEEE journals and conferences
+> are prepared using LaTeX. In addition, the University of Toronto provides an official LaTeX thesis template, which is
+> used by most graduate students. Given the collaborative nature of research, academic papers are typically written by
+> multiple authors. Even theses, although authored by a single student, are shaped extensively by feedback and
+> suggestions from advisors.
+
+> Despite this strong need for collaboration, there are relatively few platforms and tools that effectively support
+> multiple contributors working on the same LaTeX project. One commonly used platform is Overleaf. However, the
+> community version imposes strict compile-time limits, making it unsuitable for large LaTeX projects. Advanced features
+> such as version history—an essential tool for tracking changes—are restricted to the premium version. In terms of
+> collaboration controls, Overleaf also lacks fine-grained access management: all collaborators are granted the same
+> write permissions, with no distinction between roles such as administrator, editor, or commenter.
+
+> Another widely used approach is to host the source files in a shared Git repository on GitHub or GitLab. While this
+> method provides version control, it requires all collaborators to install and maintain a local LaTeX toolchain.
+> Moreover, it does not support real-time collaborative editing, which can hinder efficient teamwork.
+
+The AI-refined version is clearer and more polished, but it omits some important details, such as Git lacking good
+support for large binary files. We keep iterating with the AI until we get a version that is both clear and complete,
+which is the one presented in the proposal.
