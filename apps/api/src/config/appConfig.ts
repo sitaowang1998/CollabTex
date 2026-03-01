@@ -1,8 +1,8 @@
 const DEFAULT_PORT = 3000;
-const DEFAULT_JWT_SECRET = "dev_secret_change_me";
-const DEFAULT_CLIENT_ORIGIN = "http://localhost:5173";
+const DEFAULT_NODE_ENV = "development";
 
 export type AppConfig = {
+  nodeEnv: string;
   port: number;
   jwtSecret: string;
   clientOrigin: string;
@@ -22,11 +22,36 @@ function parsePort(rawPort: string | undefined): number {
   return port;
 }
 
+function parseNodeEnv(rawNodeEnv: string | undefined): string {
+  const nodeEnv = rawNodeEnv?.trim();
+
+  return nodeEnv ? nodeEnv : DEFAULT_NODE_ENV;
+}
+
+function parseRequiredEnv(name: string, rawValue: string | undefined): string {
+  const value = rawValue?.trim();
+
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+}
+
+function normalizeOptionalEnv(rawValue: string | undefined): string | undefined {
+  const value = rawValue?.trim();
+
+  return value ? value : undefined;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const nodeEnv = parseNodeEnv(env.NODE_ENV);
+
   return {
+    nodeEnv,
     port: parsePort(env.PORT),
-    jwtSecret: env.JWT_SECRET ?? DEFAULT_JWT_SECRET,
-    clientOrigin: env.CLIENT_ORIGIN ?? DEFAULT_CLIENT_ORIGIN,
-    databaseUrl: env.DATABASE_URL
+    jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
+    clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
+    databaseUrl: normalizeOptionalEnv(env.DATABASE_URL)
   };
 }

@@ -2,10 +2,8 @@ import type { ErrorRequestHandler } from "express";
 import { HttpError } from "../errors/httpError";
 
 export const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
-  void next;
-
   if (res.headersSent) {
-    return;
+    return next(error);
   }
 
   if (error instanceof HttpError) {
