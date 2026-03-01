@@ -1,3 +1,4 @@
+import "dotenv/config";
 import http from "http";
 import { loadConfig } from "./config/appConfig";
 import { createHttpApp } from "./http/app";
