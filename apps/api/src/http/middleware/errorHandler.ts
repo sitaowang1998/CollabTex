@@ -1,0 +1,16 @@
+import type { ErrorRequestHandler } from "express";
+import { HttpError } from "../errors/httpError";
+
+export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (res.headersSent) {
+    return;
+  }
+
+  if (error instanceof HttpError) {
+    res.status(error.statusCode).json({ error: error.message });
+    return;
+  }
+
+  console.error("Unhandled HTTP error", error);
+  res.status(500).json({ error: "internal server error" });
+};
