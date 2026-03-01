@@ -30,7 +30,15 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         forceNew: true
       }),
     close: async () => {
-      io.close();
+      await new Promise<void>((resolve) => {
+        io.close(() => {
+          resolve();
+        });
+      });
+
+      if (!server.listening) {
+        return;
+      }
 
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
