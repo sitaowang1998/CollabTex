@@ -63,7 +63,12 @@ describe("socket server", () => {
     socketServer = await createTestSocketServer();
     const client = socketServer.connect();
 
-    const message = await new Promise<string>((resolve) => {
+    const message = await new Promise<string>((resolve, reject) => {
+      client.once("connect", () => {
+        client.close();
+        reject(new Error("Expected socket connection to be rejected"));
+      });
+
       client.once("connect_error", (error) => {
         client.close();
         resolve(error.message);
@@ -77,7 +82,12 @@ describe("socket server", () => {
     socketServer = await createTestSocketServer();
     const client = socketServer.connect("not-a-valid-token");
 
-    const message = await new Promise<string>((resolve) => {
+    const message = await new Promise<string>((resolve, reject) => {
+      client.once("connect", () => {
+        client.close();
+        reject(new Error("Expected socket connection to be rejected"));
+      });
+
       client.once("connect_error", (error) => {
         client.close();
         resolve(error.message);

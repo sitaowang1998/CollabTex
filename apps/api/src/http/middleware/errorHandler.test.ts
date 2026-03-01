@@ -30,4 +30,26 @@ describe("errorHandler", () => {
     expect(status).toHaveBeenCalledWith(400);
     expect(json).toHaveBeenCalledWith({ error: "bad request" });
   });
+
+  it("handles generic errors by returning 500 internal server error", () => {
+    const status = vi.fn().mockReturnThis();
+    const json = vi.fn();
+    const res = {
+      headersSent: false,
+      status,
+      json
+    } as unknown as Response;
+    const error = new Error("unexpected error");
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      errorHandler(error, {} as never, res, vi.fn());
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Unhandled HTTP error", error);
+      expect(status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({ error: "internal server error" });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
 });
