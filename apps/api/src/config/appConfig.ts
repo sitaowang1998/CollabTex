@@ -1,0 +1,57 @@
+const DEFAULT_PORT = 3000;
+const DEFAULT_NODE_ENV = "development";
+
+export type AppConfig = {
+  nodeEnv: string;
+  port: number;
+  jwtSecret: string;
+  clientOrigin: string;
+  databaseUrl?: string;
+};
+
+function parsePort(rawPort: string | undefined): number {
+  if (rawPort === undefined) {
+    return DEFAULT_PORT;
+  }
+
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error("PORT must be a positive integer");
+  }
+
+  return port;
+}
+
+function parseNodeEnv(rawNodeEnv: string | undefined): string {
+  const nodeEnv = rawNodeEnv?.trim();
+
+  return nodeEnv ? nodeEnv : DEFAULT_NODE_ENV;
+}
+
+function parseRequiredEnv(name: string, rawValue: string | undefined): string {
+  const value = rawValue?.trim();
+
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+}
+
+function normalizeOptionalEnv(rawValue: string | undefined): string | undefined {
+  const value = rawValue?.trim();
+
+  return value ? value : undefined;
+}
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const nodeEnv = parseNodeEnv(env.NODE_ENV);
+
+  return {
+    nodeEnv,
+    port: parsePort(env.PORT),
+    jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
+    clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
+    databaseUrl: normalizeOptionalEnv(env.DATABASE_URL)
+  };
+}
