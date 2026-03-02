@@ -30,18 +30,9 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         forceNew: true
       }),
     close: async () => {
-      await new Promise<void>((resolve) => {
-        io.close(() => {
-          resolve();
-        });
-      });
-
-      if (!server.listening) {
-        return;
-      }
-
+      // Socket.IO closes the attached HTTP server as part of io.close().
       await new Promise<void>((resolve, reject) => {
-        server.close((error) => {
+        io.close((error) => {
           if (error) {
             reject(error);
             return;
