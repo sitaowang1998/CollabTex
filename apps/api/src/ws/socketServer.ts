@@ -4,9 +4,9 @@ import type {
   ClientToServerEvents,
   ServerToClientEvents
 } from "@collab-tex/shared";
-import type { AppConfig } from "../config/appConfig";
-import { verifyToken } from "../services/auth";
-import type { AuthenticatedSocketData } from "../types/socket";
+import type { AppConfig } from "../config/appConfig.js";
+import { verifyToken } from "../services/auth.js";
+import type { AuthenticatedSocketData } from "../types/socket.js";
 
 export function createSocketServer(server: HttpServer, config: AppConfig) {
   const io = new Server<

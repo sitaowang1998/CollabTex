@@ -1,8 +1,13 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import http from "http";
-import { loadConfig } from "./config/appConfig";
-import { createHttpApp } from "./http/app";
-import { createSocketServer } from "./ws/socketServer";
+import { fileURLToPath } from "node:url";
+import { loadConfig } from "./config/appConfig.js";
+import { createHttpApp } from "./http/app.js";
+import { createSocketServer } from "./ws/socketServer.js";
+
+dotenv.config({
+  path: fileURLToPath(new URL("../../../.env", import.meta.url))
+});
 
 const config = loadConfig();
 const app = createHttpApp(config);

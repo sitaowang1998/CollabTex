@@ -1,8 +1,8 @@
 import express from "express";
-import type { AppConfig } from "../config/appConfig";
-import { errorHandler } from "./middleware/errorHandler";
-import { createAuthRouter } from "./routes/authRoutes";
-import { createHealthRouter } from "./routes/healthRoutes";
+import type { AppConfig } from "../config/appConfig.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { createAuthRouter } from "./routes/authRoutes.js";
+import { createHealthRouter } from "./routes/healthRoutes.js";
 
 export function createHttpApp(config: AppConfig) {
   const app = express();

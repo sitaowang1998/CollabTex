@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { signToken } from "../services/auth";
-import { testConfig } from "../test/helpers/appFactory";
-import { createTestSocketServer, type TestSocketServer } from "../test/helpers/socket";
+import { signToken } from "../services/auth.js";
+import { testConfig } from "../test/helpers/appFactory.js";
+import { createTestSocketServer, type TestSocketServer } from "../test/helpers/socket.js";
 
 describe("socket server", () => {
   let socketServer: TestSocketServer | undefined;

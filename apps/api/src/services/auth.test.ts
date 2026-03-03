@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { describe, expect, it } from "vitest";
-import { signToken, verifyToken } from "./auth";
+import { signToken, verifyToken } from "./auth.js";
 
 describe("auth service", () => {
   const secret = "test_secret";

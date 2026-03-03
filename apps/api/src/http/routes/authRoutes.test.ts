@@ -1,7 +1,7 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { signToken } from "../../services/auth";
-import { createTestApp, testConfig } from "../../test/helpers/appFactory";
+import { signToken } from "../../services/auth.js";
+import { createTestApp, testConfig } from "../../test/helpers/appFactory.js";
 
 describe("auth routes", () => {
   it("returns a token for a valid login request", async () => {

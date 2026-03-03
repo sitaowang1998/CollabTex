@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "./appConfig";
+import { loadConfig } from "./appConfig.js";
 
 describe("loadConfig", () => {
   it("uses safe defaults for optional values", () => {
