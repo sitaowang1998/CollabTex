@@ -1,9 +1,9 @@
 import { Router } from "express";
 import type { LoginResponse } from "@collab-tex/shared";
-import type { AppConfig } from "../../config/appConfig";
-import { signToken } from "../../services/auth";
-import type { AuthenticatedRequest } from "../../types/express";
-import { createRequireAuth } from "../middleware/requireAuth";
+import type { AppConfig } from "../../config/appConfig.js";
+import { signToken } from "../../services/auth.js";
+import type { AuthenticatedRequest } from "../../types/express.js";
+import { createRequireAuth } from "../middleware/requireAuth.js";
 
 export function createAuthRouter(config: AppConfig) {
   const router = Router();

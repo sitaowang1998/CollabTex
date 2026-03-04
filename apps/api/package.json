@@ -2,10 +2,10 @@
   "name": "api",
   "private": true,
   "version": "1.0.0",
-  "type": "commonjs",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc -b",
     "clean": "tsc -b --clean",
     "start": "node dist/index.js",
@@ -29,6 +29,7 @@
     "@types/supertest": "^7.2.0",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.18"
   }
 }

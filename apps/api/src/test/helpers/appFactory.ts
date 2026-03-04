@@ -1,5 +1,5 @@
-import { createHttpApp } from "../../http/app";
-import type { AppConfig } from "../../config/appConfig";
+import { createHttpApp } from "../../http/app.js";
+import type { AppConfig } from "../../config/appConfig.js";
 
 export const testConfig: AppConfig = {
   nodeEnv: "test",

@@ -1,6 +1,6 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createTestApp } from "../../test/helpers/appFactory";
+import { createTestApp } from "../../test/helpers/appFactory.js";
 
 describe("health routes", () => {
   it("returns a healthy response", async () => {

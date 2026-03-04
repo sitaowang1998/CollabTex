@@ -1,9 +1,9 @@
 import http from "http";
 import type { AddressInfo } from "net";
 import { io as createClient, type Socket as ClientSocket } from "socket.io-client";
-import { createHttpApp } from "../../http/app";
-import { createSocketServer } from "../../ws/socketServer";
-import { testConfig } from "./appFactory";
+import { createHttpApp } from "../../http/app.js";
+import { createSocketServer } from "../../ws/socketServer.js";
+import { testConfig } from "./appFactory.js";
 
 export type TestSocketServer = {
   connect: (token?: string) => ClientSocket;

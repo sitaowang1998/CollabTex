@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import { describe, expect, it, vi } from "vitest";
-import { HttpError } from "../errors/httpError";
-import { errorHandler } from "./errorHandler";
+import { HttpError } from "../errors/httpError.js";
+import { errorHandler } from "./errorHandler.js";
 
 describe("errorHandler", () => {
   it("delegates to the next error handler after headers are sent", () => {

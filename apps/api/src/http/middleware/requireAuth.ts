@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import type { AppConfig } from "../../config/appConfig";
-import type { RequestWithUserId } from "../../types/express";
-import { verifyToken } from "../../services/auth";
+import type { AppConfig } from "../../config/appConfig.js";
+import type { RequestWithUserId } from "../../types/express.js";
+import { verifyToken } from "../../services/auth.js";
 
 export function createRequireAuth(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction) => {
