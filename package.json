@@ -7,12 +7,12 @@
   ],
   "scripts": {
     "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
-    "build": "tsc -b && npm run build -w apps/web",
+    "build": "npm run prisma:generate -w apps/api && tsc -b && npm run build -w apps/web",
     "clean": "tsc -b --clean",
     "start": "npm run start -w apps/api",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
-    "typecheck": "tsc -b --emitDeclarationOnly"
+    "typecheck": "npm run prisma:generate -w apps/api && tsc -b --emitDeclarationOnly"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
