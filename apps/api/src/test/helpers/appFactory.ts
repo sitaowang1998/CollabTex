@@ -5,7 +5,8 @@ export const testConfig: AppConfig = {
   nodeEnv: "test",
   port: 0,
   jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173"
+  clientOrigin: "http://localhost:5173",
+  databaseUrl: "postgres://test"
 };
 
 export function createTestApp() {

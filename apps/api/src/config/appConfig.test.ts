@@ -6,14 +6,15 @@ describe("loadConfig", () => {
     expect(
       loadConfig({
         JWT_SECRET: "test-secret",
-        CLIENT_ORIGIN: "http://localhost:5173"
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: "postgres://test"
       })
     ).toEqual({
       nodeEnv: "development",
       port: 3000,
       jwtSecret: "test-secret",
       clientOrigin: "http://localhost:5173",
-      databaseUrl: undefined
+      databaseUrl: "postgres://test"
     });
   });
 
@@ -46,18 +47,39 @@ describe("loadConfig", () => {
   it("throws when CLIENT_ORIGIN is missing", () => {
     expect(() =>
       loadConfig({
-        JWT_SECRET: "test-secret"
+        JWT_SECRET: "test-secret",
+        DATABASE_URL: "postgres://test"
       })
     ).toThrow("CLIENT_ORIGIN is required");
+  });
+
+  it("throws when DATABASE_URL is missing", () => {
+    expect(() =>
+      loadConfig({
+        JWT_SECRET: "test-secret",
+        CLIENT_ORIGIN: "http://localhost:5173"
+      })
+    ).toThrow("DATABASE_URL is required");
   });
 
   it("treats blank env values as missing", () => {
     expect(() =>
       loadConfig({
         JWT_SECRET: "   ",
-        CLIENT_ORIGIN: "http://localhost:5173"
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: "postgres://test"
       })
     ).toThrow("JWT_SECRET is required");
+  });
+
+  it("treats blank DATABASE_URL as missing", () => {
+    expect(() =>
+      loadConfig({
+        JWT_SECRET: "test-secret",
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: "   "
+      })
+    ).toThrow("DATABASE_URL is required");
   });
 
   it("throws for an invalid port", () => {
@@ -65,7 +87,8 @@ describe("loadConfig", () => {
       loadConfig({
         PORT: "not-a-number",
         JWT_SECRET: "test-secret",
-        CLIENT_ORIGIN: "http://localhost:5173"
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: "postgres://test"
       })
     ).toThrow("PORT must be a positive integer");
   });

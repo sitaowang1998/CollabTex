@@ -6,17 +6,22 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -b",
+    "build": "npm run prisma:generate && tsc -b",
     "clean": "tsc -b --clean",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:http": "vitest run src/http",
     "test:ws": "vitest run src/ws",
-    "check": "npm run build && npm run test"
+    "check": "npm run build && npm run test",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:validate": "prisma validate"
   },
   "dependencies": {
     "@collab-tex/shared": "^1.0.0",
+    "@prisma/client": "^6.7.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
@@ -27,6 +32,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.0",
     "@types/supertest": "^7.2.0",
+    "prisma": "^6.7.0",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
