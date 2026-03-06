@@ -20,11 +20,12 @@ enum DocumentKind {
 
 model User {
   id            String              @id @default(uuid()) @db.Uuid
+  // Emails are stored lowercase; auth flows must normalize before reads and writes.
   email         String              @unique @db.VarChar(320)
   name          String              @db.VarChar(120)
   passwordHash  String              @db.Text
   createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  updatedAt     DateTime            @default(now()) @updatedAt
   memberships   ProjectMembership[]
   authoredSnaps Snapshot[]          @relation("SnapshotAuthor")
 }
@@ -33,7 +34,7 @@ model Project {
   id          String              @id @default(uuid()) @db.Uuid
   name        String              @db.VarChar(160)
   createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  updatedAt   DateTime            @default(now()) @updatedAt
   tombstoneAt DateTime?
   memberships ProjectMembership[]
   documents   Document[]
@@ -49,6 +50,7 @@ model ProjectMembership {
   user      User        @relation(fields: [userId], references: [id])
 
   @@id([projectId, userId])
+  @@index([userId])
 }
 
 model Document {
@@ -59,7 +61,7 @@ model Document {
   mime        String?      @db.VarChar(255)
   contentHash String?      @db.VarChar(128)
   createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  updatedAt   DateTime     @default(now()) @updatedAt
   project     Project      @relation(fields: [projectId], references: [id])
 
   @@unique([projectId, path])
@@ -68,10 +70,13 @@ model Document {
 model Snapshot {
   id          String    @id @default(uuid()) @db.Uuid
   projectId   String    @db.Uuid
-  storagePath String    @db.VarChar(1024)
+  // Each snapshot owns an immutable storage object path.
+  storagePath String    @unique @db.VarChar(1024)
   message     String?   @db.Text
   authorId    String?   @db.Uuid
   createdAt   DateTime  @default(now())
   project     Project   @relation(fields: [projectId], references: [id])
   author      User?     @relation("SnapshotAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
 }

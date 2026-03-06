@@ -14,7 +14,7 @@ CREATE TABLE "User" (
     "name" VARCHAR(120) NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -24,7 +24,7 @@ CREATE TABLE "Project" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "name" VARCHAR(160) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "tombstoneAt" TIMESTAMP(3),
 
     CONSTRAINT "Project_pkey" PRIMARY KEY ("id")
@@ -49,7 +49,7 @@ CREATE TABLE "Document" (
     "mime" VARCHAR(255),
     "contentHash" VARCHAR(128),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Document_pkey" PRIMARY KEY ("id")
 );
@@ -71,6 +71,15 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Document_projectId_path_key" ON "Document"("projectId", "path");
+
+-- CreateIndex
+CREATE INDEX "ProjectMembership_userId_idx" ON "ProjectMembership"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Snapshot_storagePath_key" ON "Snapshot"("storagePath");
+
+-- CreateIndex
+CREATE INDEX "Snapshot_projectId_idx" ON "Snapshot"("projectId");
 
 -- AddForeignKey
 ALTER TABLE "ProjectMembership" ADD CONSTRAINT "ProjectMembership_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
