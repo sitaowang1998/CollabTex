@@ -40,6 +40,29 @@ describe("auth routes", () => {
     expect(response.body).toEqual({ error: "email is required" });
   });
 
+  it("rejects array request bodies", async () => {
+    const app = createTestApp();
+
+    const response = await request(app).post("/api/auth/register").send([]).expect(400);
+
+    expect(response.body).toEqual({ error: "request body must be an object" });
+  });
+
+  it("rejects whitespace-only registration passwords", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "alice@example.com",
+        name: "Alice",
+        password: "   ",
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({ error: "password is required" });
+  });
+
   it("rejects duplicate registration emails", async () => {
     const app = createTestApp();
 
@@ -106,6 +129,20 @@ describe("auth routes", () => {
       .expect(401);
 
     expect(response.body).toEqual({ error: "invalid email or password" });
+  });
+
+  it("rejects whitespace-only login passwords", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/login")
+      .send({
+        email: "alice@example.com",
+        password: "   ",
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({ error: "password is required" });
   });
 
   it("returns the authenticated user for a valid bearer token", async () => {

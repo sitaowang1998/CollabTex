@@ -90,25 +90,16 @@ export function createAuthService({
       const email = normalizeEmail(input.email);
       const name = normalizeName(input.name);
       const passwordHash = await passwordHasher.hash(input.password);
+      const user = await userRepository.create({
+        email,
+        name,
+        passwordHash,
+      });
 
-      try {
-        const user = await userRepository.create({
-          email,
-          name,
-          passwordHash,
-        });
-
-        return {
-          token: signToken(user.id, jwtSecret),
-          user: toAuthUser(user),
-        };
-      } catch (error) {
-        if (error instanceof DuplicateEmailError) {
-          throw error;
-        }
-
-        throw error;
-      }
+      return {
+        token: signToken(user.id, jwtSecret),
+        user: toAuthUser(user),
+      };
     },
     login: async (input) => {
       const email = normalizeEmail(input.email);
@@ -118,10 +109,15 @@ export function createAuthService({
         throw new InvalidCredentialsError();
       }
 
-      const isValidPassword = await passwordHasher.verify(
-        input.password,
-        user.passwordHash,
-      );
+      let isValidPassword = false;
+      try {
+        isValidPassword = await passwordHasher.verify(
+          input.password,
+          user.passwordHash,
+        );
+      } catch {
+        throw new InvalidCredentialsError();
+      }
 
       if (!isValidPassword) {
         throw new InvalidCredentialsError();

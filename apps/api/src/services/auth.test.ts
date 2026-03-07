@@ -143,6 +143,32 @@ describe("auth service", () => {
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
   });
 
+  it("rejects login when password verification throws", async () => {
+    const service = createAuthService({
+      userRepository: createInMemoryUserRepository(),
+      passwordHasher: {
+        hash: async (password) => `hashed:${password}`,
+        verify: async () => {
+          throw new Error("Malformed password hash");
+        },
+      },
+      jwtSecret: secret,
+    });
+
+    await service.register({
+      email: "alice@example.com",
+      name: "Alice",
+      password: "secret",
+    });
+
+    await expect(
+      service.login({
+        email: "alice@example.com",
+        password: "secret",
+      }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+
   it("returns the authenticated user for a known id", async () => {
     const service = createAuthService({
       userRepository: createInMemoryUserRepository(),

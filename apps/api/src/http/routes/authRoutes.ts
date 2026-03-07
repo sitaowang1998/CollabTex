@@ -80,7 +80,7 @@ function parseRegisterRequest(body: unknown): RegisterRequest | HttpError {
     return new HttpError(400, "name is required");
   }
 
-  if (!password) {
+  if (!password.trim()) {
     return new HttpError(400, "password is required");
   }
 
@@ -99,7 +99,7 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
     return new HttpError(400, "email is required");
   }
 
-  if (!password) {
+  if (!password.trim()) {
     return new HttpError(400, "password is required");
   }
 
@@ -107,7 +107,7 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
 }
 
 function isObject(value: unknown): value is Record<string, string | undefined> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapAuthError(error: unknown): Error {

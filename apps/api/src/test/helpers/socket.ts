@@ -5,10 +5,10 @@ import {
   type Socket as ClientSocket,
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
-import { createArgon2PasswordHasher } from "../../infrastructure/auth/argon2PasswordHasher.js";
 import { createAuthService } from "../../services/auth.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
+import { createTestPasswordHasher } from "./passwordHasher.js";
 
 export type TestSocketServer = {
   connect: (token?: string) => ClientSocket;
@@ -25,7 +25,7 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
           throw new Error("Not implemented for socket tests");
         },
       },
-      passwordHasher: createArgon2PasswordHasher(),
+      passwordHasher: createTestPasswordHasher(),
       jwtSecret: testConfig.jwtSecret,
     }),
   });

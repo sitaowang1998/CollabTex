@@ -29,7 +29,8 @@ export function createUserRepository(
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
+          error.code === "P2002" &&
+          isDuplicateEmailTarget(error.meta)
         ) {
           throw new DuplicateEmailError();
         }
@@ -38,4 +39,31 @@ export function createUserRepository(
       }
     },
   };
+}
+
+function isDuplicateEmailTarget(target: unknown): boolean {
+  const emailFieldMatcher = (candidate: unknown) =>
+    typeof candidate === "string" && candidate.toLowerCase().includes("email");
+
+  if (Array.isArray(target)) {
+    return target.some(emailFieldMatcher);
+  }
+
+  if (typeof target === "object" && target !== null) {
+    const nestedFields = (
+      target as {
+        driverAdapterError?: {
+          cause?: {
+            constraint?: {
+              fields?: unknown;
+            };
+          };
+        };
+      }
+    ).driverAdapterError?.cause?.constraint?.fields;
+
+    return Array.isArray(nestedFields) && nestedFields.some(emailFieldMatcher);
+  }
+
+  return emailFieldMatcher(target);
 }

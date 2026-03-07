@@ -1,11 +1,11 @@
 import { createHttpApp } from "../../http/app.js";
 import type { AppConfig } from "../../config/appConfig.js";
-import { createArgon2PasswordHasher } from "../../infrastructure/auth/argon2PasswordHasher.js";
 import {
   createAuthService,
   DuplicateEmailError,
   type AuthUserRepository,
 } from "../../services/auth.js";
+import { createTestPasswordHasher } from "./passwordHasher.js";
 
 const INVALID_TEST_DATABASE_URL =
   "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public";
@@ -21,7 +21,7 @@ export const testConfig: AppConfig = {
 export function createTestApp() {
   const authService = createAuthService({
     userRepository: createInMemoryUserRepository(),
-    passwordHasher: createArgon2PasswordHasher(),
+    passwordHasher: createTestPasswordHasher(),
     jwtSecret: testConfig.jwtSecret,
   });
 
