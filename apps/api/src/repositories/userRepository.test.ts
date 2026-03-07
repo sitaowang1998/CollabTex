@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import { DuplicateEmailError } from "../services/auth.js";
@@ -8,7 +7,7 @@ describe("user repository", () => {
   it("maps meta.target duplicate email errors to DuplicateEmailError", async () => {
     const repository = createUserRepository(
       createDatabaseClientThatRejects(
-        createKnownRequestError({
+        createKnownRequestLikeError({
           target: ["email"],
         }),
       ),
@@ -23,8 +22,32 @@ describe("user repository", () => {
     ).rejects.toBeInstanceOf(DuplicateEmailError);
   });
 
+  it("maps driver adapter duplicate email errors to DuplicateEmailError", async () => {
+    const repository = createUserRepository(
+      createDatabaseClientThatRejects(
+        createKnownRequestLikeError({
+          driverAdapterError: {
+            cause: {
+              constraint: {
+                fields: ["email"],
+              },
+            },
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      repository.create({
+        email: "alice@example.com",
+        name: "Alice",
+        passwordHash: "hash",
+      }),
+    ).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+
   it("rethrows non-email unique constraint errors", async () => {
-    const error = createKnownRequestError({
+    const error = createKnownRequestLikeError({
       target: ["storagePath"],
     });
     const repository = createUserRepository(
@@ -39,12 +62,34 @@ describe("user repository", () => {
       }),
     ).rejects.toBe(error);
   });
+
+  it("rethrows non-P2002 errors", async () => {
+    const error = createKnownRequestLikeError(
+      {
+        target: ["email"],
+      },
+      "P2003",
+    );
+    const repository = createUserRepository(
+      createDatabaseClientThatRejects(error),
+    );
+
+    await expect(
+      repository.create({
+        email: "alice@example.com",
+        name: "Alice",
+        passwordHash: "hash",
+      }),
+    ).rejects.toBe(error);
+  });
 });
 
-function createKnownRequestError(meta: Record<string, unknown>) {
-  return new Prisma.PrismaClientKnownRequestError("duplicate key", {
-    code: "P2002",
-    clientVersion: "test",
+function createKnownRequestLikeError(
+  meta: Record<string, unknown>,
+  code = "P2002",
+) {
+  return Object.assign(new Error("duplicate key"), {
+    code,
     meta,
   });
 }

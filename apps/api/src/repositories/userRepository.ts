@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import {
   DuplicateEmailError,
@@ -28,7 +27,7 @@ export function createUserRepository(
         });
       } catch (error) {
         if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
+          isPrismaKnownRequestLikeError(error) &&
           error.code === "P2002" &&
           isDuplicateEmailTarget(error.meta)
         ) {
@@ -39,6 +38,15 @@ export function createUserRepository(
       }
     },
   };
+}
+
+function isPrismaKnownRequestLikeError(
+  error: unknown,
+): error is Error & { code: string; meta?: unknown } {
+  return (
+    error instanceof Error &&
+    typeof (error as { code?: unknown }).code === "string"
+  );
 }
 
 function isDuplicateEmailTarget(target: unknown): boolean {
