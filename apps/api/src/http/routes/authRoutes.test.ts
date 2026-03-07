@@ -43,7 +43,10 @@ describe("auth routes", () => {
   it("rejects array request bodies", async () => {
     const app = createTestApp();
 
-    const response = await request(app).post("/api/auth/register").send([]).expect(400);
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send([])
+      .expect(400);
 
     expect(response.body).toEqual({ error: "request body must be an object" });
   });
