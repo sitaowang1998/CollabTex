@@ -25,26 +25,24 @@ describe("socket server", () => {
       userId: string;
       projectId: string;
       documentId: string;
-    }>(
-      (resolve, reject) => {
-        client.once("connect", () => {
-          client.emit("workspace:join", {
-            projectId: "project-123",
-            documentId: "doc-456",
-          });
+    }>((resolve, reject) => {
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
         });
+      });
 
-        client.once("workspace:joined", (payload) => {
-          client.close();
-          resolve(payload);
-        });
+      client.once("workspace:joined", (payload) => {
+        client.close();
+        resolve(payload);
+      });
 
-        client.once("connect_error", (error) => {
-          client.close();
-          reject(error);
-        });
-      },
-    );
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
 
     expect(joined).toEqual({
       userId: "alice",
