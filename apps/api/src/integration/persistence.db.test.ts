@@ -118,11 +118,11 @@ describe("persistence schema integration", () => {
     await expectKnownRequestError(
       () =>
         getDb().document.create({
-        data: {
-          projectId: project.id,
-          path: "/duplicate.tex",
-          kind: "text"
-        }
+          data: {
+            projectId: project.id,
+            path: "/duplicate.tex",
+            kind: "text"
+          }
         }),
       "P2002"
     );
@@ -132,11 +132,11 @@ describe("persistence schema integration", () => {
     await expectKnownRequestError(
       () =>
         getDb().projectMembership.create({
-        data: {
-          projectId: randomUUID(),
-          userId: randomUUID(),
-          role: "admin"
-        }
+          data: {
+            projectId: randomUUID(),
+            userId: randomUUID(),
+            role: "admin"
+          }
         }),
       "P2003"
     );
