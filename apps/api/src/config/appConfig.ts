@@ -46,6 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parsePort(env.PORT),
     jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
-    databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL)
+    databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
   };
 }

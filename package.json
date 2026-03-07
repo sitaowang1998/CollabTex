@@ -9,6 +9,9 @@
     "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
     "build": "npm run prisma:generate -w apps/api && tsc -b && npm run build -w apps/web",
     "clean": "tsc -b --clean",
+    "format": "npm run format:fix",
+    "format:check": "prettier --check \"**/*.{js,ts,tsx,json}\"",
+    "format:fix": "prettier --write \"**/*.{js,ts,tsx,json}\"",
     "start": "npm run start -w apps/api",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
@@ -23,6 +26,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.3.0",
     "jsonc-eslint-parser": "^3.1.0",
+    "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
   }

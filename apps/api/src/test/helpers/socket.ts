@@ -1,6 +1,9 @@
 import http from "http";
 import type { AddressInfo } from "net";
-import { io as createClient, type Socket as ClientSocket } from "socket.io-client";
+import {
+  io as createClient,
+  type Socket as ClientSocket,
+} from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
@@ -27,7 +30,7 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
       createClient(baseUrl, {
         auth: token ? { token } : undefined,
         transports: ["websocket"],
-        forceNew: true
+        forceNew: true,
       }),
     close: async () => {
       // Socket.IO closes the attached HTTP server as part of io.close().
@@ -41,6 +44,6 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
           resolve();
         });
       });
-    }
+    },
   };
 }

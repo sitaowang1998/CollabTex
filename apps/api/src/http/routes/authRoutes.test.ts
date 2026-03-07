@@ -13,7 +13,7 @@ describe("auth routes", () => {
       .expect(200);
 
     expect(response.body).toEqual({
-      token: expect.any(String)
+      token: expect.any(String),
     });
   });
 

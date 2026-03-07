@@ -6,13 +6,13 @@ export function signToken(userId: string, jwtSecret: string): string {
 
   return jwt.sign(payload, jwtSecret, {
     algorithm: "HS256",
-    expiresIn: "15m"
+    expiresIn: "15m",
   });
 }
 
 export function verifyToken(token: string, jwtSecret: string): JwtPayload {
   const decoded = jwt.verify(token, jwtSecret, {
-    algorithms: ["HS256"]
+    algorithms: ["HS256"],
   });
 
   if (!isJwtPayload(decoded)) {

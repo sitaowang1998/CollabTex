@@ -20,7 +20,7 @@ function getDb(): DatabaseClient {
 
 async function expectKnownRequestError(
   operation: () => Promise<unknown>,
-  expectedCode: string
+  expectedCode: string,
 ) {
   try {
     await operation();
@@ -48,7 +48,9 @@ describe("persistence schema integration", () => {
   });
 
   it("connects to the migrated database", async () => {
-    const result = await getDb().$queryRaw<Array<{ one: number }>>`SELECT 1 as one`;
+    const result = await getDb().$queryRaw<
+      Array<{ one: number }>
+    >`SELECT 1 as one`;
 
     expect(result).toEqual([{ one: 1 }]);
   });
@@ -59,20 +61,20 @@ describe("persistence schema integration", () => {
       data: {
         email: `user-${suffix}@example.com`,
         name: "Test User",
-        passwordHash: "hash"
-      }
+        passwordHash: "hash",
+      },
     });
     const project = await getDb().project.create({
       data: {
-        name: `Project ${suffix}`
-      }
+        name: `Project ${suffix}`,
+      },
     });
     const membership = await getDb().projectMembership.create({
       data: {
         projectId: project.id,
         userId: user.id,
-        role: "admin"
-      }
+        role: "admin",
+      },
     });
     const document = await getDb().document.create({
       data: {
@@ -80,16 +82,16 @@ describe("persistence schema integration", () => {
         path: "/main.tex",
         kind: "text",
         mime: "text/x-tex",
-        contentHash: `hash-${suffix}`
-      }
+        contentHash: `hash-${suffix}`,
+      },
     });
     const snapshot = await getDb().snapshot.create({
       data: {
         projectId: project.id,
         storagePath: `snapshots/${suffix}.bin`,
         message: "Initial snapshot",
-        authorId: user.id
-      }
+        authorId: user.id,
+      },
     });
 
     expect(user.email).toBe(`user-${suffix}@example.com`);
@@ -103,16 +105,16 @@ describe("persistence schema integration", () => {
     const suffix = uniqueSuffix();
     const project = await getDb().project.create({
       data: {
-        name: `Project ${suffix}`
-      }
+        name: `Project ${suffix}`,
+      },
     });
 
     await getDb().document.create({
       data: {
         projectId: project.id,
         path: "/duplicate.tex",
-        kind: "text"
-      }
+        kind: "text",
+      },
     });
 
     await expectKnownRequestError(
@@ -121,10 +123,10 @@ describe("persistence schema integration", () => {
           data: {
             projectId: project.id,
             path: "/duplicate.tex",
-            kind: "text"
-          }
+            kind: "text",
+          },
         }),
-      "P2002"
+      "P2002",
     );
   });
 
@@ -135,10 +137,10 @@ describe("persistence schema integration", () => {
           data: {
             projectId: randomUUID(),
             userId: randomUUID(),
-            role: "admin"
-          }
+            role: "admin",
+          },
         }),
-      "P2003"
+      "P2003",
     );
   });
 
@@ -156,7 +158,7 @@ describe("persistence schema integration", () => {
       "ProjectMembership",
       "Snapshot",
       "User",
-      "_prisma_migrations"
+      "_prisma_migrations",
     ]);
   });
 });
