@@ -18,10 +18,12 @@ async function expectKnownRequestError(
     await operation;
     throw new Error(`Expected Prisma error ${expectedCode}`);
   } catch (error) {
-    expect(error).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
-    expect((error as Prisma.PrismaClientKnownRequestError).code).toBe(
-      expectedCode
-    );
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      expect(error.code).toBe(expectedCode);
+      return;
+    }
+
+    throw error;
   }
 }
 
