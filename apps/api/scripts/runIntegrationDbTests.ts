@@ -34,7 +34,7 @@ function createIntegrationEnv(databaseConfig: IntegrationDatabaseConfig) {
   return {
     ...process.env,
     DATABASE_URL: databaseConfig.databaseUrl,
-    TEST_POSTGRES_PORT: String(databaseConfig.port)
+    TEST_POSTGRES_PORT: String(databaseConfig.port),
   };
 }
 
@@ -85,28 +85,28 @@ async function resolveLocalIntegrationDatabaseConfig(): Promise<IntegrationDatab
   return {
     databaseUrl: buildDatabaseUrl(localDatabaseHost, port),
     host: localDatabaseHost,
-    port
+    port,
   };
 }
 
 async function runCommand(
   command: string,
   args: string[],
-  options: RunCommandOptions = {}
+  options: RunCommandOptions = {},
 ) {
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const child = spawn(command, args, {
       cwd: options.cwd ?? apiRoot,
       env: {
         ...process.env,
-        ...options.env
+        ...options.env,
       },
-      stdio: "inherit"
+      stdio: "inherit",
     });
 
     child.once("error", (error) => {
       rejectPromise(
-        new Error(`Failed to start ${command}: ${formatError(error)}`)
+        new Error(`Failed to start ${command}: ${formatError(error)}`),
       );
     });
 
@@ -139,7 +139,7 @@ function isRetryableComposeStartupError(error: unknown): boolean {
 
 async function teardownCompose(env?: NodeJS.ProcessEnv) {
   await runCommand("docker", composeArgs("down", "-v", "--remove-orphans"), {
-    env
+    env,
   });
 }
 
@@ -151,12 +151,16 @@ async function startComposeWithRetries(waitTimeoutSeconds: number) {
     const integrationEnv = createIntegrationEnv(databaseConfig);
 
     try {
-      await runCommand("docker", [
-        ...composeArgs("up", "-d", "--wait", "--wait-timeout"),
-        String(waitTimeoutSeconds)
-      ], {
-        env: integrationEnv
-      });
+      await runCommand(
+        "docker",
+        [
+          ...composeArgs("up", "-d", "--wait", "--wait-timeout"),
+          String(waitTimeoutSeconds),
+        ],
+        {
+          env: integrationEnv,
+        },
+      );
 
       return { databaseConfig, integrationEnv };
     } catch (error) {
@@ -166,11 +170,14 @@ async function startComposeWithRetries(waitTimeoutSeconds: number) {
         await teardownCompose(integrationEnv);
       } catch (teardownError) {
         console.error(
-          `Failed to tear down integration test stack after startup failure: ${formatError(teardownError)}`
+          `Failed to tear down integration test stack after startup failure: ${formatError(teardownError)}`,
         );
       }
 
-      if (!isRetryableComposeStartupError(error) || attempt === maxComposeStartupAttempts) {
+      if (
+        !isRetryableComposeStartupError(error) ||
+        attempt === maxComposeStartupAttempts
+      ) {
         throw error;
       }
     }
@@ -190,11 +197,11 @@ async function main() {
 
     await runCommand(npmCommand, ["run", "test:integration:db:prepare"], {
       cwd: apiRoot,
-      env: integrationEnv
+      env: integrationEnv,
     });
     await runCommand(npmCommand, ["run", "test:integration:db:vitest"], {
       cwd: apiRoot,
-      env: integrationEnv
+      env: integrationEnv,
     });
   } catch (error) {
     runError = error;
@@ -207,7 +214,7 @@ async function main() {
         teardownError = error;
         if (runError) {
           console.error(
-            `Failed to tear down integration test stack: ${formatError(error)}`
+            `Failed to tear down integration test stack: ${formatError(error)}`,
           );
         }
       }

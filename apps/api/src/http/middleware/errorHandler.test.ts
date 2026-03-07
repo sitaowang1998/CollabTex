@@ -8,7 +8,7 @@ describe("errorHandler", () => {
     const error = new Error("boom");
     const next = vi.fn();
     const res = {
-      headersSent: true
+      headersSent: true,
     } as Response;
 
     errorHandler(error, {} as never, res, next);
@@ -22,7 +22,7 @@ describe("errorHandler", () => {
     const res = {
       headersSent: false,
       status,
-      json
+      json,
     } as unknown as Response;
 
     errorHandler(new HttpError(400, "bad request"), {} as never, res, vi.fn());
@@ -37,15 +37,20 @@ describe("errorHandler", () => {
     const res = {
       headersSent: false,
       status,
-      json
+      json,
     } as unknown as Response;
     const error = new Error("unexpected error");
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     try {
       errorHandler(error, {} as never, res, vi.fn());
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Unhandled HTTP error", error);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "Unhandled HTTP error",
+        error,
+      );
       expect(status).toHaveBeenCalledWith(500);
       expect(json).toHaveBeenCalledWith({ error: "internal server error" });
     } finally {

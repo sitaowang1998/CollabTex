@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
 import type {
   ClientToServerEvents,
-  ServerToClientEvents
+  ServerToClientEvents,
 } from "@collab-tex/shared";
 import type { AppConfig } from "../config/appConfig.js";
 import { verifyToken } from "../services/auth.js";
@@ -17,8 +17,8 @@ export function createSocketServer(server: HttpServer, config: AppConfig) {
   >(server, {
     cors: {
       origin: config.clientOrigin,
-      credentials: true
-    }
+      credentials: true,
+    },
   });
 
   io.use((socket, next) => {

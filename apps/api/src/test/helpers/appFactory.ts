@@ -9,7 +9,7 @@ export const testConfig: AppConfig = {
   port: 0,
   jwtSecret: "test_secret",
   clientOrigin: "http://localhost:5173",
-  databaseUrl: INVALID_TEST_DATABASE_URL
+  databaseUrl: INVALID_TEST_DATABASE_URL,
 };
 
 export function createTestApp() {

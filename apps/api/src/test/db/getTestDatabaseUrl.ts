@@ -1,5 +1,5 @@
 export function getRequiredTestDatabaseUrl(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
   const databaseUrl = env.DATABASE_URL?.trim();
 
