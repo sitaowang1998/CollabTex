@@ -6,7 +6,7 @@ export type AppConfig = {
   port: number;
   jwtSecret: string;
   clientOrigin: string;
-  databaseUrl?: string;
+  databaseUrl: string;
 };
 
 function parsePort(rawPort: string | undefined): number {
@@ -38,12 +38,6 @@ function parseRequiredEnv(name: string, rawValue: string | undefined): string {
   return value;
 }
 
-function normalizeOptionalEnv(rawValue: string | undefined): string | undefined {
-  const value = rawValue?.trim();
-
-  return value ? value : undefined;
-}
-
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnv(env.NODE_ENV);
 
@@ -52,6 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parsePort(env.PORT),
     jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
-    databaseUrl: normalizeOptionalEnv(env.DATABASE_URL)
+    databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL)
   };
 }
