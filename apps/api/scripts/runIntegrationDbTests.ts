@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
@@ -6,10 +7,18 @@ import process from "node:process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(scriptDir, "..");
 const composeFilePath = resolve(apiRoot, "docker-compose.test.yml");
-const defaultDatabaseUrl =
-  "postgresql://postgres:postgres@127.0.0.1:54329/collabtex_api_test?schema=public";
+const localDatabaseHost = "127.0.0.1";
+const localDatabaseName = "collabtex_api_test";
+const localDatabaseUser = "postgres";
+const localDatabasePassword = "postgres";
 const readinessTimeoutMs = 30_000;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+
+type IntegrationDatabaseConfig = {
+  databaseUrl: string;
+  host: string;
+  port: number;
+};
 
 type RunCommandOptions = {
   cwd?: string;
@@ -28,42 +37,47 @@ function formatError(error: unknown): string {
   return String(error);
 }
 
-function getIntegrationDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return env.TEST_DATABASE_URL?.trim() || defaultDatabaseUrl;
+function buildDatabaseUrl(host: string, port: number): string {
+  return `postgresql://${localDatabaseUser}:${localDatabasePassword}@${host}:${port}/${localDatabaseName}?schema=public`;
 }
 
-function getDatabaseAddress(databaseUrl: string) {
-  let parsedUrl: URL;
+async function findFreeLocalPort(host: string): Promise<number> {
+  return await new Promise<number>((resolvePromise, rejectPromise) => {
+    const server = net.createServer();
 
-  try {
-    parsedUrl = new URL(databaseUrl);
-  } catch (error) {
-    throw new Error(
-      `TEST_DATABASE_URL must be a valid database URL: ${formatError(error)}`
-    );
-  }
+    server.once("error", (error) => {
+      rejectPromise(error);
+    });
 
-  const host = parsedUrl.hostname.trim();
-  if (!host) {
-    throw new Error("Integration database URL must include a hostname");
-  }
+    server.listen(0, host, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => {
+          rejectPromise(new Error("Failed to determine a free local port"));
+        });
+        return;
+      }
 
-  const port = parsedUrl.port ? Number(parsedUrl.port) : 5432;
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error("Integration database URL must include a valid port");
-  }
+      server.close((error) => {
+        if (error) {
+          rejectPromise(error);
+          return;
+        }
 
-  return { host, port };
+        resolvePromise(address.port);
+      });
+    });
+  });
 }
 
-function assertSupportedComposeHost(host: string) {
-  if (host === "127.0.0.1" || host === "localhost") {
-    return;
-  }
+async function resolveLocalIntegrationDatabaseConfig(): Promise<IntegrationDatabaseConfig> {
+  const port = await findFreeLocalPort(localDatabaseHost);
 
-  throw new Error(
-    "test:integration only supports Compose-managed local databases on localhost or 127.0.0.1"
-  );
+  return {
+    databaseUrl: buildDatabaseUrl(localDatabaseHost, port),
+    host: localDatabaseHost,
+    port
+  };
 }
 
 async function runCommand(
@@ -111,16 +125,13 @@ async function main() {
   let shouldAttemptTeardown = false;
   let runError: unknown;
   let teardownError: unknown;
-  const databaseUrl = getIntegrationDatabaseUrl();
-  const { host, port } = getDatabaseAddress(databaseUrl);
+  const databaseConfig = await resolveLocalIntegrationDatabaseConfig();
   const waitTimeoutSeconds = Math.max(1, Math.ceil(readinessTimeoutMs / 1_000));
-
-  assertSupportedComposeHost(host);
 
   const integrationEnv = {
     ...process.env,
-    DATABASE_URL: databaseUrl,
-    TEST_POSTGRES_PORT: String(port)
+    DATABASE_URL: databaseConfig.databaseUrl,
+    TEST_POSTGRES_PORT: String(databaseConfig.port)
   };
 
   try {
