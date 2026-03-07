@@ -1,8 +1,6 @@
 import { spawn } from "node:child_process";
-import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import process from "node:process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -11,7 +9,6 @@ const composeFilePath = resolve(apiRoot, "docker-compose.test.yml");
 const defaultDatabaseUrl =
   "postgresql://postgres:postgres@127.0.0.1:54329/collabtex_api_test?schema=public";
 const readinessTimeoutMs = 30_000;
-const readinessRetryDelayMs = 1_000;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 type RunCommandOptions = {
@@ -59,6 +56,16 @@ function getDatabaseAddress(databaseUrl: string) {
   return { host, port };
 }
 
+function assertSupportedComposeHost(host: string) {
+  if (host === "127.0.0.1" || host === "localhost") {
+    return;
+  }
+
+  throw new Error(
+    "test:integration only supports Compose-managed local databases on localhost or 127.0.0.1"
+  );
+}
+
 async function runCommand(
   command: string,
   args: string[],
@@ -96,42 +103,6 @@ async function runCommand(
   });
 }
 
-async function waitForPostgres(url: string, timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-  const { host, port } = getDatabaseAddress(url);
-
-  while (Date.now() < deadline) {
-    try {
-      await waitForPort(host, port);
-      return;
-    } catch (error) {
-      lastError = error;
-      await delay(readinessRetryDelayMs);
-    }
-  }
-
-  throw new Error(
-    `Postgres at ${url} did not become ready within ${timeoutMs}ms: ${formatError(lastError)}`
-  );
-}
-
-async function waitForPort(host: string, port: number) {
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    const socket = net.createConnection({ host, port });
-
-    socket.once("connect", () => {
-      socket.end();
-      resolvePromise();
-    });
-
-    socket.once("error", (error) => {
-      socket.destroy();
-      rejectPromise(error);
-    });
-  });
-}
-
 async function teardownCompose() {
   await runCommand("docker", composeArgs("down", "-v", "--remove-orphans"));
 }
@@ -141,16 +112,26 @@ async function main() {
   let runError: unknown;
   let teardownError: unknown;
   const databaseUrl = getIntegrationDatabaseUrl();
+  const { host, port } = getDatabaseAddress(databaseUrl);
+  const waitTimeoutSeconds = Math.max(1, Math.ceil(readinessTimeoutMs / 1_000));
+
+  assertSupportedComposeHost(host);
+
   const integrationEnv = {
     ...process.env,
-    DATABASE_URL: databaseUrl
+    DATABASE_URL: databaseUrl,
+    TEST_POSTGRES_PORT: String(port)
   };
 
   try {
     shouldAttemptTeardown = true;
-    await runCommand("docker", composeArgs("up", "-d"));
+    await runCommand("docker", [
+      ...composeArgs("up", "-d", "--wait", "--wait-timeout"),
+      String(waitTimeoutSeconds)
+    ], {
+      env: integrationEnv
+    });
 
-    await waitForPostgres(databaseUrl, readinessTimeoutMs);
     await runCommand(npmCommand, ["run", "test:integration:db:prepare"], {
       cwd: apiRoot,
       env: integrationEnv
