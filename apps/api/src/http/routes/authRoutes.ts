@@ -11,10 +11,7 @@ import {
   type AuthService,
 } from "../../services/auth.js";
 
-export function createAuthRouter(
-  config: AppConfig,
-  authService: AuthService,
-) {
+export function createAuthRouter(config: AppConfig, authService: AuthService) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
 
@@ -109,9 +106,7 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
   return { email, password };
 }
 
-function isObject(
-  value: unknown,
-): value is Record<string, string | undefined> {
+function isObject(value: unknown): value is Record<string, string | undefined> {
   return typeof value === "object" && value !== null;
 }
 

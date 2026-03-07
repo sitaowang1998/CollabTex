@@ -111,11 +111,13 @@ describe("auth routes", () => {
   it("returns the authenticated user for a valid bearer token", async () => {
     const app = createTestApp();
 
-    const registerResponse = await request(app).post("/api/auth/register").send({
-      email: "alice@example.com",
-      name: "Alice",
-      password: "secret",
-    });
+    const registerResponse = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "alice@example.com",
+        name: "Alice",
+        password: "secret",
+      });
     const token = registerResponse.body.token as string;
 
     const response = await request(app)

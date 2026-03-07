@@ -11,6 +11,7 @@ const ARGON2_OPTIONS = {
 export function createArgon2PasswordHasher(): PasswordHasher {
   return {
     hash: async (password) => argon2.hash(password, ARGON2_OPTIONS),
-    verify: async (password, passwordHash) => argon2.verify(passwordHash, password),
+    verify: async (password, passwordHash) =>
+      argon2.verify(passwordHash, password),
   };
 }

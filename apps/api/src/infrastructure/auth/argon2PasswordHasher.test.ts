@@ -21,6 +21,8 @@ describe("argon2 password hasher", () => {
   });
 
   it("fails on malformed stored hashes", async () => {
-    await expect(passwordHasher.verify("secret", "not-a-hash")).rejects.toThrow();
+    await expect(
+      passwordHasher.verify("secret", "not-a-hash"),
+    ).rejects.toThrow();
   });
 });

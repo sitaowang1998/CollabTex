@@ -170,16 +170,17 @@ describe("auth service", () => {
       jwtSecret: secret,
     });
 
-    await expect(service.getAuthenticatedUser("missing")).rejects.toBeInstanceOf(
-      AuthenticatedUserNotFoundError,
-    );
+    await expect(
+      service.getAuthenticatedUser("missing"),
+    ).rejects.toBeInstanceOf(AuthenticatedUserNotFoundError);
   });
 });
 
 function createPasswordHasher(): PasswordHasher {
   return {
     hash: async (password) => `hashed:${password}`,
-    verify: async (password, passwordHash) => passwordHash === `hashed:${password}`,
+    verify: async (password, passwordHash) =>
+      passwordHash === `hashed:${password}`,
   };
 }
 
