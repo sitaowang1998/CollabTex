@@ -12,6 +12,7 @@ const localDatabaseName = "collabtex_api_test";
 const localDatabaseUser = "postgres";
 const localDatabasePassword = "postgres";
 const readinessTimeoutMs = 30_000;
+const maxComposeStartupAttempts = 3;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 type IntegrationDatabaseConfig = {
@@ -27,6 +28,14 @@ type RunCommandOptions = {
 
 function composeArgs(...args: string[]) {
   return ["compose", "-f", composeFilePath, ...args];
+}
+
+function createIntegrationEnv(databaseConfig: IntegrationDatabaseConfig) {
+  return {
+    ...process.env,
+    DATABASE_URL: databaseConfig.databaseUrl,
+    TEST_POSTGRES_PORT: String(databaseConfig.port)
+  };
 }
 
 function formatError(error: unknown): string {
@@ -117,31 +126,67 @@ async function runCommand(
   });
 }
 
-async function teardownCompose() {
-  await runCommand("docker", composeArgs("down", "-v", "--remove-orphans"));
+function isRetryableComposeStartupError(error: unknown): boolean {
+  const message = formatError(error).toLowerCase();
+
+  return (
+    message.includes("address already in use") ||
+    message.includes("port is already allocated") ||
+    message.includes("ports are not available") ||
+    message.includes("bind: address already in use")
+  );
+}
+
+async function teardownCompose(env?: NodeJS.ProcessEnv) {
+  await runCommand("docker", composeArgs("down", "-v", "--remove-orphans"), {
+    env
+  });
+}
+
+async function startComposeWithRetries(waitTimeoutSeconds: number) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxComposeStartupAttempts; attempt += 1) {
+    const databaseConfig = await resolveLocalIntegrationDatabaseConfig();
+    const integrationEnv = createIntegrationEnv(databaseConfig);
+
+    try {
+      await runCommand("docker", [
+        ...composeArgs("up", "-d", "--wait", "--wait-timeout"),
+        String(waitTimeoutSeconds)
+      ], {
+        env: integrationEnv
+      });
+
+      return { databaseConfig, integrationEnv };
+    } catch (error) {
+      lastError = error;
+
+      try {
+        await teardownCompose(integrationEnv);
+      } catch (teardownError) {
+        console.error(
+          `Failed to tear down integration test stack after startup failure: ${formatError(teardownError)}`
+        );
+      }
+
+      if (!isRetryableComposeStartupError(error) || attempt === maxComposeStartupAttempts) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function main() {
-  let shouldAttemptTeardown = false;
   let runError: unknown;
   let teardownError: unknown;
-  const databaseConfig = await resolveLocalIntegrationDatabaseConfig();
   const waitTimeoutSeconds = Math.max(1, Math.ceil(readinessTimeoutMs / 1_000));
-
-  const integrationEnv = {
-    ...process.env,
-    DATABASE_URL: databaseConfig.databaseUrl,
-    TEST_POSTGRES_PORT: String(databaseConfig.port)
-  };
+  let integrationEnv: NodeJS.ProcessEnv | undefined;
 
   try {
-    shouldAttemptTeardown = true;
-    await runCommand("docker", [
-      ...composeArgs("up", "-d", "--wait", "--wait-timeout"),
-      String(waitTimeoutSeconds)
-    ], {
-      env: integrationEnv
-    });
+    ({ integrationEnv } = await startComposeWithRetries(waitTimeoutSeconds));
 
     await runCommand(npmCommand, ["run", "test:integration:db:prepare"], {
       cwd: apiRoot,
@@ -155,9 +200,9 @@ async function main() {
     runError = error;
     throw error;
   } finally {
-    if (shouldAttemptTeardown) {
+    if (integrationEnv) {
       try {
-        await teardownCompose();
+        await teardownCompose(integrationEnv);
       } catch (error) {
         teardownError = error;
         if (runError) {

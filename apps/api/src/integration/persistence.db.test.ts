@@ -4,18 +4,26 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import { createTestDatabaseClient } from "../test/db/createTestDatabaseClient.js";
 
-let db: DatabaseClient;
+let db: DatabaseClient | undefined;
 
 function uniqueSuffix() {
   return randomUUID();
 }
 
+function getDb(): DatabaseClient {
+  if (!db) {
+    throw new Error("Test database client not initialized");
+  }
+
+  return db;
+}
+
 async function expectKnownRequestError(
-  operation: Promise<unknown>,
+  operation: () => Promise<unknown>,
   expectedCode: string
 ) {
   try {
-    await operation;
+    await operation();
     throw new Error(`Expected Prisma error ${expectedCode}`);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -34,37 +42,39 @@ describe("persistence schema integration", () => {
   });
 
   afterAll(async () => {
-    await db.$disconnect();
+    if (db) {
+      await db.$disconnect();
+    }
   });
 
   it("connects to the migrated database", async () => {
-    const result = await db.$queryRaw<Array<{ one: number }>>`SELECT 1 as one`;
+    const result = await getDb().$queryRaw<Array<{ one: number }>>`SELECT 1 as one`;
 
     expect(result).toEqual([{ one: 1 }]);
   });
 
   it("persists the core Change 2 entities", async () => {
     const suffix = uniqueSuffix();
-    const user = await db.user.create({
+    const user = await getDb().user.create({
       data: {
         email: `user-${suffix}@example.com`,
         name: "Test User",
         passwordHash: "hash"
       }
     });
-    const project = await db.project.create({
+    const project = await getDb().project.create({
       data: {
         name: `Project ${suffix}`
       }
     });
-    const membership = await db.projectMembership.create({
+    const membership = await getDb().projectMembership.create({
       data: {
         projectId: project.id,
         userId: user.id,
         role: "admin"
       }
     });
-    const document = await db.document.create({
+    const document = await getDb().document.create({
       data: {
         projectId: project.id,
         path: "/main.tex",
@@ -73,7 +83,7 @@ describe("persistence schema integration", () => {
         contentHash: `hash-${suffix}`
       }
     });
-    const snapshot = await db.snapshot.create({
+    const snapshot = await getDb().snapshot.create({
       data: {
         projectId: project.id,
         storagePath: `snapshots/${suffix}.bin`,
@@ -91,13 +101,13 @@ describe("persistence schema integration", () => {
 
   it("rejects duplicate document paths within the same project", async () => {
     const suffix = uniqueSuffix();
-    const project = await db.project.create({
+    const project = await getDb().project.create({
       data: {
         name: `Project ${suffix}`
       }
     });
 
-    await db.document.create({
+    await getDb().document.create({
       data: {
         projectId: project.id,
         path: "/duplicate.tex",
@@ -106,32 +116,34 @@ describe("persistence schema integration", () => {
     });
 
     await expectKnownRequestError(
-      db.document.create({
+      () =>
+        getDb().document.create({
         data: {
           projectId: project.id,
           path: "/duplicate.tex",
           kind: "text"
         }
-      }),
+        }),
       "P2002"
     );
   });
 
   it("rejects memberships referencing missing parents", async () => {
     await expectKnownRequestError(
-      db.projectMembership.create({
+      () =>
+        getDb().projectMembership.create({
         data: {
           projectId: randomUUID(),
           userId: randomUUID(),
           role: "admin"
         }
-      }),
+        }),
       "P2003"
     );
   });
 
   it("only includes the Change 2 public tables", async () => {
-    const rows = await db.$queryRaw<Array<{ tablename: string }>>`
+    const rows = await getDb().$queryRaw<Array<{ tablename: string }>>`
       SELECT tablename
       FROM pg_tables
       WHERE schemaname = 'public'
