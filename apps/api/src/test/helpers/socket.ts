@@ -8,7 +8,10 @@ import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
-import { createTestPasswordHasher } from "./passwordHasher.js";
+import {
+  createTestPasswordHasher,
+  TEST_DUMMY_PASSWORD_HASH,
+} from "./passwordHasher.js";
 
 export type TestSocketServer = {
   connect: (token?: string) => ClientSocket;
@@ -27,6 +30,7 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
       },
       passwordHasher: createTestPasswordHasher(),
       jwtSecret: testConfig.jwtSecret,
+      dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
   });
   const server = http.createServer(app);

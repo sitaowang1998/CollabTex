@@ -5,7 +5,10 @@ import {
   DuplicateEmailError,
   type AuthUserRepository,
 } from "../../services/auth.js";
-import { createTestPasswordHasher } from "./passwordHasher.js";
+import {
+  createTestPasswordHasher,
+  TEST_DUMMY_PASSWORD_HASH,
+} from "./passwordHasher.js";
 
 const INVALID_TEST_DATABASE_URL =
   "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public";
@@ -23,6 +26,7 @@ export function createTestApp() {
     userRepository: createInMemoryUserRepository(),
     passwordHasher: createTestPasswordHasher(),
     jwtSecret: testConfig.jwtSecret,
+    dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
   });
 
   return createHttpApp(testConfig, { authService });

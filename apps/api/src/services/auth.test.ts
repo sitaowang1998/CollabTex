@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AuthenticatedUserNotFoundError,
   DuplicateEmailError,
@@ -13,6 +13,7 @@ import {
 
 describe("auth service", () => {
   const secret = "test_secret";
+  const dummyPasswordHash = "hashed:__dummy_password__";
 
   it("verifies tokens created by signToken", () => {
     const token = signToken("alice", secret);
@@ -41,6 +42,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     const response = await service.register({
@@ -64,6 +66,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await service.register({
@@ -103,6 +106,7 @@ describe("auth service", () => {
       },
       passwordHasher,
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await expect(
@@ -125,6 +129,7 @@ describe("auth service", () => {
       },
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await expect(
@@ -141,6 +146,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await service.register({
@@ -163,10 +169,38 @@ describe("auth service", () => {
   });
 
   it("rejects login for an unknown email", async () => {
+    const verify = vi.fn().mockResolvedValue(false);
     const service = createAuthService({
       userRepository: createInMemoryUserRepository(),
-      passwordHasher: createPasswordHasher(),
+      passwordHasher: {
+        hash: async (password) => `hashed:${password}`,
+        verify,
+      },
       jwtSecret: secret,
+      dummyPasswordHash,
+    });
+
+    await expect(
+      service.login({
+        email: "alice@example.com",
+        password: "secret",
+      }),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+
+    expect(verify).toHaveBeenCalledWith("secret", dummyPasswordHash);
+  });
+
+  it("rejects unknown email when dummy hash verification throws", async () => {
+    const service = createAuthService({
+      userRepository: createInMemoryUserRepository(),
+      passwordHasher: {
+        hash: async (password) => `hashed:${password}`,
+        verify: async () => {
+          throw new Error("Malformed dummy password hash");
+        },
+      },
+      jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await expect(
@@ -182,6 +216,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await service.register({
@@ -208,6 +243,7 @@ describe("auth service", () => {
         },
       },
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await service.register({
@@ -229,6 +265,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await service.register({
@@ -249,6 +286,7 @@ describe("auth service", () => {
       userRepository: createInMemoryUserRepository(),
       passwordHasher: createPasswordHasher(),
       jwtSecret: secret,
+      dummyPasswordHash,
     });
 
     await expect(

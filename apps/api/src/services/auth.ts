@@ -80,10 +80,12 @@ export function createAuthService({
   userRepository,
   passwordHasher,
   jwtSecret,
+  dummyPasswordHash,
 }: {
   userRepository: AuthUserRepository;
   passwordHasher: PasswordHasher;
   jwtSecret: string;
+  dummyPasswordHash: string;
 }): AuthService {
   return {
     register: async (input) => {
@@ -110,22 +112,19 @@ export function createAuthService({
     login: async (input) => {
       const email = normalizeEmail(input.email);
       const user = await userRepository.findByEmail(email);
-
-      if (!user) {
-        throw new InvalidCredentialsError();
-      }
+      const passwordHashToVerify = user?.passwordHash ?? dummyPasswordHash;
 
       let isValidPassword = false;
       try {
         isValidPassword = await passwordHasher.verify(
           input.password,
-          user.passwordHash,
+          passwordHashToVerify,
         );
       } catch {
         throw new InvalidCredentialsError();
       }
 
-      if (!isValidPassword) {
+      if (!user || !isValidPassword) {
         throw new InvalidCredentialsError();
       }
 
