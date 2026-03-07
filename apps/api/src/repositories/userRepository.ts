@@ -50,6 +50,11 @@ function isDuplicateEmailTarget(target: unknown): boolean {
   }
 
   if (typeof target === "object" && target !== null) {
+    const normalizedTarget = (target as { target?: unknown }).target;
+    if (normalizedTarget !== undefined) {
+      return isDuplicateEmailTarget(normalizedTarget);
+    }
+
     const nestedFields = (
       target as {
         driverAdapterError?: {
@@ -62,7 +67,11 @@ function isDuplicateEmailTarget(target: unknown): boolean {
       }
     ).driverAdapterError?.cause?.constraint?.fields;
 
-    return Array.isArray(nestedFields) && nestedFields.some(emailFieldMatcher);
+    if (nestedFields !== undefined) {
+      return isDuplicateEmailTarget(nestedFields);
+    }
+
+    return false;
   }
 
   return emailFieldMatcher(target);
