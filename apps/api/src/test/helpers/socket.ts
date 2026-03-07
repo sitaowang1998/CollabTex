@@ -5,8 +5,13 @@ import {
   type Socket as ClientSocket,
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
+import { createAuthService } from "../../services/auth.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
+import {
+  createTestPasswordHasher,
+  TEST_DUMMY_PASSWORD_HASH,
+} from "./passwordHasher.js";
 
 export type TestSocketServer = {
   connect: (token?: string) => ClientSocket;
@@ -14,7 +19,20 @@ export type TestSocketServer = {
 };
 
 export async function createTestSocketServer(): Promise<TestSocketServer> {
-  const app = createHttpApp(testConfig);
+  const app = createHttpApp(testConfig, {
+    authService: createAuthService({
+      userRepository: {
+        findByEmail: async () => null,
+        findById: async () => null,
+        create: async () => {
+          throw new Error("Not implemented for socket tests");
+        },
+      },
+      passwordHasher: createTestPasswordHasher(),
+      jwtSecret: testConfig.jwtSecret,
+      dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
+    }),
+  });
   const server = http.createServer(app);
   const io = createSocketServer(server, testConfig);
 
