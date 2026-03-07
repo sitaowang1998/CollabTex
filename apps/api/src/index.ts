@@ -6,7 +6,7 @@ import { createHttpApp } from "./http/app.js";
 import { createSocketServer } from "./ws/socketServer.js";
 
 dotenv.config({
-  path: fileURLToPath(new URL("../../../.env", import.meta.url))
+  path: fileURLToPath(new URL("../../../.env", import.meta.url)),
 });
 
 const config = loadConfig();

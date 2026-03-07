@@ -7,6 +7,6 @@ export function createDatabaseClient(databaseUrl: string): DatabaseClient {
   const adapter = new PrismaPg({ connectionString: databaseUrl });
 
   return new PrismaClient({
-    adapter
+    adapter,
   });
 }

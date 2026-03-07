@@ -1,6 +1,6 @@
 import {
   createDatabaseClient,
-  type DatabaseClient
+  type DatabaseClient,
 } from "../../infrastructure/db/client.js";
 import { getRequiredTestDatabaseUrl } from "./getTestDatabaseUrl.js";
 

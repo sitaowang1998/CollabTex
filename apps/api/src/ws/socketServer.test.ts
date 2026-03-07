@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { signToken } from "../services/auth.js";
 import { testConfig } from "../test/helpers/appFactory.js";
-import { createTestSocketServer, type TestSocketServer } from "../test/helpers/socket.js";
+import {
+  createTestSocketServer,
+  type TestSocketServer,
+} from "../test/helpers/socket.js";
 
 describe("socket server", () => {
   let socketServer: TestSocketServer | undefined;
@@ -18,17 +21,19 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const hello = await new Promise<{ userId: string; ts: number }>((resolve, reject) => {
-      client.once("server:hello", (payload) => {
-        client.close();
-        resolve(payload);
-      });
+    const hello = await new Promise<{ userId: string; ts: number }>(
+      (resolve, reject) => {
+        client.once("server:hello", (payload) => {
+          client.close();
+          resolve(payload);
+        });
 
-      client.once("connect_error", (error) => {
-        client.close();
-        reject(error);
-      });
-    });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
 
     expect(hello.userId).toBe("alice");
     expect(typeof hello.ts).toBe("number");
@@ -39,21 +44,23 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const pong = await new Promise<{ n: number; ts: number }>((resolve, reject) => {
-      client.once("server:hello", () => {
-        client.emit("client:ping", { n: 7 });
-      });
+    const pong = await new Promise<{ n: number; ts: number }>(
+      (resolve, reject) => {
+        client.once("server:hello", () => {
+          client.emit("client:ping", { n: 7 });
+        });
 
-      client.once("server:pong", (payload) => {
-        client.close();
-        resolve(payload);
-      });
+        client.once("server:pong", (payload) => {
+          client.close();
+          resolve(payload);
+        });
 
-      client.once("connect_error", (error) => {
-        client.close();
-        reject(error);
-      });
-    });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
 
     expect(pong.n).toBe(7);
     expect(typeof pong.ts).toBe("number");
