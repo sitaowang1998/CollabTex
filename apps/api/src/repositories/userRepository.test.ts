@@ -27,7 +27,9 @@ describe("user repository", () => {
     const error = createKnownRequestError({
       target: ["storagePath"],
     });
-    const repository = createUserRepository(createDatabaseClientThatRejects(error));
+    const repository = createUserRepository(
+      createDatabaseClientThatRejects(error),
+    );
 
     await expect(
       repository.create({
