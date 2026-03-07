@@ -8,10 +8,8 @@ import process from "node:process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(scriptDir, "..");
 const composeFilePath = resolve(apiRoot, "docker-compose.test.yml");
-const databaseUrl =
+const defaultDatabaseUrl =
   "postgresql://postgres:postgres@127.0.0.1:54329/collabtex_api_test?schema=public";
-const postgresHost = "127.0.0.1";
-const postgresPort = 54329;
 const readinessTimeoutMs = 30_000;
 const readinessRetryDelayMs = 1_000;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -31,6 +29,34 @@ function formatError(error: unknown): string {
   }
 
   return String(error);
+}
+
+function getIntegrationDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return env.TEST_DATABASE_URL?.trim() || defaultDatabaseUrl;
+}
+
+function getDatabaseAddress(databaseUrl: string) {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch (error) {
+    throw new Error(
+      `TEST_DATABASE_URL must be a valid database URL: ${formatError(error)}`
+    );
+  }
+
+  const host = parsedUrl.hostname.trim();
+  if (!host) {
+    throw new Error("Integration database URL must include a hostname");
+  }
+
+  const port = parsedUrl.port ? Number(parsedUrl.port) : 5432;
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error("Integration database URL must include a valid port");
+  }
+
+  return { host, port };
 }
 
 async function runCommand(
@@ -73,10 +99,11 @@ async function runCommand(
 async function waitForPostgres(url: string, timeoutMs: number) {
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
+  const { host, port } = getDatabaseAddress(url);
 
   while (Date.now() < deadline) {
     try {
-      await waitForPort(postgresHost, postgresPort);
+      await waitForPort(host, port);
       return;
     } catch (error) {
       lastError = error;
@@ -110,17 +137,18 @@ async function teardownCompose() {
 }
 
 async function main() {
-  let composeStarted = false;
+  let shouldAttemptTeardown = false;
   let runError: unknown;
   let teardownError: unknown;
+  const databaseUrl = getIntegrationDatabaseUrl();
   const integrationEnv = {
     ...process.env,
     DATABASE_URL: databaseUrl
   };
 
   try {
+    shouldAttemptTeardown = true;
     await runCommand("docker", composeArgs("up", "-d"));
-    composeStarted = true;
 
     await waitForPostgres(databaseUrl, readinessTimeoutMs);
     await runCommand(npmCommand, ["run", "test:integration:db:prepare"], {
@@ -135,7 +163,7 @@ async function main() {
     runError = error;
     throw error;
   } finally {
-    if (composeStarted) {
+    if (shouldAttemptTeardown) {
       try {
         await teardownCompose();
       } catch (error) {
