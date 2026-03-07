@@ -40,6 +40,40 @@ describe("auth routes", () => {
     expect(response.body).toEqual({ error: "email is required" });
   });
 
+  it("rejects registration emails longer than 320 characters", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: `${"a".repeat(321)}@example.com`,
+        name: "Alice",
+        password: "secret",
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      error: "email must be at most 320 characters",
+    });
+  });
+
+  it("rejects registration names longer than 120 characters", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "alice@example.com",
+        name: "a".repeat(121),
+        password: "secret",
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      error: "name must be at most 120 characters",
+    });
+  });
+
   it("rejects array request bodies", async () => {
     const app = createTestApp();
 
@@ -132,6 +166,22 @@ describe("auth routes", () => {
       .expect(401);
 
     expect(response.body).toEqual({ error: "invalid email or password" });
+  });
+
+  it("rejects login emails longer than 320 characters", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/login")
+      .send({
+        email: `${"a".repeat(321)}@example.com`,
+        password: "secret",
+      })
+      .expect(400);
+
+    expect(response.body).toEqual({
+      error: "email must be at most 320 characters",
+    });
   });
 
   it("rejects whitespace-only login passwords", async () => {

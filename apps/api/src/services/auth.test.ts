@@ -81,6 +81,61 @@ describe("auth service", () => {
     ).rejects.toBeInstanceOf(DuplicateEmailError);
   });
 
+  it("rejects duplicate emails before hashing", async () => {
+    const passwordHasher = {
+      hash: async () => {
+        throw new Error("hash should not be called");
+      },
+      verify: async () => true,
+    } satisfies PasswordHasher;
+    const service = createAuthService({
+      userRepository: {
+        findByEmail: async () => ({
+          id: "user-1",
+          email: "alice@example.com",
+          name: "Alice",
+          passwordHash: "hashed:secret",
+        }),
+        findById: async () => null,
+        create: async () => {
+          throw new Error("create should not be called");
+        },
+      },
+      passwordHasher,
+      jwtSecret: secret,
+    });
+
+    await expect(
+      service.register({
+        email: "ALICE@example.com",
+        name: "Alice",
+        password: "secret",
+      }),
+    ).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+
+  it("still maps duplicate email races from create", async () => {
+    const service = createAuthService({
+      userRepository: {
+        findByEmail: async () => null,
+        findById: async () => null,
+        create: async () => {
+          throw new DuplicateEmailError();
+        },
+      },
+      passwordHasher: createPasswordHasher(),
+      jwtSecret: secret,
+    });
+
+    await expect(
+      service.register({
+        email: "alice@example.com",
+        name: "Alice",
+        password: "secret",
+      }),
+    ).rejects.toBeInstanceOf(DuplicateEmailError);
+  });
+
   it("logs in with normalized email and valid password", async () => {
     const service = createAuthService({
       userRepository: createInMemoryUserRepository(),

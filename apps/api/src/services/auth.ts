@@ -89,6 +89,12 @@ export function createAuthService({
     register: async (input) => {
       const email = normalizeEmail(input.email);
       const name = normalizeName(input.name);
+      const existingUser = await userRepository.findByEmail(email);
+
+      if (existingUser) {
+        throw new DuplicateEmailError();
+      }
+
       const passwordHash = await passwordHasher.hash(input.password);
       const user = await userRepository.create({
         email,

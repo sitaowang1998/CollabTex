@@ -11,6 +11,9 @@ import {
   type AuthService,
 } from "../../services/auth.js";
 
+const MAX_USER_EMAIL_LENGTH = 320;
+const MAX_USER_NAME_LENGTH = 120;
+
 export function createAuthRouter(config: AppConfig, authService: AuthService) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
@@ -76,8 +79,22 @@ function parseRegisterRequest(body: unknown): RegisterRequest | HttpError {
     return new HttpError(400, "email is required");
   }
 
+  if (email.length > MAX_USER_EMAIL_LENGTH) {
+    return new HttpError(
+      400,
+      `email must be at most ${MAX_USER_EMAIL_LENGTH} characters`,
+    );
+  }
+
   if (!name) {
     return new HttpError(400, "name is required");
+  }
+
+  if (name.length > MAX_USER_NAME_LENGTH) {
+    return new HttpError(
+      400,
+      `name must be at most ${MAX_USER_NAME_LENGTH} characters`,
+    );
   }
 
   if (!password.trim()) {
@@ -97,6 +114,13 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
 
   if (!email) {
     return new HttpError(400, "email is required");
+  }
+
+  if (email.length > MAX_USER_EMAIL_LENGTH) {
+    return new HttpError(
+      400,
+      `email must be at most ${MAX_USER_EMAIL_LENGTH} characters`,
+    );
   }
 
   if (!password.trim()) {
