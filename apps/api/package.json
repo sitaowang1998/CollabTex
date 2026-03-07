@@ -13,6 +13,7 @@
     "test:unit": "vitest run --exclude \"src/**/*.db.test.ts\"",
     "test:integration": "tsx ./scripts/runIntegrationDbTests.ts",
     "test:integration:db": "tsx ./scripts/runIntegrationDbTests.ts",
+    "test:integration:db:prepare": "npm run prisma:generate && npm run prisma:migrate:deploy",
     "test:integration:db:vitest": "vitest run src/integration",
     "test:watch": "vitest --exclude \"src/**/*.db.test.ts\"",
     "test:http": "vitest run src/http",

@@ -1,15 +1,17 @@
 import { spawn } from "node:child_process";
+import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import process from "node:process";
-import { createDatabaseClient } from "../src/infrastructure/db/client.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(scriptDir, "..");
 const composeFilePath = resolve(apiRoot, "docker-compose.test.yml");
 const databaseUrl =
   "postgresql://postgres:postgres@127.0.0.1:54329/collabtex_api_test?schema=public";
+const postgresHost = "127.0.0.1";
+const postgresPort = 54329;
 const readinessTimeoutMs = 30_000;
 const readinessRetryDelayMs = 1_000;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -73,23 +75,34 @@ async function waitForPostgres(url: string, timeoutMs: number) {
   let lastError: unknown;
 
   while (Date.now() < deadline) {
-    const client = createDatabaseClient(url);
-
     try {
-      await client.$connect();
-      await client.$queryRawUnsafe("SELECT 1");
+      await waitForPort(postgresHost, postgresPort);
       return;
     } catch (error) {
       lastError = error;
       await delay(readinessRetryDelayMs);
-    } finally {
-      await client.$disconnect().catch(() => undefined);
     }
   }
 
   throw new Error(
-    `Postgres did not become ready within ${timeoutMs}ms: ${formatError(lastError)}`
+    `Postgres at ${url} did not become ready within ${timeoutMs}ms: ${formatError(lastError)}`
   );
+}
+
+async function waitForPort(host: string, port: number) {
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const socket = net.createConnection({ host, port });
+
+    socket.once("connect", () => {
+      socket.end();
+      resolvePromise();
+    });
+
+    socket.once("error", (error) => {
+      socket.destroy();
+      rejectPromise(error);
+    });
+  });
 }
 
 async function teardownCompose() {
@@ -110,7 +123,7 @@ async function main() {
     composeStarted = true;
 
     await waitForPostgres(databaseUrl, readinessTimeoutMs);
-    await runCommand(npmCommand, ["run", "prisma:migrate:deploy"], {
+    await runCommand(npmCommand, ["run", "test:integration:db:prepare"], {
       cwd: apiRoot,
       env: integrationEnv
     });
