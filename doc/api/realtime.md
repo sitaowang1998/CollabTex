@@ -56,9 +56,19 @@ Validation behavior:
 }
 ```
 
-Known error codes:
+Error codes:
+
+Currently emitted by `workspace:error`:
+
+- `INVALID_REQUEST`
+
+Connection errors during authentication:
+
+- `missing token`
+- `invalid token`
+
+Reserved in shared types but not currently emitted by `workspace:error`:
 
 - `UNAUTHORIZED`
 - `FORBIDDEN`
 - `NOT_FOUND`
-- `INVALID_REQUEST`
