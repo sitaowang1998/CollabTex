@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { signToken } from "../../services/auth.js";
@@ -238,6 +239,20 @@ describe("auth routes", () => {
     const response = await request(app)
       .get("/api/auth/me")
       .set("authorization", "Bearer definitely-not-a-jwt")
+      .expect(401);
+
+    expect(response.body).toEqual({ error: "invalid token" });
+  });
+
+  it("rejects tokens that are missing the required subject", async () => {
+    const app = createTestApp();
+    const tokenWithoutSub = jwt.sign({}, testConfig.jwtSecret, {
+      algorithm: "HS256",
+    });
+
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("authorization", `Bearer ${tokenWithoutSub}`)
       .expect(401);
 
     expect(response.body).toEqual({ error: "invalid token" });

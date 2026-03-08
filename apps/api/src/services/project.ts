@@ -63,6 +63,12 @@ export class ProjectAdminRequiredError extends Error {
   }
 }
 
+export class ProjectOwnerNotFoundError extends Error {
+  constructor() {
+    super("Project owner user not found");
+  }
+}
+
 export function createProjectService({
   projectRepository,
 }: {

@@ -37,6 +37,12 @@ describe("auth service", () => {
     expect(() => verifyToken(token, secret)).toThrow("Invalid token payload");
   });
 
+  it("rejects tokens with an empty string sub", () => {
+    const token = jwt.sign({ sub: "   " }, secret, { algorithm: "HS256" });
+
+    expect(() => verifyToken(token, secret)).toThrow("Invalid token payload");
+  });
+
   it("registers users with normalized email", async () => {
     const service = createAuthService({
       userRepository: createInMemoryUserRepository(),

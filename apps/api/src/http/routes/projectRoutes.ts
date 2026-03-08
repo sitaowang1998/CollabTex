@@ -7,25 +7,24 @@ import type {
 } from "@collab-tex/shared";
 import { HttpError } from "../errors/httpError.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
-import type { AuthService } from "../../services/auth.js";
+import { createRequireAuth } from "../middleware/requireAuth.js";
 import {
+  ProjectOwnerNotFoundError,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
   type StoredProject,
   type ProjectService,
 } from "../../services/project.js";
 import type { AppConfig } from "../../config/appConfig.js";
-import { createRequireAuth } from "../middleware/requireAuth.js";
 
 const MAX_PROJECT_NAME_LENGTH = 160;
 
 export function createProjectRouter(
   config: AppConfig,
-  authService: AuthService,
   projectService: ProjectService,
 ) {
   const router = Router();
-  const requireAuth = createRequireAuth(config, authService);
+  const requireAuth = createRequireAuth(config);
 
   router.post("/api/projects", requireAuth, async (req, res, next) => {
     const body = parseProjectMutationRequest(req.body);
@@ -210,6 +209,10 @@ function mapProjectError(error: unknown): Error {
 
   if (error instanceof ProjectAdminRequiredError) {
     return new HttpError(403, "admin role required");
+  }
+
+  if (error instanceof ProjectOwnerNotFoundError) {
+    return new HttpError(401, "invalid token");
   }
 
   if (error instanceof Error) {

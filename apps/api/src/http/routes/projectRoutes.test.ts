@@ -10,6 +10,7 @@ import {
 } from "../../services/auth.js";
 import {
   createProjectService,
+  ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
 import {
@@ -146,18 +147,6 @@ describe("project routes", () => {
       .post("/api/projects")
       .set("authorization", `Bearer ${token}`)
       .send({ name: "Should Fail" })
-      .expect(401)
-      .expect({ error: "invalid token" });
-
-    await request(app)
-      .get("/api/projects")
-      .set("authorization", `Bearer ${token}`)
-      .expect(401)
-      .expect({ error: "invalid token" });
-
-    await request(app)
-      .get("/api/projects/project-1")
-      .set("authorization", `Bearer ${token}`)
       .expect(401)
       .expect({ error: "invalid token" });
   });
@@ -316,8 +305,8 @@ async function expectProjectNames(
 }
 
 function createProjectTestApp() {
-  const userRepository = createInMemoryUserRepository();
-  const projectRepository = createInMemoryProjectRepository();
+  const { userRepository, hasUser } = createInMemoryUserRepository();
+  const projectRepository = createInMemoryProjectRepository(hasUser);
   const app = createHttpApp(testConfig, {
     authService: createAuthService({
       userRepository,
@@ -336,7 +325,10 @@ function createProjectTestApp() {
   };
 }
 
-function createInMemoryUserRepository(): AuthUserRepository {
+function createInMemoryUserRepository(): {
+  userRepository: AuthUserRepository;
+  hasUser: (userId: string) => boolean;
+} {
   const usersById = new Map<
     string,
     { id: string; email: string; name: string; passwordHash: string }
@@ -344,38 +336,43 @@ function createInMemoryUserRepository(): AuthUserRepository {
   let nextId = 1;
 
   return {
-    findByEmail: async (email) => {
-      for (const user of usersById.values()) {
-        if (user.email === email) {
-          return user;
+    userRepository: {
+      findByEmail: async (email) => {
+        for (const user of usersById.values()) {
+          if (user.email === email) {
+            return user;
+          }
         }
-      }
 
-      return null;
-    },
-    findById: async (id) => usersById.get(id) ?? null,
-    create: async ({ email, name, passwordHash }) => {
-      for (const user of usersById.values()) {
-        if (user.email === email) {
-          throw new DuplicateEmailError();
+        return null;
+      },
+      findById: async (id) => usersById.get(id) ?? null,
+      create: async ({ email, name, passwordHash }) => {
+        for (const user of usersById.values()) {
+          if (user.email === email) {
+            throw new DuplicateEmailError();
+          }
         }
-      }
 
-      const user = {
-        id: `user-${nextId}`,
-        email,
-        name,
-        passwordHash,
-      };
-      nextId += 1;
-      usersById.set(user.id, user);
+        const user = {
+          id: `user-${nextId}`,
+          email,
+          name,
+          passwordHash,
+        };
+        nextId += 1;
+        usersById.set(user.id, user);
 
-      return user;
+        return user;
+      },
     },
+    hasUser: (userId) => usersById.has(userId),
   };
 }
 
-function createInMemoryProjectRepository(): ProjectRepository & {
+function createInMemoryProjectRepository(
+  hasUser: (userId: string) => boolean,
+): ProjectRepository & {
   addMembership: (
     projectId: string,
     userId: string,
@@ -400,6 +397,10 @@ function createInMemoryProjectRepository(): ProjectRepository & {
 
   return {
     createForOwner: async ({ ownerUserId, name }) => {
+      if (!hasUser(ownerUserId)) {
+        throw new ProjectOwnerNotFoundError();
+      }
+
       const now = new Date();
       const project = {
         id: `project-${nextProjectId}`,

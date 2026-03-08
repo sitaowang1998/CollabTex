@@ -1,14 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AppConfig } from "../../config/appConfig.js";
 import type { RequestWithUserId } from "../../types/express.js";
-import {
-  AuthenticatedUserNotFoundError,
-  type AuthService,
-  verifyToken,
-} from "../../services/auth.js";
+import { verifyToken } from "../../services/auth.js";
 
-export function createRequireAuth(config: AppConfig, authService: AuthService) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+export function createRequireAuth(config: AppConfig) {
+  return (req: Request, res: Response, next: NextFunction) => {
     const header = req.header("authorization");
     const token = header?.startsWith("Bearer ")
       ? header.slice("Bearer ".length)
@@ -23,20 +19,14 @@ export function createRequireAuth(config: AppConfig, authService: AuthService) {
       const payload = verifyToken(token, config.jwtSecret);
       const requestWithUserId = req as RequestWithUserId;
       requestWithUserId.userId = payload.sub;
-      requestWithUserId.authUser = await authService.getAuthenticatedUser(
-        payload.sub,
-      );
       next();
     } catch (error) {
-      if (
-        error instanceof AuthenticatedUserNotFoundError ||
-        isJwtValidationError(error)
-      ) {
+      if (isJwtValidationError(error)) {
         res.status(401).json({ error: "invalid token" });
         return;
       }
 
-      next(error);
+      res.status(401).json({ error: "invalid token" });
     }
   };
 }
