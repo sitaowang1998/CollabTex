@@ -5,8 +5,10 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createProjectRepository } from "./repositories/projectRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createProjectService } from "./services/project.js";
 import { createSocketServer } from "./ws/socketServer.js";
 
 dotenv.config({
@@ -32,7 +34,10 @@ async function main() {
       jwtSecret: config.jwtSecret,
       dummyPasswordHash,
     });
-    const app = createHttpApp(config, { authService });
+    const projectService = createProjectService({
+      projectRepository: createProjectRepository(databaseClient),
+    });
+    const app = createHttpApp(config, { authService, projectService });
     const server = http.createServer(app);
     const io = createSocketServer(server, config);
 
