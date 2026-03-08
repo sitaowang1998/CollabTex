@@ -19,8 +19,9 @@
     "start": "npm run start -w apps/api",
     "lint": "npm run lint:js && npm run lint:yaml",
     "lint:js": "eslint . --max-warnings=0",
+    "lint:js:fix": "eslint . --fix",
     "lint:yaml": "uvx yamllint -s .github apps doc",
-    "lint:fix": "eslint . --fix",
+    "lint:fix": "npm run lint:js:fix",
     "typecheck": "npm run prisma:generate -w apps/api && tsc -b --emitDeclarationOnly"
   },
   "devDependencies": {
