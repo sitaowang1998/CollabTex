@@ -1,0 +1,406 @@
+openapi: 3.1.0
+info:
+  title: CollabTex API
+  version: 1.0.0
+  description: Internal HTTP API contract for the current CollabTex backend.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Health
+  - name: Auth
+  - name: Projects
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Check API health
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Authenticate a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: User authenticated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Return the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthMeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/projects:
+    get:
+      tags:
+        - Projects
+      summary: List projects visible to the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Projects visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Projects
+      summary: Create a new project owned by the authenticated user
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMutationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Projects
+      summary: Get project details for an authorized member
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetailsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - Projects
+      summary: Rename a project
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Updated project details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMutationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Projects
+      summary: Soft-delete a project
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Project deleted successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Project identifier
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Authentication failed or token is missing
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated user is not allowed to perform the operation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The request conflicts with current state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          const: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+      properties:
+        error:
+          type: string
+    AuthUser:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email
+        - name
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - user
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/AuthUser"
+    AuthMeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - user
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - name
+        - password
+      properties:
+        email:
+          type: string
+          maxLength: 320
+        name:
+          type: string
+          maxLength: 120
+        password:
+          type: string
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          maxLength: 320
+        password:
+          type: string
+    ProjectRole:
+      type: string
+      enum:
+        - admin
+        - editor
+        - commenter
+        - reader
+    Project:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          maxLength: 160
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProjectSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - myRole
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        myRole:
+          $ref: "#/components/schemas/ProjectRole"
+        updatedAt:
+          type: string
+          format: date-time
+    ProjectListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - projects
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectSummary"
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 160
+    UpdateProjectRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 160
+    ProjectMutationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - project
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+    ProjectDetailsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - project
+        - myRole
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        myRole:
+          $ref: "#/components/schemas/ProjectRole"

@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
+    "docs:api": "npm run docs:serve -w apps/api",
     "build": "npm run prisma:generate -w apps/api && tsc -b && npm run build -w apps/web",
     "clean": "tsc -b --clean",
     "format": "npm run format:fix",

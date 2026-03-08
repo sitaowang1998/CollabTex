@@ -21,6 +21,7 @@
     "test:watch": "vitest --exclude \"src/**/*.db.test.ts\"",
     "test:http": "vitest run src/http",
     "test:ws": "vitest run src/ws",
+    "docs:serve": "node ./scripts/serveApiDocs.mjs",
     "check": "npm run build && npm run test",
     "prisma:generate": "prisma generate --config prisma.config.ts",
     "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",
@@ -35,7 +36,8 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "swagger-ui-dist": "^5.32.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
