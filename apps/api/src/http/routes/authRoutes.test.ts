@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 import { signToken } from "../../services/auth.js";
 import { createTestApp, testConfig } from "../../test/helpers/appFactory.js";
 
+const invalidEmailAddresses = [
+  "aliceexample.com",
+  "alice@",
+  "@example.com",
+  "alice@example",
+  "alice@example..com",
+  "alice@exa mple.com",
+];
+
 describe("auth routes", () => {
   it("registers a user and returns an auth response", async () => {
     const app = createTestApp();
@@ -56,6 +65,25 @@ describe("auth routes", () => {
     expect(response.body).toEqual({
       error: "email must be at most 320 characters",
     });
+  });
+
+  it("rejects registration emails with an invalid format", async () => {
+    const app = createTestApp();
+
+    for (const email of invalidEmailAddresses) {
+      const response = await request(app)
+        .post("/api/auth/register")
+        .send({
+          email,
+          name: "Alice",
+          password: "secret",
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        error: "email must be a valid email address",
+      });
+    }
   });
 
   it("rejects registration names longer than 120 characters", async () => {
@@ -183,6 +211,24 @@ describe("auth routes", () => {
     expect(response.body).toEqual({
       error: "email must be at most 320 characters",
     });
+  });
+
+  it("rejects login emails with an invalid format", async () => {
+    const app = createTestApp();
+
+    for (const email of invalidEmailAddresses) {
+      const response = await request(app)
+        .post("/api/auth/login")
+        .send({
+          email,
+          password: "secret",
+        })
+        .expect(400);
+
+      expect(response.body).toEqual({
+        error: "email must be a valid email address",
+      });
+    }
   });
 
   it("rejects whitespace-only login passwords", async () => {

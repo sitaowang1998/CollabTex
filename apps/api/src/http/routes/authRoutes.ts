@@ -86,6 +86,10 @@ function parseRegisterRequest(body: unknown): RegisterRequest | HttpError {
     );
   }
 
+  if (!isValidEmailAddress(email)) {
+    return new HttpError(400, "email must be a valid email address");
+  }
+
   if (!name) {
     return new HttpError(400, "name is required");
   }
@@ -123,6 +127,10 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
     );
   }
 
+  if (!isValidEmailAddress(email)) {
+    return new HttpError(400, "email must be a valid email address");
+  }
+
   if (!password.trim()) {
     return new HttpError(400, "password is required");
   }
@@ -132,6 +140,38 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
 
 function isObject(value: unknown): value is Record<string, string | undefined> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidEmailAddress(email: string): boolean {
+  if (/\s/.test(email)) {
+    return false;
+  }
+
+  const parts = email.split("@");
+
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [localPart, domain] = parts;
+
+  if (!localPart || !domain) {
+    return false;
+  }
+
+  if (
+    localPart.startsWith(".") ||
+    localPart.endsWith(".") ||
+    localPart.includes("..")
+  ) {
+    return false;
+  }
+
+  const domainLabels = domain.split(".");
+
+  return (
+    domainLabels.length >= 2 && domainLabels.every((label) => label.length > 0)
+  );
 }
 
 function mapAuthError(error: unknown): Error {

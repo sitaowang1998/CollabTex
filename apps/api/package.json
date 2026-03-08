@@ -21,6 +21,7 @@
     "test:watch": "vitest --exclude \"src/**/*.db.test.ts\"",
     "test:http": "vitest run src/http",
     "test:ws": "vitest run src/ws",
+    "docs:serve": "node ./scripts/serveApiDocs.mjs",
     "check": "npm run build && npm run test",
     "prisma:generate": "prisma generate --config prisma.config.ts",
     "prisma:migrate:dev": "prisma migrate dev --config prisma.config.ts",
@@ -44,6 +45,7 @@
     "@types/supertest": "^7.2.0",
     "prisma": "^7.4.2",
     "socket.io-client": "^4.8.3",
+    "swagger-ui-dist": "^5.32.0",
     "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "vitest": "^4.0.18"
