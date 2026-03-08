@@ -5,6 +5,7 @@ import type { AppConfig } from "../../config/appConfig.js";
 import {
   createAuthService,
   DuplicateEmailError,
+  signToken,
   type AuthUserRepository,
 } from "../../services/auth.js";
 import {
@@ -135,6 +136,30 @@ describe("project routes", () => {
       .expect(401);
 
     expect(response.body).toEqual({ error: "missing token" });
+  });
+
+  it("rejects project requests when the token user no longer exists", async () => {
+    const { app } = createProjectTestApp();
+    const token = signToken("missing-user-id", testConfig.jwtSecret);
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${token}`)
+      .send({ name: "Should Fail" })
+      .expect(401)
+      .expect({ error: "invalid token" });
+
+    await request(app)
+      .get("/api/projects")
+      .set("authorization", `Bearer ${token}`)
+      .expect(401)
+      .expect({ error: "invalid token" });
+
+    await request(app)
+      .get("/api/projects/project-1")
+      .set("authorization", `Bearer ${token}`)
+      .expect(401)
+      .expect({ error: "invalid token" });
   });
 
   it("rejects invalid project bodies", async () => {

@@ -7,6 +7,7 @@ import type {
 } from "@collab-tex/shared";
 import { HttpError } from "../errors/httpError.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
+import type { AuthService } from "../../services/auth.js";
 import {
   ProjectAdminRequiredError,
   ProjectNotFoundError,
@@ -20,10 +21,11 @@ const MAX_PROJECT_NAME_LENGTH = 160;
 
 export function createProjectRouter(
   config: AppConfig,
+  authService: AuthService,
   projectService: ProjectService,
 ) {
   const router = Router();
-  const requireAuth = createRequireAuth(config);
+  const requireAuth = createRequireAuth(config, authService);
 
   router.post("/api/projects", requireAuth, async (req, res, next) => {
     const body = parseProjectMutationRequest(req.body);

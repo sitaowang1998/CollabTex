@@ -21,7 +21,13 @@ export function createHttpApp(
   app.use(express.json());
   app.use(createHealthRouter());
   app.use(createAuthRouter(config, dependencies.authService));
-  app.use(createProjectRouter(config, dependencies.projectService));
+  app.use(
+    createProjectRouter(
+      config,
+      dependencies.authService,
+      dependencies.projectService,
+    ),
+  );
   app.use(errorHandler);
 
   return app;
