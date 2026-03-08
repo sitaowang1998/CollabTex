@@ -3,12 +3,13 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, isAbsolute, relative, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const swaggerUiDist = require("swagger-ui-dist");
 
-const host = "0.0.0.0";
+const host = "localhost";
 const port = parsePort(process.env.API_DOCS_PORT);
 const openApiSpecPath = fileURLToPath(
   new URL("../../../doc/api/openapi.yaml", import.meta.url),
@@ -24,7 +25,14 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const { pathname } = new URL(req.url, `http://${host}:${port}`);
+  let pathname;
+
+  try {
+    pathname = new URL(req.url, `http://${host}:${port}`).pathname;
+  } catch {
+    respondBadRequest(res);
+    return;
+  }
 
   if (pathname === "/") {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -129,10 +137,15 @@ async function streamFile(res, filePath, contentType) {
     }
 
     res.writeHead(200, { "content-type": contentType });
-    createReadStream(filePath).pipe(res);
+    await pipeline(createReadStream(filePath), res);
   } catch (error) {
     if (isErrnoException(error) && error.code === "ENOENT") {
       respondNotFound(res);
+      return;
+    }
+
+    if (res.headersSent) {
+      res.destroy();
       return;
     }
 
@@ -467,6 +480,11 @@ function escapeHtml(text) {
 function respondNotFound(res) {
   res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
   res.end("Not found");
+}
+
+function respondBadRequest(res) {
+  res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+  res.end("Bad request");
 }
 
 function isErrnoException(error) {

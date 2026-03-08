@@ -4,7 +4,7 @@ This document is the checked-in contract for the current Socket.IO surface in `a
 
 ## Authentication
 
-- Transport: Socket.IO over WebSocket
+- Transport: Socket.IO (HTTP long-polling + WebSocket upgrade)
 - Handshake requirement: `auth.token`
 - Token format: the same JWT returned by `POST /api/auth/register` and `POST /api/auth/login`
 - Failure behavior: the connection is rejected with `missing token` or `invalid token`
