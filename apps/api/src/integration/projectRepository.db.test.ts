@@ -155,4 +155,29 @@ describe("project repository integration", () => {
       repository.softDelete(project.id, new Date("2026-03-08T14:00:00.000Z")),
     ).resolves.toBe(false);
   });
+
+  it("only returns active rows from updateName follow-up reads", async () => {
+    const suffix = randomUUID();
+    const owner = await getDb().user.create({
+      data: {
+        email: `active-read-${suffix}@example.com`,
+        name: "Owner",
+        passwordHash: "hash",
+      },
+    });
+    const repository = createProjectRepository(getDb());
+    const project = await repository.createForOwner({
+      ownerUserId: owner.id,
+      name: `Project ${suffix}`,
+    });
+
+    const updatedProject = await repository.updateName(
+      project.id,
+      `Renamed ${suffix}`,
+    );
+
+    expect(updatedProject).not.toBeNull();
+    expect(updatedProject?.tombstoneAt).toBeNull();
+    expect(updatedProject?.name).toBe(`Renamed ${suffix}`);
+  });
 });

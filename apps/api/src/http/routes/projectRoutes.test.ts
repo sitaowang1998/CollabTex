@@ -101,6 +101,31 @@ describe("project routes", () => {
     expect(response.body).toEqual({ error: "project not found" });
   });
 
+  it("trims surrounding whitespace from project route params", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Whitespace Project" })
+      .expect(201);
+
+    const response = await request(app)
+      .get(`/api/projects/%20${createResponse.body.project.id}%20`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      project: {
+        id: createResponse.body.project.id,
+        name: "Whitespace Project",
+        createdAt: createResponse.body.project.createdAt,
+        updatedAt: createResponse.body.project.updatedAt,
+      },
+      myRole: "admin",
+    });
+  });
+
   it("rejects project creation without auth", async () => {
     const { app } = createProjectTestApp();
 
@@ -136,6 +161,12 @@ describe("project routes", () => {
       .send({ name: "a".repeat(161) })
       .expect(400)
       .expect({ error: "name must be at most 160 characters" });
+
+    await request(app)
+      .get("/api/projects/%20%20")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId is required" });
   });
 
   it("allows admins to read, rename, and soft delete projects", async () => {

@@ -101,9 +101,10 @@ export function createProjectRepository(
         return null;
       }
 
-      return databaseClient.project.findUnique({
+      return databaseClient.project.findFirst({
         where: {
           id: projectId,
+          tombstoneAt: null,
         },
       });
     },

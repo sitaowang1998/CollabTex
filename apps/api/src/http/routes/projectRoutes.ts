@@ -188,11 +188,17 @@ function parseRouteParam(
   value: string | string[] | undefined,
   name: string,
 ): string | HttpError {
-  if (typeof value !== "string" || !value.trim()) {
+  if (typeof value !== "string") {
     return new HttpError(400, `${name} is required`);
   }
 
-  return value;
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return new HttpError(400, `${name} is required`);
+  }
+
+  return trimmed;
 }
 
 function mapProjectError(error: unknown): Error {
