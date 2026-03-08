@@ -9,6 +9,7 @@ tags:
   - name: Health
   - name: Auth
   - name: Projects
+  - name: Members
 paths:
   /api/health:
     get:
@@ -187,6 +188,109 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Members
+      summary: List project members for an authorized project member
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Project members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMemberListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags:
+        - Members
+      summary: Add an existing user to the project
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddProjectMemberRequest"
+      responses:
+        "201":
+          description: Project member created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      tags:
+        - Members
+      summary: Update a project member role
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectMemberRequest"
+      responses:
+        "200":
+          description: Updated project member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectMemberResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags:
+        - Members
+      summary: Remove a project member
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Project member removed
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 components:
   securitySchemes:
     BearerAuth:
@@ -201,6 +305,13 @@ components:
       schema:
         type: string
       description: Project identifier
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User identifier
   responses:
     BadRequest:
       description: Invalid request
@@ -420,3 +531,62 @@ components:
           $ref: "#/components/schemas/Project"
         myRole:
           $ref: "#/components/schemas/ProjectRole"
+    ProjectMember:
+      type: object
+      additionalProperties: false
+      required:
+        - userId
+        - email
+        - name
+        - role
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+    AddProjectMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          description: Leading and trailing whitespace is trimmed before lookup.
+          format: email
+          minLength: 1
+          maxLength: 320
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+    UpdateProjectMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+    ProjectMemberResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - member
+      properties:
+        member:
+          $ref: "#/components/schemas/ProjectMember"
+    ProjectMemberListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - members
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectMember"
