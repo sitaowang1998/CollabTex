@@ -152,7 +152,7 @@ function isJwtPayload(value: unknown): value is JwtPayload {
 
   const candidate = value as { sub?: unknown };
 
-  return typeof candidate.sub === "string";
+  return typeof candidate.sub === "string" && candidate.sub.trim().length > 0;
 }
 
 function normalizeEmail(email: string): string {

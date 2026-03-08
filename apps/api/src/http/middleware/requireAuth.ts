@@ -20,8 +20,26 @@ export function createRequireAuth(config: AppConfig) {
       const requestWithUserId = req as RequestWithUserId;
       requestWithUserId.userId = payload.sub;
       next();
-    } catch {
+    } catch (error) {
+      if (isJwtValidationError(error)) {
+        res.status(401).json({ error: "invalid token" });
+        return;
+      }
+
       res.status(401).json({ error: "invalid token" });
     }
   };
+}
+
+function isJwtValidationError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === "JsonWebTokenError" ||
+    error.name === "TokenExpiredError" ||
+    error.name === "NotBeforeError" ||
+    error.message === "Invalid token payload"
+  );
 }

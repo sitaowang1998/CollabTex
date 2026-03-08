@@ -6,6 +6,7 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
+import { createProjectService } from "../../services/project.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
@@ -31,6 +32,17 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
       passwordHasher: createTestPasswordHasher(),
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
+    }),
+    projectService: createProjectService({
+      projectRepository: {
+        createForOwner: async () => {
+          throw new Error("Not implemented for socket tests");
+        },
+        listForUser: async () => [],
+        findForUser: async () => null,
+        updateName: async () => null,
+        softDelete: async () => false,
+      },
     }),
   });
   const server = http.createServer(app);

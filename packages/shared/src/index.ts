@@ -24,9 +24,36 @@ export type AuthResponse = {
   user: AuthUser;
 };
 
+export type CreateProjectRequest = {
+  name: string;
+};
+
+export type UpdateProjectRequest = {
+  name: string;
+};
+
 export type ProjectRole = "admin" | "editor" | "commenter" | "reader";
 
 export type DocumentKind = "text" | "binary";
+
+export type Project = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  myRole: ProjectRole;
+  updatedAt: string;
+};
+
+export type ProjectDetailsResponse = {
+  project: Project;
+  myRole: ProjectRole;
+};
 
 export type WorkspaceJoinRequest = {
   projectId: string;

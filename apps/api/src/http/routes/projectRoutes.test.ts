@@ -1,0 +1,496 @@
+import request from "supertest";
+import { describe, expect, it } from "vitest";
+import { createHttpApp } from "../app.js";
+import type { AppConfig } from "../../config/appConfig.js";
+import {
+  createAuthService,
+  DuplicateEmailError,
+  signToken,
+  type AuthUserRepository,
+} from "../../services/auth.js";
+import {
+  createProjectService,
+  ProjectOwnerNotFoundError,
+  type ProjectRepository,
+} from "../../services/project.js";
+import {
+  createTestPasswordHasher,
+  TEST_DUMMY_PASSWORD_HASH,
+} from "../../test/helpers/passwordHasher.js";
+
+const testConfig: AppConfig = {
+  nodeEnv: "test",
+  port: 0,
+  jwtSecret: "test_secret",
+  clientOrigin: "http://localhost:5173",
+  databaseUrl:
+    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
+};
+
+describe("project routes", () => {
+  it("creates a project and lists it with admin role for the creator", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "  Thesis  " })
+      .expect(201);
+
+    expect(createResponse.body).toEqual({
+      project: {
+        id: expect.any(String),
+        name: "Thesis",
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    });
+
+    const listResponse = await request(app)
+      .get("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(200);
+
+    expect(listResponse.body).toEqual({
+      projects: [
+        {
+          id: createResponse.body.project.id,
+          name: "Thesis",
+          myRole: "admin",
+          updatedAt: createResponse.body.project.updatedAt,
+        },
+      ],
+    });
+  });
+
+  it("only lists projects for the authenticated member", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const bob = await registerUser(app, "bob@example.com", "Bob");
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Alice Project" })
+      .expect(201);
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${bob.token}`)
+      .send({ name: "Bob Project" })
+      .expect(201);
+
+    await expectProjectNames(app, alice.token, ["Alice Project"]);
+    await expectProjectNames(app, bob.token, ["Bob Project"]);
+  });
+
+  it("returns 404 when a non-member requests project details", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const bob = await registerUser(app, "bob@example.com", "Bob");
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Private Project" })
+      .expect(201);
+
+    const response = await request(app)
+      .get(`/api/projects/${createResponse.body.project.id}`)
+      .set("authorization", `Bearer ${bob.token}`)
+      .expect(404);
+
+    expect(response.body).toEqual({ error: "project not found" });
+  });
+
+  it("trims surrounding whitespace from project route params", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Whitespace Project" })
+      .expect(201);
+
+    const response = await request(app)
+      .get(`/api/projects/%20${createResponse.body.project.id}%20`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      project: {
+        id: createResponse.body.project.id,
+        name: "Whitespace Project",
+        createdAt: createResponse.body.project.createdAt,
+        updatedAt: createResponse.body.project.updatedAt,
+      },
+      myRole: "admin",
+    });
+  });
+
+  it("rejects project creation without auth", async () => {
+    const { app } = createProjectTestApp();
+
+    const response = await request(app)
+      .post("/api/projects")
+      .send({ name: "No Auth" })
+      .expect(401);
+
+    expect(response.body).toEqual({ error: "missing token" });
+  });
+
+  it("rejects project requests when the token user no longer exists", async () => {
+    const { app } = createProjectTestApp();
+    const token = signToken("missing-user-id", testConfig.jwtSecret);
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${token}`)
+      .send({ name: "Should Fail" })
+      .expect(401)
+      .expect({ error: "invalid token" });
+  });
+
+  it("rejects invalid project bodies", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send([])
+      .expect(400)
+      .expect({ error: "request body must be an object" });
+
+    await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "   " })
+      .expect(400)
+      .expect({ error: "name is required" });
+
+    await request(app)
+      .patch("/api/projects/project-1")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "a".repeat(161) })
+      .expect(400)
+      .expect({ error: "name must be at most 160 characters" });
+
+    await request(app)
+      .get("/api/projects/%20%20")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId is required" });
+  });
+
+  it("allows admins to read, rename, and soft delete projects", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Initial Name" })
+      .expect(201);
+    const projectId = createResponse.body.project.id as string;
+
+    const detailResponse = await request(app)
+      .get(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(200);
+
+    expect(detailResponse.body).toEqual({
+      project: {
+        id: projectId,
+        name: "Initial Name",
+        createdAt: createResponse.body.project.createdAt,
+        updatedAt: createResponse.body.project.updatedAt,
+      },
+      myRole: "admin",
+    });
+
+    const patchResponse = await request(app)
+      .patch(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Renamed Project" })
+      .expect(200);
+
+    expect(patchResponse.body).toEqual({
+      project: {
+        id: projectId,
+        name: "Renamed Project",
+        createdAt: createResponse.body.project.createdAt,
+        updatedAt: expect.any(String),
+      },
+    });
+
+    await request(app)
+      .delete(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(204);
+
+    await request(app)
+      .get(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(404)
+      .expect({ error: "project not found" });
+
+    await expectProjectNames(app, alice.token, []);
+  });
+
+  it("returns 403 when a non-admin member tries to rename or delete", async () => {
+    const { app, addMembership } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+    const bob = await registerUser(app, "bob@example.com", "Bob");
+    const createResponse = await request(app)
+      .post("/api/projects")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Team Project" })
+      .expect(201);
+    const projectId = createResponse.body.project.id as string;
+
+    addMembership(projectId, bob.user.id, "editor");
+
+    await request(app)
+      .patch(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${bob.token}`)
+      .send({ name: "Bob Rename" })
+      .expect(403)
+      .expect({ error: "admin role required" });
+
+    await request(app)
+      .delete(`/api/projects/${projectId}`)
+      .set("authorization", `Bearer ${bob.token}`)
+      .expect(403)
+      .expect({ error: "admin role required" });
+  });
+});
+
+async function registerUser(
+  app: ReturnType<typeof createHttpApp>,
+  email: string,
+  name: string,
+) {
+  const response = await request(app)
+    .post("/api/auth/register")
+    .send({
+      email,
+      name,
+      password: "secret",
+    })
+    .expect(201);
+
+  return {
+    token: response.body.token as string,
+    user: response.body.user as {
+      id: string;
+      email: string;
+      name: string;
+    },
+  };
+}
+
+async function expectProjectNames(
+  app: ReturnType<typeof createHttpApp>,
+  token: string,
+  names: string[],
+) {
+  const response = await request(app)
+    .get("/api/projects")
+    .set("authorization", `Bearer ${token}`)
+    .expect(200);
+
+  expect(
+    response.body.projects.map((project: { name: string }) => project.name),
+  ).toEqual(names);
+}
+
+function createProjectTestApp() {
+  const { userRepository, hasUser } = createInMemoryUserRepository();
+  const projectRepository = createInMemoryProjectRepository(hasUser);
+  const app = createHttpApp(testConfig, {
+    authService: createAuthService({
+      userRepository,
+      passwordHasher: createTestPasswordHasher(),
+      jwtSecret: testConfig.jwtSecret,
+      dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
+    }),
+    projectService: createProjectService({
+      projectRepository,
+    }),
+  });
+
+  return {
+    app,
+    addMembership: projectRepository.addMembership,
+  };
+}
+
+function createInMemoryUserRepository(): {
+  userRepository: AuthUserRepository;
+  hasUser: (userId: string) => boolean;
+} {
+  const usersById = new Map<
+    string,
+    { id: string; email: string; name: string; passwordHash: string }
+  >();
+  let nextId = 1;
+
+  return {
+    userRepository: {
+      findByEmail: async (email) => {
+        for (const user of usersById.values()) {
+          if (user.email === email) {
+            return user;
+          }
+        }
+
+        return null;
+      },
+      findById: async (id) => usersById.get(id) ?? null,
+      create: async ({ email, name, passwordHash }) => {
+        for (const user of usersById.values()) {
+          if (user.email === email) {
+            throw new DuplicateEmailError();
+          }
+        }
+
+        const user = {
+          id: `user-${nextId}`,
+          email,
+          name,
+          passwordHash,
+        };
+        nextId += 1;
+        usersById.set(user.id, user);
+
+        return user;
+      },
+    },
+    hasUser: (userId) => usersById.has(userId),
+  };
+}
+
+function createInMemoryProjectRepository(
+  hasUser: (userId: string) => boolean,
+): ProjectRepository & {
+  addMembership: (
+    projectId: string,
+    userId: string,
+    role: "admin" | "editor" | "commenter" | "reader",
+  ) => void;
+} {
+  const projectsById = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      createdAt: Date;
+      updatedAt: Date;
+      tombstoneAt: Date | null;
+    }
+  >();
+  const membershipsByProjectId = new Map<
+    string,
+    Map<string, "admin" | "editor" | "commenter" | "reader">
+  >();
+  let nextProjectId = 1;
+
+  return {
+    createForOwner: async ({ ownerUserId, name }) => {
+      if (!hasUser(ownerUserId)) {
+        throw new ProjectOwnerNotFoundError();
+      }
+
+      const now = new Date();
+      const project = {
+        id: `project-${nextProjectId}`,
+        name,
+        createdAt: now,
+        updatedAt: now,
+        tombstoneAt: null,
+      };
+
+      nextProjectId += 1;
+      projectsById.set(project.id, project);
+      membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
+
+      return project;
+    },
+    listForUser: async (userId) => {
+      const projects = [...projectsById.values()]
+        .filter((project) => {
+          if (project.tombstoneAt) {
+            return false;
+          }
+
+          return membershipsByProjectId.get(project.id)?.has(userId) ?? false;
+        })
+        .sort(
+          (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+        );
+
+      return projects.map((project) => ({
+        project,
+        myRole: membershipsByProjectId.get(project.id)?.get(userId) ?? "reader",
+      }));
+    },
+    findForUser: async (projectId, userId) => {
+      const project = projectsById.get(projectId);
+
+      if (!project || project.tombstoneAt) {
+        return null;
+      }
+
+      const role = membershipsByProjectId.get(projectId)?.get(userId);
+
+      if (!role) {
+        return null;
+      }
+
+      return {
+        project,
+        myRole: role,
+      };
+    },
+    updateName: async (projectId, name) => {
+      const project = projectsById.get(projectId);
+
+      if (!project || project.tombstoneAt) {
+        return null;
+      }
+
+      const updatedProject = {
+        ...project,
+        name,
+        updatedAt: new Date(project.updatedAt.getTime() + 1),
+      };
+      projectsById.set(projectId, updatedProject);
+
+      return updatedProject;
+    },
+    softDelete: async (projectId, deletedAt) => {
+      const project = projectsById.get(projectId);
+
+      if (!project || project.tombstoneAt) {
+        return false;
+      }
+
+      projectsById.set(projectId, {
+        ...project,
+        tombstoneAt: deletedAt,
+        updatedAt: deletedAt,
+      });
+
+      return true;
+    },
+    addMembership: (projectId, userId, role) => {
+      const memberships = membershipsByProjectId.get(projectId);
+
+      if (!memberships) {
+        throw new Error(`Unknown project ${projectId}`);
+      }
+
+      memberships.set(userId, role);
+    },
+  };
+}
