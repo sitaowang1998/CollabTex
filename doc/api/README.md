@@ -5,7 +5,7 @@
 - `openapi.yaml`: HTTP API contract
 - `realtime.md`: Socket.IO contract
 
-## Start The Swagger Server
+## Start The Docs Server
 
 From the repo root, run:
 
@@ -15,17 +15,15 @@ npm run docs:api
 
 Then open:
 
-```text
-http://127.0.0.1:3010
-```
+`http://localhost:3010`
 
-## What The Swagger Server Provides
+## What The Docs Server Provides
 
-The Swagger server serves the checked-in HTTP API docs from `openapi.yaml`.
+The docs server serves only the checked-in API docs from this repository.
 
 Use it to:
 
-- view available endpoints
-- inspect request and response shapes
-- check auth requirements
-- check expected status codes
+- view the OpenAPI contract in Swagger UI at `/openapi`
+- open the raw OpenAPI file at `/openapi.yaml`
+- read the realtime contract as rendered HTML at `/realtime`
+- open the raw realtime markdown at `/realtime.md`
