@@ -3,6 +3,8 @@ import { Server } from "socket.io";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
+  WorkspaceErrorEvent,
+  WorkspaceJoinRequest,
 } from "@collab-tex/shared";
 import type { AppConfig } from "../config/appConfig.js";
 import { verifyToken } from "../services/auth.js";
@@ -45,10 +47,20 @@ export function createSocketServer(server: HttpServer, config: AppConfig) {
       return;
     }
 
-    socket.emit("server:hello", { userId, ts: Date.now() });
+    socket.on("workspace:join", (payload) => {
+      const request = parseWorkspaceJoinRequest(payload);
 
-    socket.on("client:ping", (data) => {
-      socket.emit("server:pong", { n: data.n, ts: Date.now() });
+      if ("code" in request) {
+        socket.emit("workspace:error", request);
+        return;
+      }
+
+      socket.emit("workspace:joined", {
+        projectId: request.projectId,
+        documentId: request.documentId,
+        userId,
+      });
+      socket.emit("workspace:open", request);
     });
 
     socket.on("disconnect", (reason) => {
@@ -57,4 +69,40 @@ export function createSocketServer(server: HttpServer, config: AppConfig) {
   });
 
   return io;
+}
+
+function parseWorkspaceJoinRequest(
+  value: unknown,
+): WorkspaceJoinRequest | WorkspaceErrorEvent {
+  if (!isObject(value)) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "workspace:join payload must be an object",
+    };
+  }
+
+  const projectId =
+    typeof value.projectId === "string" ? value.projectId.trim() : "";
+  const documentId =
+    typeof value.documentId === "string" ? value.documentId.trim() : "";
+
+  if (!projectId) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "projectId is required",
+    };
+  }
+
+  if (!documentId) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "documentId is required",
+    };
+  }
+
+  return { projectId, documentId };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

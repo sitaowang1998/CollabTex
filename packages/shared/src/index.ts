@@ -28,11 +28,34 @@ export type ProjectRole = "admin" | "editor" | "commenter" | "reader";
 
 export type DocumentKind = "text" | "binary";
 
+export type WorkspaceJoinRequest = {
+  projectId: string;
+  documentId: string;
+};
+
+export type WorkspaceJoinedEvent = WorkspaceJoinRequest & {
+  userId: string;
+};
+
+export type WorkspaceOpenEvent = WorkspaceJoinRequest;
+
+export type WorkspaceErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "INVALID_REQUEST";
+
+export type WorkspaceErrorEvent = {
+  code: WorkspaceErrorCode;
+  message: string;
+};
+
 export type ServerToClientEvents = {
-  "server:hello": (data: { userId: string; ts: number }) => void;
-  "server:pong": (data: { n: number; ts: number }) => void;
+  "workspace:joined": (data: WorkspaceJoinedEvent) => void;
+  "workspace:open": (data: WorkspaceOpenEvent) => void;
+  "workspace:error": (data: WorkspaceErrorEvent) => void;
 };
 
 export type ClientToServerEvents = {
-  "client:ping": (data: { n: number }) => void;
+  "workspace:join": (data: WorkspaceJoinRequest) => void;
 };

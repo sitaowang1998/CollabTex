@@ -16,41 +16,56 @@ describe("socket server", () => {
     }
   });
 
-  it("sends server:hello after a valid authenticated connection", async () => {
+  it("acknowledges a valid workspace join after an authenticated connection", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const hello = await new Promise<{ userId: string; ts: number }>(
-      (resolve, reject) => {
-        client.once("server:hello", (payload) => {
-          client.close();
-          resolve(payload);
+    const joined = await new Promise<{
+      userId: string;
+      projectId: string;
+      documentId: string;
+    }>((resolve, reject) => {
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
         });
+      });
 
-        client.once("connect_error", (error) => {
-          client.close();
-          reject(error);
-        });
-      },
-    );
+      client.once("workspace:joined", (payload) => {
+        client.close();
+        resolve(payload);
+      });
 
-    expect(hello.userId).toBe("alice");
-    expect(typeof hello.ts).toBe("number");
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(joined).toEqual({
+      userId: "alice",
+      projectId: "project-123",
+      documentId: "doc-456",
+    });
   });
 
-  it("responds to client:ping with server:pong", async () => {
+  it("emits workspace:open after a valid workspace join", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const pong = await new Promise<{ n: number; ts: number }>(
+    const opened = await new Promise<{ projectId: string; documentId: string }>(
       (resolve, reject) => {
-        client.once("server:hello", () => {
-          client.emit("client:ping", { n: 7 });
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
         });
 
-        client.once("server:pong", (payload) => {
+        client.once("workspace:open", (payload) => {
           client.close();
           resolve(payload);
         });
@@ -62,8 +77,10 @@ describe("socket server", () => {
       },
     );
 
-    expect(pong.n).toBe(7);
-    expect(typeof pong.ts).toBe("number");
+    expect(opened).toEqual({
+      projectId: "project-123",
+      documentId: "doc-456",
+    });
   });
 
   it("rejects connections without a token", async () => {
@@ -102,5 +119,38 @@ describe("socket server", () => {
     });
 
     expect(message).toBe("invalid token");
+  });
+
+  it("emits workspace:error for an invalid workspace join payload", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{
+      code: string;
+      message: string;
+    }>((resolve, reject) => {
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "",
+          documentId: "doc-456",
+        });
+      });
+
+      client.once("workspace:error", (payload) => {
+        client.close();
+        resolve(payload);
+      });
+
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "projectId is required",
+    });
   });
 });
