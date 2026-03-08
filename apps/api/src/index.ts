@@ -5,9 +5,12 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createMembershipRepository } from "./repositories/membershipRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createMembershipService } from "./services/membership.js";
+import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
 import { createSocketServer } from "./ws/socketServer.js";
 
@@ -28,16 +31,31 @@ async function main() {
     await databaseClient.$connect();
 
     const dummyPasswordHash = await passwordHasher.hash(DUMMY_PASSWORD);
+    const userRepository = createUserRepository(databaseClient);
+    const projectRepository = createProjectRepository(databaseClient);
+    const projectAccessService = createProjectAccessService({
+      projectRepository,
+    });
     const authService = createAuthService({
-      userRepository: createUserRepository(databaseClient),
+      userRepository,
       passwordHasher,
       jwtSecret: config.jwtSecret,
       dummyPasswordHash,
     });
     const projectService = createProjectService({
-      projectRepository: createProjectRepository(databaseClient),
+      projectRepository,
+      projectAccessService,
     });
-    const app = createHttpApp(config, { authService, projectService });
+    const membershipService = createMembershipService({
+      membershipRepository: createMembershipRepository(databaseClient),
+      userLookup: userRepository,
+      projectAccessService,
+    });
+    const app = createHttpApp(config, {
+      authService,
+      membershipService,
+      projectService,
+    });
     const server = http.createServer(app);
     const io = createSocketServer(server, config);
 

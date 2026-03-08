@@ -1,17 +1,18 @@
-import type { ProjectRole } from "@collab-tex/shared";
+import {
+  createProjectAccessService,
+  ProjectNotFoundError,
+  type ProjectAccessRepository,
+  type ProjectAccessService,
+  type ProjectWithRole,
+  type StoredProject,
+} from "./projectAccess.js";
 
-export type StoredProject = {
-  id: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-  tombstoneAt: Date | null;
-};
-
-export type ProjectWithRole = {
-  project: StoredProject;
-  myRole: ProjectRole;
-};
+export {
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
+  type ProjectWithRole,
+  type StoredProject,
+} from "./projectAccess.js";
 
 export type CreateProjectInput = {
   ownerUserId: string;
@@ -51,18 +52,6 @@ export type ProjectService = {
   deleteProject: (input: DeleteProjectInput) => Promise<void>;
 };
 
-export class ProjectNotFoundError extends Error {
-  constructor() {
-    super("Project not found");
-  }
-}
-
-export class ProjectAdminRequiredError extends Error {
-  constructor() {
-    super("Project admin role is required");
-  }
-}
-
 export class ProjectOwnerNotFoundError extends Error {
   constructor() {
     super("Project owner user not found");
@@ -71,8 +60,12 @@ export class ProjectOwnerNotFoundError extends Error {
 
 export function createProjectService({
   projectRepository,
+  projectAccessService = createProjectAccessService({
+    projectRepository: projectRepository as ProjectAccessRepository,
+  }),
 }: {
   projectRepository: ProjectRepository;
+  projectAccessService?: ProjectAccessService;
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -82,19 +75,13 @@ export function createProjectService({
       }),
     listProjects: async (userId) => projectRepository.listForUser(userId),
     getProject: async (projectId, userId) => {
-      const project = await projectRepository.findForUser(projectId, userId);
-
-      if (!project) {
-        throw new ProjectNotFoundError();
-      }
-
-      return project;
+      return projectAccessService.requireProjectMember(projectId, userId);
     },
     updateProject: async (input) => {
-      const project = await requireProjectAdmin(
-        projectRepository,
+      const project = await projectAccessService.requireProjectRole(
         input.projectId,
         input.userId,
+        ["admin"],
       );
       const updatedProject = await projectRepository.updateName(
         project.project.id,
@@ -108,10 +95,10 @@ export function createProjectService({
       return updatedProject;
     },
     deleteProject: async (input) => {
-      const project = await requireProjectAdmin(
-        projectRepository,
+      const project = await projectAccessService.requireProjectRole(
         input.projectId,
         input.userId,
+        ["admin"],
       );
       const deleted = await projectRepository.softDelete(
         project.project.id,
@@ -123,24 +110,6 @@ export function createProjectService({
       }
     },
   };
-}
-
-async function requireProjectAdmin(
-  projectRepository: ProjectRepository,
-  projectId: string,
-  userId: string,
-): Promise<ProjectWithRole> {
-  const project = await projectRepository.findForUser(projectId, userId);
-
-  if (!project) {
-    throw new ProjectNotFoundError();
-  }
-
-  if (project.myRole !== "admin") {
-    throw new ProjectAdminRequiredError();
-  }
-
-  return project;
 }
 
 function normalizeProjectName(name: string): string {

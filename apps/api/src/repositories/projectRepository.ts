@@ -2,10 +2,12 @@ import type { DatabaseClient } from "../infrastructure/db/client.js";
 import type {
   CreateProjectInput,
   ProjectRepository,
-  ProjectWithRole,
-  StoredProject,
 } from "../services/project.js";
 import { ProjectOwnerNotFoundError } from "../services/project.js";
+import type {
+  ProjectWithRole,
+  StoredProject,
+} from "../services/projectAccess.js";
 
 type ProjectRowWithMembership = StoredProject & {
   memberships: Array<{

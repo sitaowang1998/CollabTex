@@ -9,6 +9,7 @@ import {
   createProjectService,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -36,8 +37,13 @@ export function createTestApp() {
   const projectService = createProjectService({
     projectRepository: createInMemoryProjectRepository(),
   });
+  const membershipService = createStubMembershipService();
 
-  return createHttpApp(testConfig, { authService, projectService });
+  return createHttpApp(testConfig, {
+    authService,
+    membershipService,
+    projectService,
+  });
 }
 
 function createInMemoryUserRepository(): AuthUserRepository {
@@ -176,6 +182,21 @@ function createInMemoryProjectRepository(): ProjectRepository {
       });
 
       return true;
+    },
+  };
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for createTestApp");
     },
   };
 }

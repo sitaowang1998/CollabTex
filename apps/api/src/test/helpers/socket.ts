@@ -6,6 +6,7 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
+import type { MembershipService } from "../../services/membership.js";
 import { createProjectService } from "../../services/project.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
@@ -44,6 +45,7 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         softDelete: async () => false,
       },
     }),
+    membershipService: createStubMembershipService(),
   });
   const server = http.createServer(app);
   const io = createSocketServer(server, testConfig);
@@ -74,6 +76,21 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
           resolve();
         });
       });
+    },
+  };
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for socket tests");
     },
   };
 }

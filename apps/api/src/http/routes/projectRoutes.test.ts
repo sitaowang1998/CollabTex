@@ -13,6 +13,7 @@ import {
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -314,6 +315,7 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    membershipService: createStubMembershipService(),
     projectService: createProjectService({
       projectRepository,
     }),
@@ -322,6 +324,21 @@ function createProjectTestApp() {
   return {
     app,
     addMembership: projectRepository.addMembership,
+  };
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
   };
 }
 
