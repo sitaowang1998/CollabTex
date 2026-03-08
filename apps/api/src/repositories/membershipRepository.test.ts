@@ -15,6 +15,7 @@ describe("membership repository", () => {
     await expect(
       repository.createMembership({
         projectId: "project-1",
+        actorUserId: "actor-1",
         userId: "user-1",
         role: "reader",
       }),
@@ -29,6 +30,7 @@ describe("membership repository", () => {
     await expect(
       repository.createMembership({
         projectId: "project-1",
+        actorUserId: "actor-1",
         userId: "missing-user",
         role: "reader",
       }),

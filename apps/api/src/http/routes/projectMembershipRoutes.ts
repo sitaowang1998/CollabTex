@@ -21,6 +21,11 @@ import {
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { HttpError } from "../errors/httpError.js";
 import { createRequireAuth } from "../middleware/requireAuth.js";
+import {
+  isObject,
+  parseEmail,
+  parseUuidParam,
+} from "../validation/requestValidation.js";
 
 const PROJECT_ROLES = ["admin", "editor", "commenter", "reader"] as const;
 
@@ -37,7 +42,7 @@ export function createProjectMembershipRouter(
     async (req, res, next) => {
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
-        const projectId = parseRouteParam(req.params.projectId, "projectId");
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
 
         if (projectId instanceof HttpError) {
           next(projectId);
@@ -71,7 +76,7 @@ export function createProjectMembershipRouter(
 
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
-        const projectId = parseRouteParam(req.params.projectId, "projectId");
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
 
         if (projectId instanceof HttpError) {
           next(projectId);
@@ -105,8 +110,8 @@ export function createProjectMembershipRouter(
 
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
-        const projectId = parseRouteParam(req.params.projectId, "projectId");
-        const userId = parseRouteParam(req.params.userId, "userId");
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+        const userId = parseUuidParam(req.params.userId, "userId");
 
         if (projectId instanceof HttpError) {
           next(projectId);
@@ -138,8 +143,8 @@ export function createProjectMembershipRouter(
     async (req, res, next) => {
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
-        const projectId = parseRouteParam(req.params.projectId, "projectId");
-        const userId = parseRouteParam(req.params.userId, "userId");
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+        const userId = parseUuidParam(req.params.userId, "userId");
 
         if (projectId instanceof HttpError) {
           next(projectId);
@@ -174,11 +179,11 @@ function parseAddProjectMemberRequest(
     return new HttpError(400, "request body must be an object");
   }
 
-  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const email = parseEmail(body.email);
   const role = parseRole(body.role);
 
-  if (!email) {
-    return new HttpError(400, "email is required");
+  if (email instanceof HttpError) {
+    return email;
   }
 
   if (role instanceof HttpError) {
@@ -214,27 +219,6 @@ function parseRole(value: unknown) {
   }
 
   return new HttpError(400, `role must be one of ${PROJECT_ROLES.join(", ")}`);
-}
-
-function parseRouteParam(
-  value: string | string[] | undefined,
-  name: string,
-): string | HttpError {
-  if (typeof value !== "string") {
-    return new HttpError(400, `${name} is required`);
-  }
-
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return new HttpError(400, `${name} is required`);
-  }
-
-  return trimmed;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapMembershipError(error: unknown): Error {

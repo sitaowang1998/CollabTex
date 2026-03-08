@@ -8,22 +8,23 @@ import type { ProjectAccessService } from "./projectAccess.js";
 
 export type MembershipRepository = {
   listMembers: (projectId: string) => Promise<ProjectMember[]>;
-  findMembership: (
-    projectId: string,
-    userId: string,
-  ) => Promise<ProjectMember | null>;
   createMembership: (input: {
     projectId: string;
+    actorUserId: string;
     userId: string;
     role: ProjectRole;
-  }) => Promise<ProjectMember | null>;
+  }) => Promise<ProjectMember>;
   updateMembershipRole: (input: {
     projectId: string;
+    actorUserId: string;
     userId: string;
     role: ProjectRole;
   }) => Promise<ProjectMember | null>;
-  deleteMembership: (projectId: string, userId: string) => Promise<boolean>;
-  countAdmins: (projectId: string) => Promise<number>;
+  deleteMembership: (input: {
+    projectId: string;
+    actorUserId: string;
+    userId: string;
+  }) => Promise<boolean>;
 };
 
 export type MembershipUserLookup = {
@@ -101,11 +102,6 @@ export function createMembershipService({
       return membershipRepository.listMembers(projectId);
     },
     addMember: async (input) => {
-      const project = await projectAccessService.requireProjectRole(
-        input.projectId,
-        input.actorUserId,
-        ["admin"],
-      );
       const email = normalizeEmail(input.email);
       const user = await userLookup.findByEmail(email);
 
@@ -113,43 +109,18 @@ export function createMembershipService({
         throw new MembershipUserNotFoundError();
       }
 
-      const createdMembership = await membershipRepository.createMembership({
-        projectId: project.project.id,
+      return membershipRepository.createMembership({
+        projectId: input.projectId,
+        actorUserId: input.actorUserId,
         userId: user.id,
         role: input.role,
       });
-
-      if (!createdMembership) {
-        throw new Error("Expected active project membership to be created");
-      }
-
-      return createdMembership;
     },
     updateMemberRole: async (input) => {
-      const project = await projectAccessService.requireProjectRole(
-        input.projectId,
-        input.actorUserId,
-        ["admin"],
-      );
-      const membership = await membershipRepository.findMembership(
-        project.project.id,
-        input.targetUserId,
-      );
-
-      if (!membership) {
-        throw new ProjectMembershipNotFoundError();
-      }
-
-      await ensureLastAdminPreserved({
-        membershipRepository,
-        projectId: project.project.id,
-        currentRole: membership.role,
-        nextRole: input.role,
-      });
-
       const updatedMembership = await membershipRepository.updateMembershipRole(
         {
-          projectId: project.project.id,
+          projectId: input.projectId,
+          actorUserId: input.actorUserId,
           userId: input.targetUserId,
           role: input.role,
         },
@@ -162,66 +133,17 @@ export function createMembershipService({
       return updatedMembership;
     },
     deleteMember: async (input) => {
-      const project = await projectAccessService.requireProjectMember(
-        input.projectId,
-        input.actorUserId,
-      );
-
-      if (
-        project.myRole !== "admin" &&
-        input.actorUserId !== input.targetUserId
-      ) {
-        throw new ProjectAdminOrSelfRequiredError();
-      }
-
-      const membership = await membershipRepository.findMembership(
-        project.project.id,
-        input.targetUserId,
-      );
-
-      if (!membership) {
-        throw new ProjectMembershipNotFoundError();
-      }
-
-      await ensureLastAdminPreserved({
-        membershipRepository,
-        projectId: project.project.id,
-        currentRole: membership.role,
-        nextRole: null,
+      const deleted = await membershipRepository.deleteMembership({
+        projectId: input.projectId,
+        actorUserId: input.actorUserId,
+        userId: input.targetUserId,
       });
-
-      const deleted = await membershipRepository.deleteMembership(
-        project.project.id,
-        input.targetUserId,
-      );
 
       if (!deleted) {
         throw new ProjectMembershipNotFoundError();
       }
     },
   };
-}
-
-async function ensureLastAdminPreserved({
-  membershipRepository,
-  projectId,
-  currentRole,
-  nextRole,
-}: {
-  membershipRepository: MembershipRepository;
-  projectId: string;
-  currentRole: ProjectRole;
-  nextRole: ProjectRole | null;
-}) {
-  if (currentRole !== "admin" || nextRole === "admin") {
-    return;
-  }
-
-  const adminCount = await membershipRepository.countAdmins(projectId);
-
-  if (adminCount <= 1) {
-    throw new LastProjectAdminRemovalError();
-  }
 }
 
 function normalizeEmail(email: string): string {

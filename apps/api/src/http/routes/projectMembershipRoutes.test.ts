@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import type { ProjectRole } from "@collab-tex/shared";
@@ -11,11 +12,15 @@ import {
 import {
   createMembershipService,
   DuplicateProjectMembershipError,
+  LastProjectAdminRemovalError,
   MembershipUserNotFoundError,
+  ProjectAdminOrSelfRequiredError,
   type MembershipRepository,
 } from "../../services/membership.js";
 import { createProjectAccessService } from "../../services/projectAccess.js";
 import {
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
   createProjectService,
   ProjectOwnerNotFoundError,
   type ProjectRepository,
@@ -240,6 +245,33 @@ describe("project membership routes", () => {
     await request(app)
       .post(`/api/projects/${projectId}/members`)
       .set("authorization", `Bearer ${alice.token}`)
+      .send({ email: "not-an-email", role: "reader" })
+      .expect(400)
+      .expect({ error: "email must be a valid email address" });
+
+    await request(app)
+      .post(`/api/projects/${projectId}/members`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ email: `${"a".repeat(321)}@example.com`, role: "reader" })
+      .expect(400)
+      .expect({ error: "email must be at most 320 characters" });
+
+    await request(app)
+      .post(`/api/projects/not-a-uuid/members`)
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ email: "bob@example.com", role: "reader" })
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .get("/api/projects/not-a-uuid/members")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .post(`/api/projects/${projectId}/members`)
+      .set("authorization", `Bearer ${alice.token}`)
       .send({ email: "bob@example.com", role: "owner" })
       .expect(400)
       .expect({
@@ -247,11 +279,11 @@ describe("project membership routes", () => {
       });
 
     await request(app)
-      .patch(`/api/projects/${projectId}/members/%20%20`)
+      .patch(`/api/projects/${projectId}/members/not-a-uuid`)
       .set("authorization", `Bearer ${alice.token}`)
       .send({ role: "reader" })
       .expect(400)
-      .expect({ error: "userId is required" });
+      .expect({ error: "userId must be a valid UUID" });
   });
 });
 
@@ -310,8 +342,6 @@ function createMembershipTestApp() {
     }
   >();
   const membershipsByProjectId = new Map<string, Map<string, ProjectRole>>();
-  let nextUserId = 1;
-  let nextProjectId = 1;
 
   const userRepository: AuthUserRepository = {
     findByEmail: async (email) => {
@@ -326,13 +356,12 @@ function createMembershipTestApp() {
       }
 
       const user = {
-        id: `user-${nextUserId}`,
+        id: randomUUID(),
         email,
         name,
         passwordHash,
       };
 
-      nextUserId += 1;
       usersById.set(user.id, user);
       usersByEmail.set(user.email, user.id);
 
@@ -348,14 +377,13 @@ function createMembershipTestApp() {
 
       const now = new Date();
       const project = {
-        id: `project-${nextProjectId}`,
+        id: randomUUID(),
         name,
         createdAt: now,
         updatedAt: now,
         tombstoneAt: null,
       };
 
-      nextProjectId += 1;
       projectsById.set(project.id, project);
       membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
 
@@ -440,51 +468,26 @@ function createMembershipTestApp() {
         return [];
       }
 
-      return [...memberships.entries()]
-        .sort(([leftUserId], [rightUserId]) =>
-          leftUserId.localeCompare(rightUserId),
-        )
-        .map(([userId, role]) => {
-          const user = usersById.get(userId);
+      return [...memberships.entries()].map(([userId, role]) => {
+        const user = usersById.get(userId);
 
-          if (!user) {
-            throw new Error(`Unknown user ${userId}`);
-          }
+        if (!user) {
+          throw new Error(`Unknown user ${userId}`);
+        }
 
-          return {
-            userId,
-            email: user.email,
-            name: user.name,
-            role,
-          };
-        });
+        return {
+          userId,
+          email: user.email,
+          name: user.name,
+          role,
+        };
+      });
     },
-    findMembership: async (projectId, userId) => {
+    createMembership: async ({ projectId, actorUserId, userId, role }) => {
       const project = projectsById.get(projectId);
 
       if (!project || project.tombstoneAt) {
-        return null;
-      }
-
-      const role = membershipsByProjectId.get(projectId)?.get(userId);
-      const user = usersById.get(userId);
-
-      if (!role || !user) {
-        return null;
-      }
-
-      return {
-        userId,
-        email: user.email,
-        name: user.name,
-        role,
-      };
-    },
-    createMembership: async ({ projectId, userId, role }) => {
-      const project = projectsById.get(projectId);
-
-      if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
       }
 
       const user = usersById.get(userId);
@@ -496,7 +499,17 @@ function createMembershipTestApp() {
       const memberships = membershipsByProjectId.get(projectId);
 
       if (!memberships) {
-        return null;
+        throw new ProjectNotFoundError();
+      }
+
+      const actorRole = memberships.get(actorUserId);
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       if (memberships.has(userId)) {
@@ -512,18 +525,37 @@ function createMembershipTestApp() {
         role,
       };
     },
-    updateMembershipRole: async ({ projectId, userId, role }) => {
+    updateMembershipRole: async ({ projectId, actorUserId, userId, role }) => {
       const project = projectsById.get(projectId);
 
       if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
       }
 
       const memberships = membershipsByProjectId.get(projectId);
       const user = usersById.get(userId);
+      const actorRole = memberships?.get(actorUserId);
+
+      if (!memberships || !actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
+      }
 
       if (!memberships?.has(userId) || !user) {
         return null;
+      }
+
+      if (memberships.get(userId) === "admin" && role !== "admin") {
+        const adminCount = [...memberships.values()].filter(
+          (memberRole) => memberRole === "admin",
+        ).length;
+
+        if (adminCount <= 1) {
+          throw new LastProjectAdminRemovalError();
+        }
       }
 
       memberships.set(userId, role);
@@ -535,27 +567,39 @@ function createMembershipTestApp() {
         role,
       };
     },
-    deleteMembership: async (projectId, userId) => {
+    deleteMembership: async ({ projectId, actorUserId, userId }) => {
       const project = projectsById.get(projectId);
 
       if (!project || project.tombstoneAt) {
-        return false;
+        throw new ProjectNotFoundError();
       }
 
       const memberships = membershipsByProjectId.get(projectId);
+      const actorRole = memberships?.get(actorUserId);
 
-      return memberships?.delete(userId) ?? false;
-    },
-    countAdmins: async (projectId) => {
-      const project = projectsById.get(projectId);
-
-      if (!project || project.tombstoneAt) {
-        return 0;
+      if (!memberships || !actorRole) {
+        throw new ProjectNotFoundError();
       }
 
-      return [
-        ...(membershipsByProjectId.get(projectId)?.values() ?? []),
-      ].filter((role) => role === "admin").length;
+      if (actorRole !== "admin" && actorUserId !== userId) {
+        throw new ProjectAdminOrSelfRequiredError();
+      }
+
+      if (!memberships?.has(userId)) {
+        return false;
+      }
+
+      if (memberships.get(userId) === "admin") {
+        const adminCount = [...memberships.values()].filter(
+          (memberRole) => memberRole === "admin",
+        ).length;
+
+        if (adminCount <= 1) {
+          throw new LastProjectAdminRemovalError();
+        }
+      }
+
+      return memberships?.delete(userId) ?? false;
     },
   };
 

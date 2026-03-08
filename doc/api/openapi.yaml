@@ -304,6 +304,7 @@ components:
       required: true
       schema:
         type: string
+        format: uuid
       description: Project identifier
     UserId:
       name: userId
@@ -311,6 +312,7 @@ components:
       required: true
       schema:
         type: string
+        format: uuid
       description: User identifier
   responses:
     BadRequest:

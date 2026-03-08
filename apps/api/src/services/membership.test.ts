@@ -40,9 +40,6 @@ describe("membership service", () => {
       email: "bob@example.com",
       role: "editor",
     });
-    projectAccessService.requireProjectRole.mockResolvedValue(
-      createProjectWithRole("admin"),
-    );
     userLookup.findByEmail.mockResolvedValue({
       id: "user-2",
       email: "bob@example.com",
@@ -66,14 +63,17 @@ describe("membership service", () => {
     ).resolves.toEqual(createdMember);
 
     expect(userLookup.findByEmail).toHaveBeenCalledWith("bob@example.com");
+    expect(membershipRepository.createMembership).toHaveBeenCalledWith({
+      projectId: "project-1",
+      actorUserId: "user-1",
+      userId: "user-2",
+      role: "editor",
+    });
   });
 
   it("rejects invites for missing users", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectRole.mockResolvedValue(
-      createProjectWithRole("admin"),
-    );
     userLookup.findByEmail.mockResolvedValue(null);
     const service = createMembershipService({
       membershipRepository,
@@ -94,16 +94,9 @@ describe("membership service", () => {
   it("rejects demoting the last admin", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectRole.mockResolvedValue(
-      createProjectWithRole("admin"),
+    membershipRepository.updateMembershipRole.mockRejectedValue(
+      new LastProjectAdminRemovalError(),
     );
-    membershipRepository.findMembership.mockResolvedValue(
-      createProjectMember({
-        userId: "user-1",
-        role: "admin",
-      }),
-    );
-    membershipRepository.countAdmins.mockResolvedValue(1);
     const service = createMembershipService({
       membershipRepository,
       projectAccessService,
@@ -123,8 +116,8 @@ describe("membership service", () => {
   it("rejects deleting another member when the caller is not an admin", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectMember.mockResolvedValue(
-      createProjectWithRole("reader"),
+    membershipRepository.deleteMembership.mockRejectedValue(
+      new ProjectAdminOrSelfRequiredError(),
     );
     const service = createMembershipService({
       membershipRepository,
@@ -147,12 +140,6 @@ describe("membership service", () => {
     projectAccessService.requireProjectMember.mockResolvedValue(
       createProjectWithRole("reader"),
     );
-    membershipRepository.findMembership.mockResolvedValue(
-      createProjectMember({
-        userId: "user-2",
-        role: "reader",
-      }),
-    );
     membershipRepository.deleteMembership.mockResolvedValue(true);
     const service = createMembershipService({
       membershipRepository,
@@ -172,10 +159,7 @@ describe("membership service", () => {
   it("rejects updates for missing memberships", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectRole.mockResolvedValue(
-      createProjectWithRole("admin"),
-    );
-    membershipRepository.findMembership.mockResolvedValue(null);
+    membershipRepository.updateMembershipRole.mockResolvedValue(null);
     const service = createMembershipService({
       membershipRepository,
       projectAccessService,
@@ -195,9 +179,6 @@ describe("membership service", () => {
   it("passes through duplicate membership conflicts", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectRole.mockResolvedValue(
-      createProjectWithRole("admin"),
-    );
     userLookup.findByEmail.mockResolvedValue({
       id: "user-2",
       email: "bob@example.com",
@@ -228,12 +209,10 @@ function createDependencies() {
   return {
     membershipRepository: {
       listMembers: vi.fn<MembershipRepository["listMembers"]>(),
-      findMembership: vi.fn<MembershipRepository["findMembership"]>(),
       createMembership: vi.fn<MembershipRepository["createMembership"]>(),
       updateMembershipRole:
         vi.fn<MembershipRepository["updateMembershipRole"]>(),
       deleteMembership: vi.fn<MembershipRepository["deleteMembership"]>(),
-      countAdmins: vi.fn<MembershipRepository["countAdmins"]>(),
     },
     projectAccessService: {
       requireProjectMember:
