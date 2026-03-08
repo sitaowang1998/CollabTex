@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { extname, join } from "node:path";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -44,7 +44,13 @@ const server = createServer(async (req, res) => {
 
   if (pathname.startsWith("/assets/")) {
     const assetName = pathname.slice("/assets/".length);
-    const assetPath = join(swaggerAssetRoot, assetName);
+    const assetPath = resolveSwaggerAssetPath(assetName);
+
+    if (!assetPath) {
+      respondNotFound(res);
+      return;
+    }
+
     await streamFile(res, assetPath, contentTypeFor(assetPath));
     return;
   }
@@ -89,6 +95,17 @@ function parsePort(rawPort) {
   }
 
   return port;
+}
+
+function resolveSwaggerAssetPath(assetName) {
+  const assetPath = resolve(swaggerAssetRoot, assetName);
+  const relativeAssetPath = relative(swaggerAssetRoot, assetPath);
+
+  if (relativeAssetPath.startsWith("..") || isAbsolute(relativeAssetPath)) {
+    return null;
+  }
+
+  return assetPath;
 }
 
 async function streamFile(res, filePath, contentType) {
