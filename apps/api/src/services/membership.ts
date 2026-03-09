@@ -5,9 +5,10 @@ import type {
 } from "@collab-tex/shared";
 import type { StoredUser } from "./auth.js";
 import type { ProjectAccessService } from "./projectAccess.js";
+import { ProjectNotFoundError } from "./project.js";
 
 export type MembershipRepository = {
-  listMembers: (projectId: string) => Promise<ProjectMember[]>;
+  listMembers: (projectId: string) => Promise<ProjectMember[] | null>;
   createMembership: (input: {
     projectId: string;
     actorUserId: string;
@@ -98,10 +99,20 @@ export function createMembershipService({
   return {
     listMembers: async (projectId, userId) => {
       await projectAccessService.requireProjectMember(projectId, userId);
+      const members = await membershipRepository.listMembers(projectId);
 
-      return membershipRepository.listMembers(projectId);
+      if (!members) {
+        throw new ProjectNotFoundError();
+      }
+
+      return members;
     },
     addMember: async (input) => {
+      await projectAccessService.requireProjectRole(
+        input.projectId,
+        input.actorUserId,
+        ["admin"],
+      );
       const email = normalizeEmail(input.email);
       const user = await userLookup.findByEmail(email);
 

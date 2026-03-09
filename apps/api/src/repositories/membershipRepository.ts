@@ -45,6 +45,10 @@ export function createMembershipRepository(
         orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
       });
 
+      if (memberships.length === 0) {
+        return null;
+      }
+
       return memberships.map(mapProjectMember);
     },
     createMembership: async ({ projectId, actorUserId, userId, role }) => {

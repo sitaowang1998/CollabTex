@@ -149,9 +149,9 @@ describe("membership repository integration", () => {
       new Date("2026-03-08T12:00:00.000Z"),
     );
 
-    await expect(membershipRepository.listMembers(project.id)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      membershipRepository.listMembers(project.id),
+    ).resolves.toBeNull();
     await expect(
       membershipRepository.createMembership({
         projectId: project.id,

@@ -138,6 +138,13 @@ describe("project membership routes", () => {
       .expect({ error: "admin role required" });
 
     await request(app)
+      .post(`/api/projects/${projectId}/members`)
+      .set("authorization", `Bearer ${bob.token}`)
+      .send({ email: "missing@example.com", role: "reader" })
+      .expect(403)
+      .expect({ error: "admin role required" });
+
+    await request(app)
       .patch(`/api/projects/${projectId}/members/${alice.user.id}`)
       .set("authorization", `Bearer ${bob.token}`)
       .send({ role: "editor" })
@@ -459,13 +466,13 @@ function createMembershipTestApp() {
       const project = projectsById.get(projectId);
 
       if (!project || project.tombstoneAt) {
-        return [];
+        return null;
       }
 
       const memberships = membershipsByProjectId.get(projectId);
 
       if (!memberships) {
-        return [];
+        return null;
       }
 
       return [...memberships.entries()].map(([userId, role]) => {

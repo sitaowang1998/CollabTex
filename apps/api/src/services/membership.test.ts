@@ -11,6 +11,7 @@ import {
   type MembershipUserLookup,
 } from "./membership.js";
 import type { ProjectAccessService, ProjectWithRole } from "./projectAccess.js";
+import { ProjectAdminRequiredError, ProjectNotFoundError } from "./project.js";
 
 describe("membership service", () => {
   it("lists members for any project member", async () => {
@@ -32,6 +33,24 @@ describe("membership service", () => {
     );
   });
 
+  it("maps a concurrently deleted project during list to not found", async () => {
+    const { membershipRepository, projectAccessService, userLookup } =
+      createDependencies();
+    projectAccessService.requireProjectMember.mockResolvedValue(
+      createProjectWithRole("reader"),
+    );
+    membershipRepository.listMembers.mockResolvedValue(null);
+    const service = createMembershipService({
+      membershipRepository,
+      projectAccessService,
+      userLookup,
+    });
+
+    await expect(
+      service.listMembers("project-1", "user-1"),
+    ).rejects.toBeInstanceOf(ProjectNotFoundError);
+  });
+
   it("normalizes invite emails before user lookup", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
@@ -40,6 +59,9 @@ describe("membership service", () => {
       email: "bob@example.com",
       role: "editor",
     });
+    projectAccessService.requireProjectRole.mockResolvedValue(
+      createProjectWithRole("admin"),
+    );
     userLookup.findByEmail.mockResolvedValue({
       id: "user-2",
       email: "bob@example.com",
@@ -62,6 +84,14 @@ describe("membership service", () => {
       }),
     ).resolves.toEqual(createdMember);
 
+    expect(projectAccessService.requireProjectRole).toHaveBeenCalledWith(
+      "project-1",
+      "user-1",
+      ["admin"],
+    );
+    expect(
+      projectAccessService.requireProjectRole.mock.invocationCallOrder[0],
+    ).toBeLessThan(userLookup.findByEmail.mock.invocationCallOrder[0] ?? 0);
     expect(userLookup.findByEmail).toHaveBeenCalledWith("bob@example.com");
     expect(membershipRepository.createMembership).toHaveBeenCalledWith({
       projectId: "project-1",
@@ -74,6 +104,9 @@ describe("membership service", () => {
   it("rejects invites for missing users", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
+    projectAccessService.requireProjectRole.mockResolvedValue(
+      createProjectWithRole("admin"),
+    );
     userLookup.findByEmail.mockResolvedValue(null);
     const service = createMembershipService({
       membershipRepository,
@@ -89,6 +122,31 @@ describe("membership service", () => {
         role: "reader",
       }),
     ).rejects.toBeInstanceOf(MembershipUserNotFoundError);
+  });
+
+  it("rejects unauthorized invites before looking up the target email", async () => {
+    const { membershipRepository, projectAccessService, userLookup } =
+      createDependencies();
+    projectAccessService.requireProjectRole.mockRejectedValue(
+      new ProjectAdminRequiredError(),
+    );
+    const service = createMembershipService({
+      membershipRepository,
+      projectAccessService,
+      userLookup,
+    });
+
+    await expect(
+      service.addMember({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        email: "missing@example.com",
+        role: "reader",
+      }),
+    ).rejects.toBeInstanceOf(ProjectAdminRequiredError);
+
+    expect(userLookup.findByEmail).not.toHaveBeenCalled();
+    expect(membershipRepository.createMembership).not.toHaveBeenCalled();
   });
 
   it("rejects demoting the last admin", async () => {
@@ -179,6 +237,9 @@ describe("membership service", () => {
   it("passes through duplicate membership conflicts", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
+    projectAccessService.requireProjectRole.mockResolvedValue(
+      createProjectWithRole("admin"),
+    );
     userLookup.findByEmail.mockResolvedValue({
       id: "user-2",
       email: "bob@example.com",
