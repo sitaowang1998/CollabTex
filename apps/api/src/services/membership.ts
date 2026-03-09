@@ -8,7 +8,10 @@ import type { ProjectAccessService } from "./projectAccess.js";
 import { ProjectNotFoundError } from "./project.js";
 
 export type MembershipRepository = {
-  listMembers: (projectId: string) => Promise<ProjectMember[] | null>;
+  listMembersForUser: (
+    projectId: string,
+    userId: string,
+  ) => Promise<ProjectMember[] | null>;
   createMembership: (input: {
     projectId: string;
     actorUserId: string;
@@ -98,8 +101,10 @@ export function createMembershipService({
 }): MembershipService {
   return {
     listMembers: async (projectId, userId) => {
-      await projectAccessService.requireProjectMember(projectId, userId);
-      const members = await membershipRepository.listMembers(projectId);
+      const members = await membershipRepository.listMembersForUser(
+        projectId,
+        userId,
+      );
 
       if (!members) {
         throw new ProjectNotFoundError();

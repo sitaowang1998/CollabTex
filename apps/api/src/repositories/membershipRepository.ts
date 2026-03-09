@@ -26,30 +26,37 @@ export function createMembershipRepository(
   databaseClient: DatabaseClient,
 ): MembershipRepository {
   return {
-    listMembers: async (projectId) => {
-      const memberships = await databaseClient.projectMembership.findMany({
+    listMembersForUser: async (projectId, userId) => {
+      const project = await databaseClient.project.findFirst({
         where: {
-          projectId,
-          project: {
-            tombstoneAt: null,
-          },
-        },
-        include: {
-          user: {
-            select: {
-              email: true,
-              name: true,
+          id: projectId,
+          tombstoneAt: null,
+          memberships: {
+            some: {
+              userId,
             },
           },
         },
-        orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+        include: {
+          memberships: {
+            include: {
+              user: {
+                select: {
+                  email: true,
+                  name: true,
+                },
+              },
+            },
+            orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+          },
+        },
       });
 
-      if (memberships.length === 0) {
+      if (!project) {
         return null;
       }
 
-      return memberships.map(mapProjectMember);
+      return project.memberships.map(mapProjectMember);
     },
     createMembership: async ({ projectId, actorUserId, userId, role }) => {
       try {

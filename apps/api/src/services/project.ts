@@ -1,6 +1,5 @@
 import {
   createProjectAccessService,
-  ProjectNotFoundError,
   type ProjectAccessRepository,
   type ProjectAccessService,
   type ProjectWithRole,
@@ -37,11 +36,16 @@ export type ProjectRepository = {
     projectId: string,
     userId: string,
   ) => Promise<ProjectWithRole | null>;
-  updateName: (
-    projectId: string,
-    name: string,
-  ) => Promise<StoredProject | null>;
-  softDelete: (projectId: string, deletedAt: Date) => Promise<boolean>;
+  updateName: (input: {
+    projectId: string;
+    actorUserId: string;
+    name: string;
+  }) => Promise<StoredProject>;
+  softDelete: (input: {
+    projectId: string;
+    actorUserId: string;
+    deletedAt: Date;
+  }) => Promise<void>;
 };
 
 export type ProjectService = {
@@ -78,36 +82,18 @@ export function createProjectService({
       return projectAccessService.requireProjectMember(projectId, userId);
     },
     updateProject: async (input) => {
-      const project = await projectAccessService.requireProjectRole(
-        input.projectId,
-        input.userId,
-        ["admin"],
-      );
-      const updatedProject = await projectRepository.updateName(
-        project.project.id,
-        normalizeProjectName(input.name),
-      );
-
-      if (!updatedProject) {
-        throw new ProjectNotFoundError();
-      }
-
-      return updatedProject;
+      return projectRepository.updateName({
+        projectId: input.projectId,
+        actorUserId: input.userId,
+        name: normalizeProjectName(input.name),
+      });
     },
     deleteProject: async (input) => {
-      const project = await projectAccessService.requireProjectRole(
-        input.projectId,
-        input.userId,
-        ["admin"],
-      );
-      const deleted = await projectRepository.softDelete(
-        project.project.id,
-        new Date(),
-      );
-
-      if (!deleted) {
-        throw new ProjectNotFoundError();
-      }
+      await projectRepository.softDelete({
+        projectId: input.projectId,
+        actorUserId: input.userId,
+        deletedAt: new Date(),
+      });
     },
   };
 }

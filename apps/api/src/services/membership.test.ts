@@ -14,14 +14,11 @@ import type { ProjectAccessService, ProjectWithRole } from "./projectAccess.js";
 import { ProjectAdminRequiredError, ProjectNotFoundError } from "./project.js";
 
 describe("membership service", () => {
-  it("lists members for any project member", async () => {
+  it("lists members through a user-scoped repository read", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
     const members = [createProjectMember()];
-    projectAccessService.requireProjectMember.mockResolvedValue(
-      createProjectWithRole("reader"),
-    );
-    membershipRepository.listMembers.mockResolvedValue(members);
+    membershipRepository.listMembersForUser.mockResolvedValue(members);
     const service = createMembershipService({
       membershipRepository,
       projectAccessService,
@@ -31,15 +28,17 @@ describe("membership service", () => {
     await expect(service.listMembers("project-1", "user-1")).resolves.toBe(
       members,
     );
+    expect(membershipRepository.listMembersForUser).toHaveBeenCalledWith(
+      "project-1",
+      "user-1",
+    );
+    expect(projectAccessService.requireProjectMember).not.toHaveBeenCalled();
   });
 
   it("maps a concurrently deleted project during list to not found", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectMember.mockResolvedValue(
-      createProjectWithRole("reader"),
-    );
-    membershipRepository.listMembers.mockResolvedValue(null);
+    membershipRepository.listMembersForUser.mockResolvedValue(null);
     const service = createMembershipService({
       membershipRepository,
       projectAccessService,
@@ -269,7 +268,7 @@ describe("membership service", () => {
 function createDependencies() {
   return {
     membershipRepository: {
-      listMembers: vi.fn<MembershipRepository["listMembers"]>(),
+      listMembersForUser: vi.fn<MembershipRepository["listMembersForUser"]>(),
       createMembership: vi.fn<MembershipRepository["createMembership"]>(),
       updateMembershipRole:
         vi.fn<MembershipRepository["updateMembershipRole"]>(),

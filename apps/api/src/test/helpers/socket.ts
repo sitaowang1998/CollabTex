@@ -7,7 +7,10 @@ import {
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
 import type { MembershipService } from "../../services/membership.js";
-import { createProjectService } from "../../services/project.js";
+import {
+  createProjectService,
+  ProjectNotFoundError,
+} from "../../services/project.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
@@ -41,8 +44,12 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         },
         listForUser: async () => [],
         findForUser: async () => null,
-        updateName: async () => null,
-        softDelete: async () => false,
+        updateName: async () => {
+          throw new ProjectNotFoundError();
+        },
+        softDelete: async () => {
+          throw new ProjectNotFoundError();
+        },
       },
     }),
     membershipService: createStubMembershipService(),

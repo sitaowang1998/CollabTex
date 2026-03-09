@@ -62,7 +62,10 @@ describe("membership repository integration", () => {
       userId: invited.id,
       role: "reader",
     });
-    const listedMembers = await membershipRepository.listMembers(project.id);
+    const listedMembers = await membershipRepository.listMembersForUser(
+      project.id,
+      owner.id,
+    );
     const updatedMembership = await membershipRepository.updateMembershipRole({
       projectId: project.id,
       actorUserId: owner.id,
@@ -144,13 +147,14 @@ describe("membership repository integration", () => {
       name: `Deleted ${suffix}`,
     });
 
-    await projectRepository.softDelete(
-      project.id,
-      new Date("2026-03-08T12:00:00.000Z"),
-    );
+    await projectRepository.softDelete({
+      projectId: project.id,
+      actorUserId: owner.id,
+      deletedAt: new Date("2026-03-08T12:00:00.000Z"),
+    });
 
     await expect(
-      membershipRepository.listMembers(project.id),
+      membershipRepository.listMembersForUser(project.id, owner.id),
     ).resolves.toBeNull();
     await expect(
       membershipRepository.createMembership({

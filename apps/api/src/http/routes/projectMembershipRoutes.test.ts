@@ -428,11 +428,20 @@ function createMembershipTestApp() {
         myRole: role,
       };
     },
-    updateName: async (projectId, name) => {
+    updateName: async ({ projectId, actorUserId, name }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       const updatedProject = {
@@ -444,11 +453,20 @@ function createMembershipTestApp() {
 
       return updatedProject;
     },
-    softDelete: async (projectId, deletedAt) => {
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return false;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       projectsById.set(projectId, {
@@ -457,12 +475,12 @@ function createMembershipTestApp() {
         updatedAt: deletedAt,
       });
 
-      return true;
+      return;
     },
   };
 
   const membershipRepository: MembershipRepository = {
-    listMembers: async (projectId) => {
+    listMembersForUser: async (projectId, actorUserId) => {
       const project = projectsById.get(projectId);
 
       if (!project || project.tombstoneAt) {
@@ -471,7 +489,7 @@ function createMembershipTestApp() {
 
       const memberships = membershipsByProjectId.get(projectId);
 
-      if (!memberships) {
+      if (!memberships || !memberships.has(actorUserId)) {
         return null;
       }
 

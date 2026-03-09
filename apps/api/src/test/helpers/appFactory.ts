@@ -7,6 +7,8 @@ import {
 } from "../../services/auth.js";
 import {
   createProjectService,
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
 import type { MembershipService } from "../../services/membership.js";
@@ -152,11 +154,20 @@ function createInMemoryProjectRepository(): ProjectRepository {
         myRole: role,
       };
     },
-    updateName: async (projectId, name) => {
+    updateName: async ({ projectId, actorUserId, name }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       const updatedProject = {
@@ -168,11 +179,20 @@ function createInMemoryProjectRepository(): ProjectRepository {
 
       return updatedProject;
     },
-    softDelete: async (projectId, deletedAt) => {
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return false;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       projectsById.set(projectId, {
@@ -181,7 +201,7 @@ function createInMemoryProjectRepository(): ProjectRepository {
         updatedAt: deletedAt,
       });
 
-      return true;
+      return;
     },
   };
 }

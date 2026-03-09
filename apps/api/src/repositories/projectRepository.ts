@@ -1,9 +1,14 @@
+import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import type {
   CreateProjectInput,
   ProjectRepository,
 } from "../services/project.js";
-import { ProjectOwnerNotFoundError } from "../services/project.js";
+import {
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
+  ProjectOwnerNotFoundError,
+} from "../services/project.js";
 import type {
   ProjectWithRole,
   StoredProject,
@@ -98,40 +103,34 @@ export function createProjectRepository(
 
       return project ? mapProjectWithRole(project) : null;
     },
-    updateName: async (projectId, name) => {
-      const result = await databaseClient.project.updateMany({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
-        data: {
-          name,
-        },
-      });
+    updateName: async ({ projectId, actorUserId, name }) =>
+      databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorIsAdmin(tx, projectId, actorUserId);
 
-      if (result.count === 0) {
-        return null;
-      }
+        return tx.project.update({
+          where: {
+            id: projectId,
+          },
+          data: {
+            name,
+          },
+        });
+      }),
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
+      await databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorIsAdmin(tx, projectId, actorUserId);
 
-      return databaseClient.project.findFirst({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
+        await tx.project.update({
+          where: {
+            id: projectId,
+          },
+          data: {
+            tombstoneAt: deletedAt,
+          },
+        });
       });
-    },
-    softDelete: async (projectId, deletedAt) => {
-      const result = await databaseClient.project.updateMany({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
-        data: {
-          tombstoneAt: deletedAt,
-        },
-      });
-
-      return result.count > 0;
     },
   };
 }
@@ -166,4 +165,47 @@ function mapProjectWithRole(
     },
     myRole: membership.role,
   };
+}
+
+async function lockActiveProject(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+): Promise<void> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id
+    FROM "Project"
+    WHERE id = CAST(${projectId} AS uuid)
+      AND "tombstoneAt" IS NULL
+    FOR UPDATE
+  `);
+
+  if (rows.length === 0) {
+    throw new ProjectNotFoundError();
+  }
+}
+
+async function assertActorIsAdmin(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  actorUserId: string,
+): Promise<void> {
+  const actorMembership = await tx.projectMembership.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: actorUserId,
+      },
+    },
+    select: {
+      role: true,
+    },
+  });
+
+  if (!actorMembership) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (actorMembership.role !== "admin") {
+    throw new ProjectAdminRequiredError();
+  }
 }
