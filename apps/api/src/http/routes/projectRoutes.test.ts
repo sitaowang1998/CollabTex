@@ -13,9 +13,11 @@ import {
   createProjectService,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
+  ProjectRoleRequiredError,
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { AuthService } from "../../services/auth.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
@@ -291,6 +293,18 @@ describe("project routes", () => {
       .expect(403)
       .expect({ error: "admin role required" });
   });
+
+  it("maps ProjectRoleRequiredError to 403 for future project role checks", async () => {
+    const app = createRoleRequiredProjectApp();
+    const token = signToken(randomUUID(), testConfig.jwtSecret);
+
+    await request(app)
+      .patch(`/api/projects/${randomUUID()}`)
+      .set("authorization", `Bearer ${token}`)
+      .send({ name: "Renamed" })
+      .expect(403)
+      .expect({ error: "required project role missing" });
+  });
 });
 
 async function registerUser(
@@ -354,6 +368,28 @@ function createProjectTestApp() {
   };
 }
 
+function createRoleRequiredProjectApp() {
+  return createHttpApp(testConfig, {
+    authService: createStubAuthService(),
+    membershipService: createStubMembershipService(),
+    projectService: {
+      createProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      listProjects: async () => [],
+      getProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      updateProject: async () => {
+        throw new ProjectRoleRequiredError(["editor", "admin"]);
+      },
+      deleteProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+    },
+  });
+}
+
 function createStubMembershipService(): MembershipService {
   return {
     listMembers: async () => [],
@@ -365,6 +401,20 @@ function createStubMembershipService(): MembershipService {
     },
     deleteMember: async () => {
       throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubAuthService(): AuthService {
+  return {
+    register: async () => {
+      throw new Error("Not implemented for role-required route test");
+    },
+    login: async () => {
+      throw new Error("Not implemented for role-required route test");
+    },
+    getAuthenticatedUser: async () => {
+      throw new Error("Not implemented for role-required route test");
     },
   };
 }

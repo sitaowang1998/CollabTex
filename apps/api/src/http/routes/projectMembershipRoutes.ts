@@ -17,6 +17,7 @@ import {
 import {
   ProjectAdminRequiredError,
   ProjectNotFoundError,
+  ProjectRoleRequiredError,
 } from "../../services/project.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { HttpError } from "../errors/httpError.js";
@@ -228,6 +229,10 @@ function mapMembershipError(error: unknown): Error {
 
   if (error instanceof ProjectAdminRequiredError) {
     return new HttpError(403, "admin role required");
+  }
+
+  if (error instanceof ProjectRoleRequiredError) {
+    return new HttpError(403, "required project role missing");
   }
 
   if (error instanceof ProjectAdminOrSelfRequiredError) {

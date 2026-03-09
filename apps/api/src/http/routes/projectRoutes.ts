@@ -13,6 +13,7 @@ import {
   ProjectOwnerNotFoundError,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
+  ProjectRoleRequiredError,
   type StoredProject,
   type ProjectService,
 } from "../../services/project.js";
@@ -189,6 +190,10 @@ function mapProjectError(error: unknown): Error {
 
   if (error instanceof ProjectAdminRequiredError) {
     return new HttpError(403, "admin role required");
+  }
+
+  if (error instanceof ProjectRoleRequiredError) {
+    return new HttpError(403, "required project role missing");
   }
 
   if (error instanceof ProjectOwnerNotFoundError) {

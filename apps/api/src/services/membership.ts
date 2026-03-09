@@ -113,6 +113,9 @@ export function createMembershipService({
       return members;
     },
     addMember: async (input) => {
+      // Reject unauthorized callers before email lookup to avoid turning this
+      // endpoint into an account-enumeration probe. The repository still
+      // re-checks admin status inside its write transaction for race safety.
       await projectAccessService.requireProjectRole(
         input.projectId,
         input.actorUserId,

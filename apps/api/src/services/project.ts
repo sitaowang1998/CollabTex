@@ -9,6 +9,7 @@ import {
 export {
   ProjectAdminRequiredError,
   ProjectNotFoundError,
+  ProjectRoleRequiredError,
   type ProjectWithRole,
   type StoredProject,
 } from "./projectAccess.js";
