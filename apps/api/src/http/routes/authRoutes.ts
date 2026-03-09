@@ -2,10 +2,7 @@ import { Router } from "express";
 import type { LoginRequest, RegisterRequest } from "@collab-tex/shared";
 import type { AppConfig } from "../../config/appConfig.js";
 import { HttpError } from "../errors/httpError.js";
-import {
-  isObject,
-  parseEmail,
-} from "../validation/requestValidation.js";
+import { isObject, parseEmail } from "../validation/requestValidation.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { createRequireAuth } from "../middleware/requireAuth.js";
 import {
