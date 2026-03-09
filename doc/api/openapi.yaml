@@ -407,7 +407,7 @@ components:
       properties:
         email:
           type: string
-          description: Leading and trailing whitespace is trimmed before validation.
+          description: Leading and trailing whitespace is trimmed and the email is lowercased before validation.
           format: email
           minLength: 1
           maxLength: 320
@@ -429,7 +429,7 @@ components:
       properties:
         email:
           type: string
-          description: Leading and trailing whitespace is trimmed before validation.
+          description: Leading and trailing whitespace is trimmed and the email is lowercased before validation.
           format: email
           minLength: 1
           maxLength: 320
@@ -560,7 +560,7 @@ components:
       properties:
         email:
           type: string
-          description: Leading and trailing whitespace is trimmed before lookup.
+          description: Leading and trailing whitespace is trimmed and the email is lowercased before lookup.
           format: email
           minLength: 1
           maxLength: 320
