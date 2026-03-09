@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createHttpApp } from "../app.js";
@@ -184,6 +185,30 @@ describe("project routes", () => {
       .set("authorization", `Bearer ${alice.token}`)
       .expect(400)
       .expect({ error: "projectId is required" });
+  });
+
+  it("rejects malformed project IDs on detail, rename, and delete routes", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+
+    await request(app)
+      .get("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .patch("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Renamed" })
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .delete("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
   });
 
   it("allows admins to read, rename, and soft delete projects", async () => {
@@ -412,8 +437,6 @@ function createInMemoryProjectRepository(
     string,
     Map<string, "admin" | "editor" | "commenter" | "reader">
   >();
-  let nextProjectId = 1;
-
   return {
     createForOwner: async ({ ownerUserId, name }) => {
       if (!hasUser(ownerUserId)) {
@@ -422,14 +445,13 @@ function createInMemoryProjectRepository(
 
       const now = new Date();
       const project = {
-        id: `project-${nextProjectId}`,
+        id: randomUUID(),
         name,
         createdAt: now,
         updatedAt: now,
         tombstoneAt: null,
       };
 
-      nextProjectId += 1;
       projectsById.set(project.id, project);
       membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
 
