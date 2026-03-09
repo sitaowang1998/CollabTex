@@ -4,8 +4,10 @@ import type {
   ProjectRole,
 } from "@collab-tex/shared";
 import type { StoredUser } from "./auth.js";
-import type { ProjectAccessService } from "./projectAccess.js";
-import { ProjectNotFoundError } from "./project.js";
+import {
+  ProjectNotFoundError,
+  type ProjectAccessService,
+} from "./projectAccess.js";
 
 export type MembershipRepository = {
   listMembersForUser: (

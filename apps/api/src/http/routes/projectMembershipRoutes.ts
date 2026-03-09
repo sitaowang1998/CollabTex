@@ -69,20 +69,20 @@ export function createProjectMembershipRouter(
     requireAuth,
     async (req, res, next) => {
       const body = parseAddProjectMemberRequest(req.body);
+      const projectId = parseUuidParam(req.params.projectId, "projectId");
 
       if (body instanceof HttpError) {
         next(body);
         return;
       }
 
+      if (projectId instanceof HttpError) {
+        next(projectId);
+        return;
+      }
+
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
-        const projectId = parseUuidParam(req.params.projectId, "projectId");
-
-        if (projectId instanceof HttpError) {
-          next(projectId);
-          return;
-        }
 
         const member = await membershipService.addMember({
           projectId,
