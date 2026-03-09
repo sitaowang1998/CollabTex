@@ -194,9 +194,6 @@ describe("membership service", () => {
   it("allows self-removal for non-admin members", async () => {
     const { membershipRepository, projectAccessService, userLookup } =
       createDependencies();
-    projectAccessService.requireProjectMember.mockResolvedValue(
-      createProjectWithRole("reader"),
-    );
     membershipRepository.deleteMembership.mockResolvedValue(true);
     const service = createMembershipService({
       membershipRepository,
@@ -211,6 +208,8 @@ describe("membership service", () => {
         targetUserId: "user-2",
       }),
     ).resolves.toBeUndefined();
+
+    expect(projectAccessService.requireProjectMember).not.toHaveBeenCalled();
   });
 
   it("rejects updates for missing memberships", async () => {

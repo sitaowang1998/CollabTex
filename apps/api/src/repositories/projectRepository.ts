@@ -1,14 +1,14 @@
-import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
+import {
+  assertActorIsAdmin,
+  isPrismaKnownRequestLikeError,
+  lockActiveProject,
+} from "./projectRepositoryUtils.js";
 import type {
   CreateProjectInput,
   ProjectRepository,
 } from "../services/project.js";
-import {
-  ProjectAdminRequiredError,
-  ProjectNotFoundError,
-  ProjectOwnerNotFoundError,
-} from "../services/project.js";
+import { ProjectOwnerNotFoundError } from "../services/project.js";
 import type {
   ProjectWithRole,
   StoredProject,
@@ -135,15 +135,6 @@ export function createProjectRepository(
   };
 }
 
-function isPrismaKnownRequestLikeError(
-  error: unknown,
-): error is Error & { code: string } {
-  return (
-    error instanceof Error &&
-    typeof (error as { code?: unknown }).code === "string"
-  );
-}
-
 function mapProjectWithRole(
   project: ProjectRowWithMembership,
 ): ProjectWithRole {
@@ -165,47 +156,4 @@ function mapProjectWithRole(
     },
     myRole: membership.role,
   };
-}
-
-async function lockActiveProject(
-  tx: Prisma.TransactionClient,
-  projectId: string,
-): Promise<void> {
-  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id
-    FROM "Project"
-    WHERE id = CAST(${projectId} AS uuid)
-      AND "tombstoneAt" IS NULL
-    FOR UPDATE
-  `);
-
-  if (rows.length === 0) {
-    throw new ProjectNotFoundError();
-  }
-}
-
-async function assertActorIsAdmin(
-  tx: Prisma.TransactionClient,
-  projectId: string,
-  actorUserId: string,
-): Promise<void> {
-  const actorMembership = await tx.projectMembership.findUnique({
-    where: {
-      projectId_userId: {
-        projectId,
-        userId: actorUserId,
-      },
-    },
-    select: {
-      role: true,
-    },
-  });
-
-  if (!actorMembership) {
-    throw new ProjectNotFoundError();
-  }
-
-  if (actorMembership.role !== "admin") {
-    throw new ProjectAdminRequiredError();
-  }
 }
