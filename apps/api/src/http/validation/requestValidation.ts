@@ -7,7 +7,7 @@ export const MAX_USER_EMAIL_LENGTH = 320;
 
 export function isObject(
   value: unknown,
-): value is Record<string, string | undefined> {
+): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
