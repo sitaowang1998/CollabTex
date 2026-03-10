@@ -1,11 +1,18 @@
 import type { DatabaseClient } from "../infrastructure/db/client.js";
+import {
+  assertActorIsAdmin,
+  isPrismaKnownRequestLikeError,
+  lockActiveProject,
+} from "./projectRepositoryUtils.js";
 import type {
   CreateProjectInput,
   ProjectRepository,
-  ProjectWithRole,
-  StoredProject,
 } from "../services/project.js";
 import { ProjectOwnerNotFoundError } from "../services/project.js";
+import type {
+  ProjectWithRole,
+  StoredProject,
+} from "../services/projectAccess.js";
 
 type ProjectRowWithMembership = StoredProject & {
   memberships: Array<{
@@ -96,51 +103,36 @@ export function createProjectRepository(
 
       return project ? mapProjectWithRole(project) : null;
     },
-    updateName: async (projectId, name) => {
-      const result = await databaseClient.project.updateMany({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
-        data: {
-          name,
-        },
-      });
+    updateName: async ({ projectId, actorUserId, name }) =>
+      databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorIsAdmin(tx, projectId, actorUserId);
 
-      if (result.count === 0) {
-        return null;
-      }
+        return tx.project.update({
+          where: {
+            id: projectId,
+          },
+          data: {
+            name,
+          },
+        });
+      }),
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
+      await databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorIsAdmin(tx, projectId, actorUserId);
 
-      return databaseClient.project.findFirst({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
+        await tx.project.update({
+          where: {
+            id: projectId,
+          },
+          data: {
+            tombstoneAt: deletedAt,
+          },
+        });
       });
-    },
-    softDelete: async (projectId, deletedAt) => {
-      const result = await databaseClient.project.updateMany({
-        where: {
-          id: projectId,
-          tombstoneAt: null,
-        },
-        data: {
-          tombstoneAt: deletedAt,
-        },
-      });
-
-      return result.count > 0;
     },
   };
-}
-
-function isPrismaKnownRequestLikeError(
-  error: unknown,
-): error is Error & { code: string } {
-  return (
-    error instanceof Error &&
-    typeof (error as { code?: unknown }).code === "string"
-  );
 }
 
 function mapProjectWithRole(

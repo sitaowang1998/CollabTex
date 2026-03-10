@@ -7,8 +7,11 @@ import {
 } from "../../services/auth.js";
 import {
   createProjectService,
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -36,8 +39,13 @@ export function createTestApp() {
   const projectService = createProjectService({
     projectRepository: createInMemoryProjectRepository(),
   });
+  const membershipService = createStubMembershipService();
 
-  return createHttpApp(testConfig, { authService, projectService });
+  return createHttpApp(testConfig, {
+    authService,
+    membershipService,
+    projectService,
+  });
 }
 
 function createInMemoryUserRepository(): AuthUserRepository {
@@ -146,11 +154,20 @@ function createInMemoryProjectRepository(): ProjectRepository {
         myRole: role,
       };
     },
-    updateName: async (projectId, name) => {
+    updateName: async ({ projectId, actorUserId, name }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       const updatedProject = {
@@ -162,11 +179,20 @@ function createInMemoryProjectRepository(): ProjectRepository {
 
       return updatedProject;
     },
-    softDelete: async (projectId, deletedAt) => {
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return false;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       projectsById.set(projectId, {
@@ -175,7 +201,22 @@ function createInMemoryProjectRepository(): ProjectRepository {
         updatedAt: deletedAt,
       });
 
-      return true;
+      return;
+    },
+  };
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for createTestApp");
     },
   };
 }

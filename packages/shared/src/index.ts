@@ -55,6 +55,30 @@ export type ProjectDetailsResponse = {
   myRole: ProjectRole;
 };
 
+export type ProjectMember = {
+  userId: string;
+  email: string;
+  name: string;
+  role: ProjectRole;
+};
+
+export type AddProjectMemberRequest = {
+  email: string;
+  role: ProjectRole;
+};
+
+export type UpdateProjectMemberRequest = {
+  role: ProjectRole;
+};
+
+export type ProjectMemberResponse = {
+  member: ProjectMember;
+};
+
+export type ProjectMemberListResponse = {
+  members: ProjectMember[];
+};
+
 export type WorkspaceJoinRequest = {
   projectId: string;
   documentId: string;

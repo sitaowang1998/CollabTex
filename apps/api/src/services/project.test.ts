@@ -58,10 +58,7 @@ describe("project service", () => {
 
   it("rejects updates for non-admin members", async () => {
     const repository = createProjectRepository();
-    repository.findForUser.mockResolvedValue({
-      project: createStoredProject(),
-      myRole: "editor",
-    });
+    repository.updateName.mockRejectedValue(new ProjectAdminRequiredError());
     const service = createProjectService({
       projectRepository: repository,
     });
@@ -74,15 +71,15 @@ describe("project service", () => {
       }),
     ).rejects.toBeInstanceOf(ProjectAdminRequiredError);
 
-    expect(repository.updateName).not.toHaveBeenCalled();
+    expect(repository.updateName).toHaveBeenCalledWith({
+      projectId: "project-1",
+      actorUserId: "user-1",
+      name: "Renamed",
+    });
   });
 
   it("updates projects for admins with normalized names", async () => {
     const repository = createProjectRepository();
-    repository.findForUser.mockResolvedValue({
-      project: createStoredProject(),
-      myRole: "admin",
-    });
     const updatedProject = createStoredProject({
       name: "Renamed",
     });
@@ -97,17 +94,17 @@ describe("project service", () => {
       name: "  Renamed  ",
     });
 
-    expect(repository.updateName).toHaveBeenCalledWith("project-1", "Renamed");
+    expect(repository.updateName).toHaveBeenCalledWith({
+      projectId: "project-1",
+      actorUserId: "user-1",
+      name: "Renamed",
+    });
     expect(result).toBe(updatedProject);
   });
 
   it("maps missing rows during delete to not found", async () => {
     const repository = createProjectRepository();
-    repository.findForUser.mockResolvedValue({
-      project: createStoredProject(),
-      myRole: "admin",
-    });
-    repository.softDelete.mockResolvedValue(false);
+    repository.softDelete.mockRejectedValue(new ProjectNotFoundError());
     const service = createProjectService({
       projectRepository: repository,
     });
@@ -118,6 +115,12 @@ describe("project service", () => {
         userId: "user-1",
       }),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
+
+    expect(repository.softDelete).toHaveBeenCalledWith({
+      projectId: "project-1",
+      actorUserId: "user-1",
+      deletedAt: expect.any(Date),
+    });
   });
 });
 

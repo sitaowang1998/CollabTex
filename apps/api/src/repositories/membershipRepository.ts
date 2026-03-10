@@ -1,0 +1,240 @@
+import { Prisma } from "@prisma/client";
+import type { ProjectMember } from "@collab-tex/shared";
+import type { DatabaseClient } from "../infrastructure/db/client.js";
+import {
+  DuplicateProjectMembershipError,
+  LastProjectAdminRemovalError,
+  MembershipUserNotFoundError,
+  ProjectAdminOrSelfRequiredError,
+  type MembershipRepository,
+} from "../services/membership.js";
+import {
+  assertActorIsAdmin,
+  isPrismaKnownRequestLikeError,
+  lockActiveProject,
+} from "./projectRepositoryUtils.js";
+import { ProjectNotFoundError } from "../services/project.js";
+
+type MembershipRow = {
+  userId: string;
+  role: ProjectMember["role"];
+  user: {
+    email: string;
+    name: string;
+  };
+};
+
+export function createMembershipRepository(
+  databaseClient: DatabaseClient,
+): MembershipRepository {
+  return {
+    listMembersForUser: async (projectId, userId) => {
+      const project = await databaseClient.project.findFirst({
+        where: {
+          id: projectId,
+          tombstoneAt: null,
+          memberships: {
+            some: {
+              userId,
+            },
+          },
+        },
+        include: {
+          memberships: {
+            include: {
+              user: {
+                select: {
+                  email: true,
+                  name: true,
+                },
+              },
+            },
+            orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+          },
+        },
+      });
+
+      if (!project) {
+        return null;
+      }
+
+      return project.memberships.map(mapProjectMember);
+    },
+    createMembership: async ({ projectId, actorUserId, userId, role }) => {
+      try {
+        return await databaseClient.$transaction(async (tx) => {
+          await lockActiveProject(tx, projectId);
+          await assertActorIsAdmin(tx, projectId, actorUserId);
+
+          const membership = await tx.projectMembership.create({
+            data: {
+              projectId,
+              userId,
+              role,
+            },
+            include: {
+              user: {
+                select: {
+                  email: true,
+                  name: true,
+                },
+              },
+            },
+          });
+
+          return mapProjectMember(membership);
+        });
+      } catch (error) {
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2002") {
+          throw new DuplicateProjectMembershipError();
+        }
+
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+          throw new MembershipUserNotFoundError();
+        }
+
+        throw error;
+      }
+    },
+    updateMembershipRole: async ({ projectId, actorUserId, userId, role }) =>
+      databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorIsAdmin(tx, projectId, actorUserId);
+
+        const membership = await tx.projectMembership.findUnique({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId,
+            },
+          },
+          include: {
+            user: {
+              select: {
+                email: true,
+                name: true,
+              },
+            },
+          },
+        });
+
+        if (!membership) {
+          return null;
+        }
+
+        if (membership.role === "admin" && role !== "admin") {
+          await assertNotLastAdmin(tx, projectId);
+        }
+
+        const updatedMembership = await tx.projectMembership.update({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId,
+            },
+          },
+          data: {
+            role,
+          },
+          include: {
+            user: {
+              select: {
+                email: true,
+                name: true,
+              },
+            },
+          },
+        });
+
+        return mapProjectMember(updatedMembership);
+      }),
+    deleteMembership: async ({ projectId, actorUserId, userId }) =>
+      databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+        await assertActorCanDeleteMember(tx, projectId, actorUserId, userId);
+
+        const membership = await tx.projectMembership.findUnique({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId,
+            },
+          },
+          select: {
+            role: true,
+          },
+        });
+
+        if (!membership) {
+          return false;
+        }
+
+        if (membership.role === "admin") {
+          await assertNotLastAdmin(tx, projectId);
+        }
+
+        await tx.projectMembership.delete({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId,
+            },
+          },
+        });
+
+        return true;
+      }),
+  };
+}
+
+function mapProjectMember(membership: MembershipRow): ProjectMember {
+  return {
+    userId: membership.userId,
+    email: membership.user.email,
+    name: membership.user.name,
+    role: membership.role,
+  };
+}
+
+async function assertNotLastAdmin(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+): Promise<void> {
+  const adminCount = await tx.projectMembership.count({
+    where: {
+      projectId,
+      role: "admin",
+    },
+  });
+
+  if (adminCount <= 1) {
+    throw new LastProjectAdminRemovalError();
+  }
+}
+
+async function assertActorCanDeleteMember(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  actorUserId: string,
+  targetUserId: string,
+): Promise<void> {
+  const actorMembership = await tx.projectMembership.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: actorUserId,
+      },
+    },
+    select: {
+      role: true,
+    },
+  });
+
+  if (!actorMembership) {
+    throw new ProjectNotFoundError();
+  }
+
+  if (actorMembership.role !== "admin" && actorUserId !== targetUserId) {
+    throw new ProjectAdminOrSelfRequiredError();
+  }
+}

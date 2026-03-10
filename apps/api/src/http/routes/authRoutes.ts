@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { LoginRequest, RegisterRequest } from "@collab-tex/shared";
 import type { AppConfig } from "../../config/appConfig.js";
 import { HttpError } from "../errors/httpError.js";
+import { isObject, parseEmail } from "../validation/requestValidation.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { createRequireAuth } from "../middleware/requireAuth.js";
 import {
@@ -11,7 +12,6 @@ import {
   type AuthService,
 } from "../../services/auth.js";
 
-const MAX_USER_EMAIL_LENGTH = 320;
 const MAX_USER_NAME_LENGTH = 120;
 
 export function createAuthRouter(config: AppConfig, authService: AuthService) {
@@ -71,23 +71,12 @@ function parseRegisterRequest(body: unknown): RegisterRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const email = parseEmail(body.email);
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
 
-  if (!email) {
-    return new HttpError(400, "email is required");
-  }
-
-  if (email.length > MAX_USER_EMAIL_LENGTH) {
-    return new HttpError(
-      400,
-      `email must be at most ${MAX_USER_EMAIL_LENGTH} characters`,
-    );
-  }
-
-  if (!isValidEmailAddress(email)) {
-    return new HttpError(400, "email must be a valid email address");
+  if (email instanceof HttpError) {
+    return email;
   }
 
   if (!name) {
@@ -113,22 +102,11 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const email = parseEmail(body.email);
   const password = typeof body.password === "string" ? body.password : "";
 
-  if (!email) {
-    return new HttpError(400, "email is required");
-  }
-
-  if (email.length > MAX_USER_EMAIL_LENGTH) {
-    return new HttpError(
-      400,
-      `email must be at most ${MAX_USER_EMAIL_LENGTH} characters`,
-    );
-  }
-
-  if (!isValidEmailAddress(email)) {
-    return new HttpError(400, "email must be a valid email address");
+  if (email instanceof HttpError) {
+    return email;
   }
 
   if (!password.trim()) {
@@ -136,42 +114,6 @@ function parseLoginRequest(body: unknown): LoginRequest | HttpError {
   }
 
   return { email, password };
-}
-
-function isObject(value: unknown): value is Record<string, string | undefined> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isValidEmailAddress(email: string): boolean {
-  if (/\s/.test(email)) {
-    return false;
-  }
-
-  const parts = email.split("@");
-
-  if (parts.length !== 2) {
-    return false;
-  }
-
-  const [localPart, domain] = parts;
-
-  if (!localPart || !domain) {
-    return false;
-  }
-
-  if (
-    localPart.startsWith(".") ||
-    localPart.endsWith(".") ||
-    localPart.includes("..")
-  ) {
-    return false;
-  }
-
-  const domainLabels = domain.split(".");
-
-  return (
-    domainLabels.length >= 2 && domainLabels.every((label) => label.length > 0)
-  );
 }
 
 function mapAuthError(error: unknown): Error {

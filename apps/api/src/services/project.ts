@@ -1,17 +1,18 @@
-import type { ProjectRole } from "@collab-tex/shared";
+import {
+  createProjectAccessService,
+  type ProjectAccessRepository,
+  type ProjectAccessService,
+  type ProjectWithRole,
+  type StoredProject,
+} from "./projectAccess.js";
 
-export type StoredProject = {
-  id: string;
-  name: string;
-  createdAt: Date;
-  updatedAt: Date;
-  tombstoneAt: Date | null;
-};
-
-export type ProjectWithRole = {
-  project: StoredProject;
-  myRole: ProjectRole;
-};
+export {
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
+  ProjectRoleRequiredError,
+  type ProjectWithRole,
+  type StoredProject,
+} from "./projectAccess.js";
 
 export type CreateProjectInput = {
   ownerUserId: string;
@@ -36,11 +37,16 @@ export type ProjectRepository = {
     projectId: string,
     userId: string,
   ) => Promise<ProjectWithRole | null>;
-  updateName: (
-    projectId: string,
-    name: string,
-  ) => Promise<StoredProject | null>;
-  softDelete: (projectId: string, deletedAt: Date) => Promise<boolean>;
+  updateName: (input: {
+    projectId: string;
+    actorUserId: string;
+    name: string;
+  }) => Promise<StoredProject>;
+  softDelete: (input: {
+    projectId: string;
+    actorUserId: string;
+    deletedAt: Date;
+  }) => Promise<void>;
 };
 
 export type ProjectService = {
@@ -51,18 +57,6 @@ export type ProjectService = {
   deleteProject: (input: DeleteProjectInput) => Promise<void>;
 };
 
-export class ProjectNotFoundError extends Error {
-  constructor() {
-    super("Project not found");
-  }
-}
-
-export class ProjectAdminRequiredError extends Error {
-  constructor() {
-    super("Project admin role is required");
-  }
-}
-
 export class ProjectOwnerNotFoundError extends Error {
   constructor() {
     super("Project owner user not found");
@@ -71,8 +65,12 @@ export class ProjectOwnerNotFoundError extends Error {
 
 export function createProjectService({
   projectRepository,
+  projectAccessService = createProjectAccessService({
+    projectRepository: projectRepository as ProjectAccessRepository,
+  }),
 }: {
   projectRepository: ProjectRepository;
+  projectAccessService?: ProjectAccessService;
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -82,65 +80,23 @@ export function createProjectService({
       }),
     listProjects: async (userId) => projectRepository.listForUser(userId),
     getProject: async (projectId, userId) => {
-      const project = await projectRepository.findForUser(projectId, userId);
-
-      if (!project) {
-        throw new ProjectNotFoundError();
-      }
-
-      return project;
+      return projectAccessService.requireProjectMember(projectId, userId);
     },
     updateProject: async (input) => {
-      const project = await requireProjectAdmin(
-        projectRepository,
-        input.projectId,
-        input.userId,
-      );
-      const updatedProject = await projectRepository.updateName(
-        project.project.id,
-        normalizeProjectName(input.name),
-      );
-
-      if (!updatedProject) {
-        throw new ProjectNotFoundError();
-      }
-
-      return updatedProject;
+      return projectRepository.updateName({
+        projectId: input.projectId,
+        actorUserId: input.userId,
+        name: normalizeProjectName(input.name),
+      });
     },
     deleteProject: async (input) => {
-      const project = await requireProjectAdmin(
-        projectRepository,
-        input.projectId,
-        input.userId,
-      );
-      const deleted = await projectRepository.softDelete(
-        project.project.id,
-        new Date(),
-      );
-
-      if (!deleted) {
-        throw new ProjectNotFoundError();
-      }
+      await projectRepository.softDelete({
+        projectId: input.projectId,
+        actorUserId: input.userId,
+        deletedAt: new Date(),
+      });
     },
   };
-}
-
-async function requireProjectAdmin(
-  projectRepository: ProjectRepository,
-  projectId: string,
-  userId: string,
-): Promise<ProjectWithRole> {
-  const project = await projectRepository.findForUser(projectId, userId);
-
-  if (!project) {
-    throw new ProjectNotFoundError();
-  }
-
-  if (project.myRole !== "admin") {
-    throw new ProjectAdminRequiredError();
-  }
-
-  return project;
 }
 
 function normalizeProjectName(name: string): string {

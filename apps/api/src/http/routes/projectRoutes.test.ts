@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createHttpApp } from "../app.js";
@@ -10,9 +11,14 @@ import {
 } from "../../services/auth.js";
 import {
   createProjectService,
+  ProjectAdminRequiredError,
+  ProjectNotFoundError,
+  ProjectRoleRequiredError,
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { AuthService } from "../../services/auth.js";
+import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -183,6 +189,30 @@ describe("project routes", () => {
       .expect({ error: "projectId is required" });
   });
 
+  it("rejects malformed project IDs on detail, rename, and delete routes", async () => {
+    const { app } = createProjectTestApp();
+    const alice = await registerUser(app, "alice@example.com", "Alice");
+
+    await request(app)
+      .get("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .patch("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .send({ name: "Renamed" })
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .delete("/api/projects/not-a-uuid")
+      .set("authorization", `Bearer ${alice.token}`)
+      .expect(400)
+      .expect({ error: "projectId must be a valid UUID" });
+  });
+
   it("allows admins to read, rename, and soft delete projects", async () => {
     const { app } = createProjectTestApp();
     const alice = await registerUser(app, "alice@example.com", "Alice");
@@ -263,6 +293,18 @@ describe("project routes", () => {
       .expect(403)
       .expect({ error: "admin role required" });
   });
+
+  it("maps ProjectRoleRequiredError to 403 for future project role checks", async () => {
+    const app = createRoleRequiredProjectApp();
+    const token = signToken(randomUUID(), testConfig.jwtSecret);
+
+    await request(app)
+      .patch(`/api/projects/${randomUUID()}`)
+      .set("authorization", `Bearer ${token}`)
+      .send({ name: "Renamed" })
+      .expect(403)
+      .expect({ error: "required project role missing" });
+  });
 });
 
 async function registerUser(
@@ -314,6 +356,7 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    membershipService: createStubMembershipService(),
     projectService: createProjectService({
       projectRepository,
     }),
@@ -322,6 +365,57 @@ function createProjectTestApp() {
   return {
     app,
     addMembership: projectRepository.addMembership,
+  };
+}
+
+function createRoleRequiredProjectApp() {
+  return createHttpApp(testConfig, {
+    authService: createStubAuthService(),
+    membershipService: createStubMembershipService(),
+    projectService: {
+      createProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      listProjects: async () => [],
+      getProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      updateProject: async () => {
+        throw new ProjectRoleRequiredError(["editor", "admin"]);
+      },
+      deleteProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+    },
+  });
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubAuthService(): AuthService {
+  return {
+    register: async () => {
+      throw new Error("Not implemented for role-required route test");
+    },
+    login: async () => {
+      throw new Error("Not implemented for role-required route test");
+    },
+    getAuthenticatedUser: async () => {
+      throw new Error("Not implemented for role-required route test");
+    },
   };
 }
 
@@ -393,8 +487,6 @@ function createInMemoryProjectRepository(
     string,
     Map<string, "admin" | "editor" | "commenter" | "reader">
   >();
-  let nextProjectId = 1;
-
   return {
     createForOwner: async ({ ownerUserId, name }) => {
       if (!hasUser(ownerUserId)) {
@@ -403,14 +495,13 @@ function createInMemoryProjectRepository(
 
       const now = new Date();
       const project = {
-        id: `project-${nextProjectId}`,
+        id: randomUUID(),
         name,
         createdAt: now,
         updatedAt: now,
         tombstoneAt: null,
       };
 
-      nextProjectId += 1;
       projectsById.set(project.id, project);
       membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
 
@@ -452,11 +543,20 @@ function createInMemoryProjectRepository(
         myRole: role,
       };
     },
-    updateName: async (projectId, name) => {
+    updateName: async ({ projectId, actorUserId, name }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return null;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       const updatedProject = {
@@ -468,11 +568,20 @@ function createInMemoryProjectRepository(
 
       return updatedProject;
     },
-    softDelete: async (projectId, deletedAt) => {
+    softDelete: async ({ projectId, actorUserId, deletedAt }) => {
       const project = projectsById.get(projectId);
+      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
 
       if (!project || project.tombstoneAt) {
-        return false;
+        throw new ProjectNotFoundError();
+      }
+
+      if (!actorRole) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (actorRole !== "admin") {
+        throw new ProjectAdminRequiredError();
       }
 
       projectsById.set(projectId, {
@@ -481,7 +590,7 @@ function createInMemoryProjectRepository(
         updatedAt: deletedAt,
       });
 
-      return true;
+      return;
     },
     addMembership: (projectId, userId, role) => {
       const memberships = membershipsByProjectId.get(projectId);

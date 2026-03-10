@@ -6,7 +6,11 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
-import { createProjectService } from "../../services/project.js";
+import type { MembershipService } from "../../services/membership.js";
+import {
+  createProjectService,
+  ProjectNotFoundError,
+} from "../../services/project.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
@@ -40,10 +44,15 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         },
         listForUser: async () => [],
         findForUser: async () => null,
-        updateName: async () => null,
-        softDelete: async () => false,
+        updateName: async () => {
+          throw new ProjectNotFoundError();
+        },
+        softDelete: async () => {
+          throw new ProjectNotFoundError();
+        },
       },
     }),
+    membershipService: createStubMembershipService(),
   });
   const server = http.createServer(app);
   const io = createSocketServer(server, testConfig);
@@ -74,6 +83,21 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
           resolve();
         });
       });
+    },
+  };
+}
+
+function createStubMembershipService(): MembershipService {
+  return {
+    listMembers: async () => [],
+    addMember: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    updateMemberRole: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    deleteMember: async () => {
+      throw new Error("Not implemented for socket tests");
     },
   };
 }
