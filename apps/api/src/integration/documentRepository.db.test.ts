@@ -252,6 +252,7 @@ describe("document repository integration", () => {
     await createDocuments(repository, project.id, owner.id, [
       { path: "/drafts/intro.tex", kind: "text", mime: null },
       { path: "/drafts/figures/plot.png", kind: "binary", mime: "image/png" },
+      { path: "/drafts-2/keep.tex", kind: "text", mime: null },
     ]);
 
     await expect(
@@ -270,7 +271,11 @@ describe("document repository integration", () => {
         path: "/drafts",
       }),
     ).resolves.toBe(true);
-    await expect(repository.listForProject(project.id)).resolves.toEqual([]);
+    await expect(repository.listForProject(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        path: "/drafts-2/keep.tex",
+      }),
+    ]);
   });
 });
 

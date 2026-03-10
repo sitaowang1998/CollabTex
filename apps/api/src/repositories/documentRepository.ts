@@ -110,14 +110,21 @@ export function createDocumentRepository(
       }
     },
     deleteNode: async ({ projectId, actorUserId, path }) => {
+      assertCanonicalPersistedPath(path);
+
       return databaseClient.$transaction(async (tx) => {
         await lockActiveProject(tx, projectId);
         await assertActorCanWriteDocuments(tx, projectId, actorUserId);
 
-        const documents = await listProjectDocuments(tx, projectId);
-        const exactDocument = documents.find(
-          (document) => document.path === path,
-        );
+        const exactDocument = await tx.document.findFirst({
+          where: {
+            projectId,
+            path,
+          },
+          select: {
+            id: true,
+          },
+        });
 
         if (exactDocument) {
           await tx.document.delete({
@@ -129,24 +136,19 @@ export function createDocumentRepository(
           return true;
         }
 
-        const descendantPaths = documents
-          .filter((document) => isDescendantPath(document.path, path))
-          .map((document) => document.path);
-
-        if (descendantPaths.length === 0) {
-          return false;
-        }
-
-        await tx.document.deleteMany({
+        const deletedDescendants = await tx.document.deleteMany({
           where: {
             projectId,
             path: {
-              in: descendantPaths,
+              // Folder-like deletes are prefix-based over canonical absolute
+              // paths, so "/docs/" matches descendants but not siblings like
+              // "/docs-2/...".
+              startsWith: `${path}/`,
             },
           },
         });
 
-        return true;
+        return deletedDescendants.count > 0;
       });
     },
   };

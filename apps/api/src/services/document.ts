@@ -308,7 +308,7 @@ export function normalizeNodeName(name: string): string {
   }
 
   if (trimmed.includes("/") || trimmed.includes("\\")) {
-    throw new InvalidDocumentPathError("name must not contain '/'");
+    throw new InvalidDocumentPathError("name must not contain path separators");
   }
 
   if (trimmed === "." || trimmed === "..") {

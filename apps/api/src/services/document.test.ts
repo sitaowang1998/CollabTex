@@ -4,6 +4,7 @@ import {
   InvalidDocumentPathError,
   buildFileTree,
   createDocumentService,
+  normalizeNodeName,
   type DocumentRepository,
   type StoredDocument,
 } from "./document.js";
@@ -138,6 +139,12 @@ describe("document service", () => {
         name: "docs/next.tex",
       }),
     ).rejects.toBeInstanceOf(InvalidDocumentPathError);
+  });
+
+  it("reports path separator validation clearly for node names", () => {
+    expect(() => normalizeNodeName("nested\\name")).toThrow(
+      "name must not contain path separators",
+    );
   });
 
   it("rejects move and rename targets whose joined persisted path exceeds 1024 characters", async () => {

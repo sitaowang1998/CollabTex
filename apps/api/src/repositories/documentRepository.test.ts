@@ -34,6 +34,23 @@ describe("document repository", () => {
       }),
     ).rejects.toBeInstanceOf(DocumentPathConflictError);
   });
+
+  it("rejects non-canonical delete paths before touching the database", async () => {
+    const databaseClient = createDatabaseClient();
+    const repository = createDocumentRepository(databaseClient);
+
+    await expect(
+      repository.deleteNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "docs/main.tex",
+      }),
+    ).rejects.toThrow(
+      "Expected canonical persisted document path starting with '/'",
+    );
+
+    expect(databaseClient.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 function createKnownRequestLikeError(code: string) {
@@ -45,5 +62,11 @@ function createKnownRequestLikeError(code: string) {
 function createDatabaseClientThatRejects(error: Error): DatabaseClient {
   return {
     $transaction: vi.fn().mockRejectedValue(error),
+  } as unknown as DatabaseClient;
+}
+
+function createDatabaseClient() {
+  return {
+    $transaction: vi.fn(),
   } as unknown as DatabaseClient;
 }
