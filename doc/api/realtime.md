@@ -28,24 +28,29 @@ Validation behavior:
 
 ## Server To Client Events
 
-### `workspace:joined`
+### `workspace:opened`
 
 ```json
 {
   "projectId": "project-123",
-  "documentId": "document-456",
-  "userId": "user-789"
+  "document": {
+    "id": "document-456",
+    "path": "/main.tex",
+    "kind": "text",
+    "mime": "text/x-tex",
+    "createdAt": "2026-03-01T12:00:00.000Z",
+    "updatedAt": "2026-03-01T12:00:00.000Z"
+  },
+  "content": "\\section{Intro}"
 }
 ```
 
-### `workspace:open`
+Behavior:
 
-```json
-{
-  "projectId": "project-123",
-  "documentId": "document-456"
-}
-```
+- emitted after a valid authenticated `workspace:join`
+- the server verifies project membership and document existence before emitting
+- text documents include the latest persisted snapshot-backed content
+- binary documents use `null` content
 
 ### `workspace:error`
 
@@ -61,6 +66,8 @@ Error codes:
 Currently emitted by `workspace:error`:
 
 - `INVALID_REQUEST`
+- `FORBIDDEN`
+- `NOT_FOUND`
 
 Connection errors during authentication:
 
@@ -70,5 +77,3 @@ Connection errors during authentication:
 Reserved in shared types but not currently emitted by `workspace:error`:
 
 - `UNAUTHORIZED`
-- `FORBIDDEN`
-- `NOT_FOUND`
