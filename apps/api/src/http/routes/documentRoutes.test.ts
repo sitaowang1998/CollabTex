@@ -193,6 +193,13 @@ describe("document routes", () => {
       .expect({ error: "path must be a string" });
 
     await request(app)
+      .post("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/files")
+      .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: "main.tex", kind: 123 })
+      .expect(400)
+      .expect({ error: "kind must be a string" });
+
+    await request(app)
       .patch("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes/move")
       .set("authorization", `Bearer ${createToken()}`)
       .send({ path: "main.tex" })

@@ -335,8 +335,12 @@ function parseDeleteNodeRequest(body: unknown): DeleteNodeRequest | HttpError {
 }
 
 function parseDocumentKind(value: unknown) {
-  if (typeof value !== "string") {
+  if (value === undefined) {
     return new HttpError(400, "kind is required");
+  }
+
+  if (typeof value !== "string") {
+    return new HttpError(400, "kind must be a string");
   }
 
   if (DOCUMENT_KINDS.includes(value as (typeof DOCUMENT_KINDS)[number])) {
