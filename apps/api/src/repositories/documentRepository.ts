@@ -45,6 +45,8 @@ export function createDocumentRepository(
       });
     },
     createDocument: async ({ projectId, actorUserId, path, kind, mime }) => {
+      assertCanonicalPersistedPath(path);
+
       try {
         return await databaseClient.$transaction(async (tx) => {
           await lockActiveProject(tx, projectId);
@@ -71,30 +73,40 @@ export function createDocumentRepository(
       }
     },
     moveNode: async ({ projectId, actorUserId, path, nextPath }) => {
-      return databaseClient.$transaction(async (tx) => {
-        await lockActiveProject(tx, projectId);
-        await assertActorCanWriteDocuments(tx, projectId, actorUserId);
+      assertCanonicalPersistedPath(path);
+      assertCanonicalPersistedPath(nextPath);
 
-        const documents = await listProjectDocuments(tx, projectId);
-        const movePlan = planPathMove(documents, path, nextPath);
+      try {
+        return await databaseClient.$transaction(async (tx) => {
+          await lockActiveProject(tx, projectId);
+          await assertActorCanWriteDocuments(tx, projectId, actorUserId);
 
-        if (!movePlan) {
-          return false;
+          const documents = await listProjectDocuments(tx, projectId);
+          const movePlan = planPathMove(documents, path, nextPath);
+
+          if (!movePlan) {
+            return false;
+          }
+
+          if (movePlan.length <= 1) {
+            await applyMovePlan(tx, movePlan);
+            return true;
+          }
+
+          const stagedMovePlan = createStagedMovePlan(movePlan);
+
+          await applyMovePlan(tx, stagedMovePlan);
+          await applyMovePlan(tx, movePlan);
+
+          return true;
+        });
+      } catch (error) {
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2002") {
+          throw new DocumentPathConflictError("path already exists");
         }
 
-        for (const documentMove of movePlan) {
-          await tx.document.update({
-            where: {
-              id: documentMove.id,
-            },
-            data: {
-              path: documentMove.nextPath,
-            },
-          });
-        }
-
-        return true;
-      });
+        throw error;
+      }
     },
     deleteNode: async ({ projectId, actorUserId, path }) => {
       return databaseClient.$transaction(async (tx) => {
@@ -205,6 +217,57 @@ type PlannedMove = {
   nextPath: string;
 };
 
+async function applyMovePlan(
+  tx: Prisma.TransactionClient,
+  movePlan: PlannedMove[],
+): Promise<void> {
+  for (const documentMove of movePlan) {
+    await tx.document.update({
+      where: {
+        id: documentMove.id,
+      },
+      data: {
+        path: documentMove.nextPath,
+      },
+    });
+  }
+}
+
+function createStagedMovePlan(movePlan: PlannedMove[]): PlannedMove[] {
+  const stagedMovePlan = movePlan.map((documentMove) => ({
+    id: documentMove.id,
+    currentPath: documentMove.currentPath,
+    nextPath: toTemporaryStagingPath(documentMove.currentPath),
+  }));
+
+  const stagedPaths = stagedMovePlan.map(
+    (documentMove) => documentMove.nextPath,
+  );
+
+  if (new Set(stagedPaths).size !== stagedPaths.length) {
+    throw new Error(
+      "Expected unique temporary staging paths for document move",
+    );
+  }
+
+  return stagedMovePlan;
+}
+
+function toTemporaryStagingPath(path: string): string {
+  assertCanonicalPersistedPath(path);
+
+  // Persisted document paths are always absolute and start with "/".
+  // Multi-row moves stage through a non-absolute namespace by stripping that
+  // leading slash, which keeps staging rows disjoint from all valid real rows.
+  const stagingPath = path.slice(1);
+
+  if (!stagingPath || stagingPath.startsWith("/")) {
+    throw new Error("Expected temporary staging path without leading slash");
+  }
+
+  return stagingPath;
+}
+
 function planPathMove(
   documents: DocumentPathRow[],
   sourcePath: string,
@@ -313,4 +376,12 @@ function isAncestorPath(ancestorPath: string, path: string): boolean {
 
 function isDescendantPath(path: string, ancestorPath: string): boolean {
   return path.startsWith(`${ancestorPath}/`);
+}
+
+function assertCanonicalPersistedPath(path: string): void {
+  if (!path.startsWith("/")) {
+    throw new Error(
+      "Expected canonical persisted document path starting with '/'",
+    );
+  }
 }

@@ -13,9 +13,24 @@ describe("document repository", () => {
       repository.createDocument({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "main.tex",
+        path: "/main.tex",
         kind: "text",
         mime: null,
+      }),
+    ).rejects.toBeInstanceOf(DocumentPathConflictError);
+  });
+
+  it("maps unique constraint errors during move operations to DocumentPathConflictError", async () => {
+    const repository = createDocumentRepository(
+      createDatabaseClientThatRejects(createKnownRequestLikeError("P2002")),
+    );
+
+    await expect(
+      repository.moveNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/docs",
+        nextPath: "/archive/docs",
       }),
     ).rejects.toBeInstanceOf(DocumentPathConflictError);
   });

@@ -252,6 +252,8 @@ export function normalizeDocumentPath(path: string): string {
     throw new InvalidDocumentPathError("path must use forward slashes");
   }
 
+  // Persisted backend document paths are always canonical absolute paths.
+  // We accept relative input for compatibility, then normalize it to "/...".
   const relativePath = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   const segments = relativePath.split("/");
 

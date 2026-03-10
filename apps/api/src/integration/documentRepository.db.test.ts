@@ -140,6 +140,37 @@ describe("document repository integration", () => {
     ]);
   });
 
+  it("stages overlapping descendant rewrites without transient unique collisions", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-overlap-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Overlap ${suffix}`);
+    const repository = createDocumentRepository(getDb());
+
+    await createDocuments(repository, project.id, owner.id, [
+      { path: "/a/a/a/b", kind: "text", mime: null },
+      { path: "/a/a/a/a/b", kind: "text", mime: null },
+    ]);
+
+    await expect(
+      repository.moveNode({
+        projectId: project.id,
+        actorUserId: owner.id,
+        path: "/a/a",
+        nextPath: "/a",
+      }),
+    ).resolves.toBe(true);
+
+    const documents = await repository.listForProject(project.id);
+
+    expect(documents.map((document) => document.path)).toEqual([
+      "/a/a/a/b",
+      "/a/a/b",
+    ]);
+    expect(documents.every((document) => document.path.startsWith("/"))).toBe(
+      true,
+    );
+  });
+
   it("deletes folder descendants and restricts writers to admins and editors", async () => {
     const suffix = randomUUID();
     const owner = await createUser(`doc-delete-owner-${suffix}@example.com`);
