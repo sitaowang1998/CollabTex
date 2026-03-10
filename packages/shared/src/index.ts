@@ -36,6 +36,66 @@ export type ProjectRole = "admin" | "editor" | "commenter" | "reader";
 
 export type DocumentKind = "text" | "binary";
 
+export type ProjectDocument = {
+  id: string;
+  path: string;
+  kind: DocumentKind;
+  mime: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FileTreeFileNode = {
+  type: "file";
+  name: string;
+  path: string;
+  documentId: string;
+  documentKind: DocumentKind;
+  mime: string | null;
+};
+
+export type FileTreeFolderNode = {
+  type: "folder";
+  name: string;
+  path: string;
+  children: FileTreeNode[];
+};
+
+export type FileTreeNode = FileTreeFileNode | FileTreeFolderNode;
+
+export type CreateFileRequest = {
+  path: string;
+  kind: DocumentKind;
+  mime?: string;
+};
+
+export type MoveNodeRequest = {
+  path: string;
+  destinationParentPath: string | null;
+};
+
+export type RenameNodeRequest = {
+  path: string;
+  name: string;
+};
+
+export type DeleteNodeRequest = {
+  path: string;
+};
+
+export type ProjectFileTreeResponse = {
+  nodes: FileTreeNode[];
+};
+
+export type ProjectDocumentResponse = {
+  document: ProjectDocument;
+};
+
+export type ProjectDocumentContentResponse = {
+  document: ProjectDocument;
+  content: string | null;
+};
+
 export type Project = {
   id: string;
   name: string;

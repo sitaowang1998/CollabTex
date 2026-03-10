@@ -18,6 +18,7 @@ import {
   type ProjectRepository,
 } from "../../services/project.js";
 import type { AuthService } from "../../services/auth.js";
+import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
   createTestPasswordHasher,
@@ -356,6 +357,7 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
       projectRepository,
@@ -371,6 +373,7 @@ function createProjectTestApp() {
 function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: {
       createProject: async () => {
@@ -400,6 +403,27 @@ function createStubMembershipService(): MembershipService {
       throw new Error("Not implemented for project route tests");
     },
     deleteMember: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubDocumentService(): DocumentService {
+  return {
+    getTree: async () => [],
+    createFile: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    moveNode: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    renameNode: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    deleteNode: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    getFileContent: async () => {
       throw new Error("Not implemented for project route tests");
     },
   };

@@ -9,6 +9,7 @@ import {
   DuplicateEmailError,
   type AuthUserRepository,
 } from "../../services/auth.js";
+import type { DocumentService } from "../../services/document.js";
 import {
   createMembershipService,
   DuplicateProjectMembershipError,
@@ -652,6 +653,7 @@ function createMembershipTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    documentService: createStubDocumentService(),
     membershipService: createMembershipService({
       membershipRepository,
       userLookup: userRepository,
@@ -680,6 +682,7 @@ function createMembershipTestApp() {
 function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    documentService: createStubDocumentService(),
     membershipService: {
       listMembers: async () => [],
       addMember: async () => {
@@ -694,6 +697,27 @@ function createRoleRequiredMembershipApp() {
     },
     projectService: createStubProjectService(),
   });
+}
+
+function createStubDocumentService(): DocumentService {
+  return {
+    getTree: async () => [],
+    createFile: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+    moveNode: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+    renameNode: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+    deleteNode: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+    getFileContent: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+  };
 }
 
 function createStubAuthService(): AuthService {

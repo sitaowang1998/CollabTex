@@ -10,6 +10,7 @@ tags:
   - name: Auth
   - name: Projects
   - name: Members
+  - name: Documents
 paths:
   /api/health:
     get:
@@ -291,6 +292,172 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/tree:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Documents
+      summary: List the path-derived file tree for an authorized project member
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Derived file tree rooted at the project root
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFileTreeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/files:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags:
+        - Documents
+      summary: Create a file entry at an absolute project path
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFileRequest"
+      responses:
+        "201":
+          description: File created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDocumentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/nodes/move:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    patch:
+      tags:
+        - Documents
+      summary: Move a file or folder to a different parent path
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveNodeRequest"
+      responses:
+        "204":
+          description: Node moved successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/nodes/rename:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    patch:
+      tags:
+        - Documents
+      summary: Rename a file or folder within its current parent path
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameNodeRequest"
+      responses:
+        "204":
+          description: Node renamed successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/nodes:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    delete:
+      tags:
+        - Documents
+      summary: Delete a file or all files under a folder path
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteNodeRequest"
+      responses:
+        "204":
+          description: Node deleted successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/files/content:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: path
+        in: query
+        required: true
+        description: Absolute project path. Relative input is accepted and normalized to absolute form.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 1024
+    get:
+      tags:
+        - Documents
+      summary: Load file metadata and the current text content placeholder
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: File metadata and current content placeholder
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDocumentContentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     BearerAuth:
@@ -444,6 +611,11 @@ components:
         - editor
         - commenter
         - reader
+    DocumentKind:
+      type: string
+      enum:
+        - text
+        - binary
     Project:
       type: object
       additionalProperties: false
@@ -592,3 +764,197 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectMember"
+    ProjectDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - path
+        - kind
+        - mime
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        path:
+          type: string
+          description: >-
+            Absolute, non-root project path beginning with "/". Persisted
+            document paths are already normalized and never contain empty
+            segments, backslashes, or "."/".." segments.
+          maxLength: 1024
+        kind:
+          $ref: "#/components/schemas/DocumentKind"
+        mime:
+          type:
+            - string
+            - "null"
+          maxLength: 255
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    FileTreeFileNode:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - name
+        - path
+        - documentId
+        - documentKind
+        - mime
+      properties:
+        type:
+          type: string
+          const: file
+        name:
+          type: string
+        path:
+          type: string
+          description: >-
+            Absolute, non-root project path beginning with "/". File paths are
+            normalized and never contain empty segments.
+        documentId:
+          type: string
+        documentKind:
+          $ref: "#/components/schemas/DocumentKind"
+        mime:
+          type:
+            - string
+            - "null"
+    FileTreeFolderNode:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - name
+        - path
+        - children
+      properties:
+        type:
+          type: string
+          const: folder
+        name:
+          type: string
+        path:
+          type: string
+          description: >-
+            Absolute, non-root project path beginning with "/". Folder paths
+            are derived from normalized document path prefixes.
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileTreeNode"
+    FileTreeNode:
+      oneOf:
+        - $ref: "#/components/schemas/FileTreeFolderNode"
+        - $ref: "#/components/schemas/FileTreeFileNode"
+    ProjectFileTreeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - nodes
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileTreeNode"
+    CreateFileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - kind
+      properties:
+        path:
+          type: string
+          description: >-
+            Leading and trailing whitespace is trimmed. Relative input is
+            accepted and normalized to an absolute project path with a single
+            leading slash. The root path "/" is rejected, and paths with empty
+            segments, backslashes, or "."/".." segments are invalid.
+          minLength: 1
+          maxLength: 1024
+        kind:
+          $ref: "#/components/schemas/DocumentKind"
+        mime:
+          type: string
+          description: Leading and trailing whitespace is trimmed; empty strings become null.
+          maxLength: 255
+    MoveNodeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - destinationParentPath
+      properties:
+        path:
+          type: string
+          description: Relative input is accepted and normalized to an absolute project path.
+          minLength: 1
+          maxLength: 1024
+        destinationParentPath:
+          type:
+            - string
+            - "null"
+          description: >-
+            Null, empty string, or "/" moves the node to the project root.
+            Non-root values are normalized to absolute project paths.
+          maxLength: 1024
+    RenameNodeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+        - name
+      properties:
+        path:
+          type: string
+          description: Relative input is accepted and normalized to an absolute project path.
+          minLength: 1
+          maxLength: 1024
+        name:
+          type: string
+          description: >-
+            New node name. The backend enforces a 1024-character limit on the
+            full destination path (including leading "/" and parent
+            segments), so the effective maximum name length also depends on the
+            destination parent path length.
+          minLength: 1
+          maxLength: 1023
+    DeleteNodeRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: Relative input is accepted and normalized to an absolute project path.
+          minLength: 1
+          maxLength: 1024
+    ProjectDocumentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - document
+      properties:
+        document:
+          $ref: "#/components/schemas/ProjectDocument"
+    ProjectDocumentContentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - document
+        - content
+      properties:
+        document:
+          $ref: "#/components/schemas/ProjectDocument"
+        content:
+          type:
+            - string
+            - "null"
