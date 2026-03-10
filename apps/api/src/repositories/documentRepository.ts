@@ -308,10 +308,13 @@ function planPathMove(
     return null;
   }
 
-  if (
-    destinationPath === sourcePath ||
-    isDescendantPath(destinationPath, sourcePath)
-  ) {
+  // Unchanged folder drags/renames are valid no-ops and should behave the
+  // same as unchanged file moves above.
+  if (destinationPath === sourcePath) {
+    return [];
+  }
+
+  if (isDescendantPath(destinationPath, sourcePath)) {
     throw new DocumentPathConflictError(
       "folder cannot be moved into itself or one of its descendants",
     );

@@ -172,6 +172,36 @@ describe("document repository integration", () => {
     );
   });
 
+  it("treats same-path folder moves as no-ops", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-noop-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Noop ${suffix}`);
+    const repository = createDocumentRepository(getDb());
+
+    await createDocuments(repository, project.id, owner.id, [
+      { path: "/docs/main.tex", kind: "text", mime: null },
+      { path: "/docs/figures/plot.png", kind: "binary", mime: "image/png" },
+    ]);
+
+    await expect(
+      repository.moveNode({
+        projectId: project.id,
+        actorUserId: owner.id,
+        path: "/docs",
+        nextPath: "/docs",
+      }),
+    ).resolves.toBe(true);
+
+    await expect(repository.listForProject(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        path: "/docs/figures/plot.png",
+      }),
+      expect.objectContaining({
+        path: "/docs/main.tex",
+      }),
+    ]);
+  });
+
   it("rejects folder moves whose rewritten descendants exceed the path limit", async () => {
     const suffix = randomUUID();
     const owner = await createUser(`doc-too-long-${suffix}@example.com`);
