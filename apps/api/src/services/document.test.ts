@@ -13,19 +13,19 @@ import {
 } from "./projectAccess.js";
 
 describe("document service", () => {
-  it("builds a nested file tree from project-relative paths", () => {
+  it("builds a nested file tree from absolute stored paths", () => {
     const tree = buildFileTree([
       createStoredDocument({
         id: "doc-2",
-        path: "docs/intro.tex",
+        path: "/docs/intro.tex",
       }),
       createStoredDocument({
         id: "doc-1",
-        path: "main.tex",
+        path: "/main.tex",
       }),
       createStoredDocument({
         id: "doc-3",
-        path: "docs/figures/plot.png",
+        path: "/docs/figures/plot.png",
         kind: "binary",
         mime: "image/png",
       }),
@@ -35,17 +35,17 @@ describe("document service", () => {
       {
         type: "folder",
         name: "docs",
-        path: "docs",
+        path: "/docs",
         children: [
           {
             type: "folder",
             name: "figures",
-            path: "docs/figures",
+            path: "/docs/figures",
             children: [
               {
                 type: "file",
                 name: "plot.png",
-                path: "docs/figures/plot.png",
+                path: "/docs/figures/plot.png",
                 documentId: "doc-3",
                 documentKind: "binary",
                 mime: "image/png",
@@ -55,7 +55,7 @@ describe("document service", () => {
           {
             type: "file",
             name: "intro.tex",
-            path: "docs/intro.tex",
+            path: "/docs/intro.tex",
             documentId: "doc-2",
             documentKind: "text",
             mime: null,
@@ -65,7 +65,7 @@ describe("document service", () => {
       {
         type: "file",
         name: "main.tex",
-        path: "main.tex",
+        path: "/main.tex",
         documentId: "doc-1",
         documentKind: "text",
         mime: null,
@@ -73,7 +73,7 @@ describe("document service", () => {
     ]);
   });
 
-  it("normalizes file and folder paths before repository writes", async () => {
+  it("normalizes relative and absolute file paths before repository writes", async () => {
     const repository = createDocumentRepository();
     const service = createDocumentService({
       documentRepository: repository,
@@ -82,7 +82,7 @@ describe("document service", () => {
 
     repository.createDocument.mockResolvedValue(
       createStoredDocument({
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
       }),
     );
 
@@ -93,23 +93,26 @@ describe("document service", () => {
       kind: "text",
       mime: " text/plain ",
     });
-    await service.createFolder({
+    await service.createFile({
       projectId: "project-1",
       actorUserId: "user-1",
-      path: "  docs/figures  ",
+      path: " /docs/appendix.tex ",
+      kind: "text",
     });
 
-    expect(repository.createDocument).toHaveBeenCalledWith({
+    expect(repository.createDocument).toHaveBeenNthCalledWith(1, {
       projectId: "project-1",
       actorUserId: "user-1",
-      path: "docs/main.tex",
+      path: "/docs/main.tex",
       kind: "text",
       mime: "text/plain",
     });
-    expect(repository.ensureFolderCreatable).toHaveBeenCalledWith({
+    expect(repository.createDocument).toHaveBeenNthCalledWith(2, {
       projectId: "project-1",
       actorUserId: "user-1",
-      path: "docs/figures",
+      path: "/docs/appendix.tex",
+      kind: "text",
+      mime: null,
     });
   });
 
@@ -123,7 +126,7 @@ describe("document service", () => {
       service.createFile({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "/main.tex",
+        path: "//main.tex",
         kind: "text",
       }),
     ).rejects.toBeInstanceOf(InvalidDocumentPathError);
@@ -152,15 +155,15 @@ describe("document service", () => {
       service.moveNode({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "docs/main.tex",
-        destinationParentPath: "archive",
+        path: "/docs/main.tex",
+        destinationParentPath: "/archive",
       }),
     ).rejects.toBeInstanceOf(DocumentNotFoundError);
     await expect(
       service.renameNode({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
         name: "renamed.tex",
       }),
     ).rejects.toBeInstanceOf(DocumentNotFoundError);
@@ -168,14 +171,14 @@ describe("document service", () => {
       service.deleteNode({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
       }),
     ).rejects.toBeInstanceOf(DocumentNotFoundError);
     await expect(
       service.getFileContent({
         projectId: "project-1",
         userId: "user-1",
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
       }),
     ).rejects.toBeInstanceOf(DocumentNotFoundError);
   });
@@ -190,14 +193,14 @@ describe("document service", () => {
     repository.moveNode.mockResolvedValue(true);
     repository.findByPath.mockResolvedValue(
       createStoredDocument({
-        path: "main.tex",
+        path: "/main.tex",
       }),
     );
 
     await service.moveNode({
       projectId: "project-1",
       actorUserId: "user-1",
-      path: "docs/main.tex",
+      path: "/docs/main.tex",
       destinationParentPath: null,
     });
     const response = await service.getFileContent({
@@ -209,13 +212,13 @@ describe("document service", () => {
     expect(repository.moveNode).toHaveBeenCalledWith({
       projectId: "project-1",
       actorUserId: "user-1",
-      path: "docs/main.tex",
-      nextPath: "main.tex",
+      path: "/docs/main.tex",
+      nextPath: "/main.tex",
     });
     expect(response).toEqual({
       document: {
         id: "document-1",
-        path: "main.tex",
+        path: "/main.tex",
         kind: "text",
         mime: null,
         createdAt: "2026-03-01T12:00:00.000Z",
@@ -225,7 +228,7 @@ describe("document service", () => {
     });
   });
 
-  it("checks write access before mutating routes", async () => {
+  it("checks write access before file creation", async () => {
     const repository = createDocumentRepository();
     const projectAccessService = createProjectAccessService();
     projectAccessService.requireProjectRole.mockRejectedValue(
@@ -237,14 +240,15 @@ describe("document service", () => {
     });
 
     await expect(
-      service.createFolder({
+      service.createFile({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "docs",
+        path: "/docs/main.tex",
+        kind: "text",
       }),
     ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
 
-    expect(repository.ensureFolderCreatable).not.toHaveBeenCalled();
+    expect(repository.createDocument).not.toHaveBeenCalled();
   });
 });
 
@@ -255,9 +259,6 @@ function createDocumentRepository() {
       .mockResolvedValue([]),
     findByPath: vi.fn<DocumentRepository["findByPath"]>(),
     createDocument: vi.fn<DocumentRepository["createDocument"]>(),
-    ensureFolderCreatable: vi
-      .fn<DocumentRepository["ensureFolderCreatable"]>()
-      .mockResolvedValue(undefined),
     moveNode: vi.fn<DocumentRepository["moveNode"]>(),
     deleteNode: vi.fn<DocumentRepository["deleteNode"]>(),
   };
@@ -298,7 +299,7 @@ function createStoredDocument(
   return {
     id: "document-1",
     projectId: "project-1",
-    path: "main.tex",
+    path: "/main.tex",
     kind: "text",
     mime: null,
     contentHash: null,

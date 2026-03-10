@@ -32,12 +32,12 @@ describe("document routes", () => {
       {
         type: "folder",
         name: "docs",
-        path: "docs",
+        path: "/docs",
         children: [
           {
             type: "file",
             name: "main.tex",
-            path: "docs/main.tex",
+            path: "/docs/main.tex",
             documentId: "document-1",
             documentKind: "text",
             mime: null,
@@ -57,12 +57,12 @@ describe("document routes", () => {
         {
           type: "folder",
           name: "docs",
-          path: "docs",
+          path: "/docs",
           children: [
             {
               type: "file",
               name: "main.tex",
-              path: "docs/main.tex",
+              path: "/docs/main.tex",
               documentId: "document-1",
               documentKind: "text",
               mime: null,
@@ -81,7 +81,7 @@ describe("document routes", () => {
     const documentService = createStubDocumentService();
     documentService.createFile.mockResolvedValue(
       createStoredDocument({
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
       }),
     );
     const app = createDocumentTestApp(documentService);
@@ -99,7 +99,7 @@ describe("document routes", () => {
     expect(response.body).toEqual({
       document: {
         id: "document-1",
-        path: "docs/main.tex",
+        path: "/docs/main.tex",
         kind: "text",
         mime: null,
         createdAt: "2026-03-01T12:00:00.000Z",
@@ -115,13 +115,12 @@ describe("document routes", () => {
     });
   });
 
-  it("creates folders, allows root moves, and loads file content by path", async () => {
+  it("allows root moves and loads file content by path", async () => {
     const documentService = createStubDocumentService();
-    documentService.createFolder.mockResolvedValue("docs");
     documentService.getFileContent.mockResolvedValue({
       document: {
         id: "document-1",
-        path: "main.tex",
+        path: "/main.tex",
         kind: "text",
         mime: null,
         createdAt: "2026-03-01T12:00:00.000Z",
@@ -133,16 +132,9 @@ describe("document routes", () => {
     const projectId = "6f35c2aa-fd34-4905-a370-7d9642244166";
 
     await request(app)
-      .post(`/api/projects/${projectId}/folders`)
-      .set("authorization", `Bearer ${createToken()}`)
-      .send({ path: "docs" })
-      .expect(201)
-      .expect({ path: "docs" });
-
-    await request(app)
       .patch(`/api/projects/${projectId}/nodes/move`)
       .set("authorization", `Bearer ${createToken()}`)
-      .send({ path: "docs/main.tex", destinationParentPath: null })
+      .send({ path: "/docs/main.tex", destinationParentPath: null })
       .expect(204);
 
     const response = await request(app)
@@ -154,13 +146,13 @@ describe("document routes", () => {
     expect(documentService.moveNode).toHaveBeenCalledWith({
       projectId,
       actorUserId: "user-1",
-      path: "docs/main.tex",
+      path: "/docs/main.tex",
       destinationParentPath: null,
     });
     expect(response.body).toEqual({
       document: {
         id: "document-1",
-        path: "main.tex",
+        path: "/main.tex",
         kind: "text",
         mime: null,
         createdAt: "2026-03-01T12:00:00.000Z",
@@ -179,6 +171,12 @@ describe("document routes", () => {
       .send({ path: "main.tex", kind: "text" })
       .expect(400)
       .expect({ error: "projectId must be a valid UUID" });
+
+    await request(app)
+      .post("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/folders")
+      .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: "docs" })
+      .expect(404);
 
     await request(app)
       .post("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/files")
@@ -203,7 +201,7 @@ describe("document routes", () => {
 
   it("maps role, conflict, not found, and missing-token errors", async () => {
     const documentService = createStubDocumentService();
-    documentService.createFolder.mockRejectedValue(
+    documentService.createFile.mockRejectedValue(
       new ProjectRoleRequiredError(["admin", "editor"]),
     );
     documentService.renameNode.mockRejectedValue(
@@ -215,23 +213,23 @@ describe("document routes", () => {
     const projectId = "6f35c2aa-fd34-4905-a370-7d9642244166";
 
     await request(app)
-      .post(`/api/projects/${projectId}/folders`)
+      .post(`/api/projects/${projectId}/files`)
       .set("authorization", `Bearer ${createToken()}`)
-      .send({ path: "docs" })
+      .send({ path: "/docs/main.tex", kind: "text" })
       .expect(403)
       .expect({ error: "required project role missing" });
 
     await request(app)
       .patch(`/api/projects/${projectId}/nodes/rename`)
       .set("authorization", `Bearer ${createToken()}`)
-      .send({ path: "docs/main.tex", name: "main-2.tex" })
+      .send({ path: "/docs/main.tex", name: "main-2.tex" })
       .expect(409)
       .expect({ error: "destination path already exists" });
 
     await request(app)
       .delete(`/api/projects/${projectId}/nodes`)
       .set("authorization", `Bearer ${createToken()}`)
-      .send({ path: "missing.tex" })
+      .send({ path: "/missing.tex" })
       .expect(404)
       .expect({ error: "document not found" });
 
@@ -263,7 +261,6 @@ function createStubDocumentService() {
   return {
     getTree: vi.fn<DocumentService["getTree"]>().mockResolvedValue([]),
     createFile: vi.fn<DocumentService["createFile"]>(),
-    createFolder: vi.fn<DocumentService["createFolder"]>(),
     moveNode: vi.fn<DocumentService["moveNode"]>().mockResolvedValue(undefined),
     renameNode: vi
       .fn<DocumentService["renameNode"]>()
@@ -332,7 +329,7 @@ function createStoredDocument(
   return {
     id: "document-1",
     projectId: "project-1",
-    path: "main.tex",
+    path: "/main.tex",
     kind: "text",
     mime: null,
     contentHash: null,

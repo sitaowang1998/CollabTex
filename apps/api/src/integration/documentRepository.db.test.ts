@@ -41,24 +41,24 @@ describe("document repository integration", () => {
     const createdDocument = await repository.createDocument({
       projectId: project.id,
       actorUserId: owner.id,
-      path: "src/main.tex",
+      path: "/src/main.tex",
       kind: "text",
       mime: "text/plain",
     });
     const projectDocuments = await repository.listForProject(project.id);
 
     await expect(
-      repository.findByPath(project.id, "src/main.tex"),
+      repository.findByPath(project.id, "/src/main.tex"),
     ).resolves.toMatchObject({
       id: createdDocument.id,
-      path: "src/main.tex",
+      path: "/src/main.tex",
       kind: "text",
       mime: "text/plain",
     });
     expect(projectDocuments).toEqual([
       expect.objectContaining({
         id: createdDocument.id,
-        path: "src/main.tex",
+        path: "/src/main.tex",
         kind: "text",
         mime: "text/plain",
       }),
@@ -74,7 +74,7 @@ describe("document repository integration", () => {
     await repository.createDocument({
       projectId: project.id,
       actorUserId: owner.id,
-      path: "docs/main.tex",
+      path: "/docs/main.tex",
       kind: "text",
       mime: null,
     });
@@ -83,7 +83,7 @@ describe("document repository integration", () => {
       repository.createDocument({
         projectId: project.id,
         actorUserId: owner.id,
-        path: "docs",
+        path: "/docs",
         kind: "binary",
         mime: "application/octet-stream",
       }),
@@ -92,16 +92,9 @@ describe("document repository integration", () => {
       repository.createDocument({
         projectId: project.id,
         actorUserId: owner.id,
-        path: "docs/main.tex/notes.txt",
+        path: "/docs/main.tex/notes.txt",
         kind: "text",
         mime: null,
-      }),
-    ).rejects.toBeInstanceOf(DocumentPathConflictError);
-    await expect(
-      repository.ensureFolderCreatable({
-        projectId: project.id,
-        actorUserId: owner.id,
-        path: "docs",
       }),
     ).rejects.toBeInstanceOf(DocumentPathConflictError);
   });
@@ -113,32 +106,36 @@ describe("document repository integration", () => {
     const repository = createDocumentRepository(getDb());
 
     await createDocuments(repository, project.id, owner.id, [
-      { path: "chapters/one.tex", kind: "text", mime: null },
-      { path: "chapters/images/figure.png", kind: "binary", mime: "image/png" },
+      { path: "/chapters/one.tex", kind: "text", mime: null },
+      {
+        path: "/chapters/images/figure.png",
+        kind: "binary",
+        mime: "image/png",
+      },
     ]);
 
     await expect(
       repository.moveNode({
         projectId: project.id,
         actorUserId: owner.id,
-        path: "chapters",
-        nextPath: "archive/chapters",
+        path: "/chapters",
+        nextPath: "/archive/chapters",
       }),
     ).resolves.toBe(true);
     await expect(
       repository.moveNode({
         projectId: project.id,
         actorUserId: owner.id,
-        path: "archive/chapters",
-        nextPath: "archive/chapters/images/archive",
+        path: "/archive/chapters",
+        nextPath: "/archive/chapters/images/archive",
       }),
     ).rejects.toBeInstanceOf(DocumentPathConflictError);
     await expect(repository.listForProject(project.id)).resolves.toEqual([
       expect.objectContaining({
-        path: "archive/chapters/images/figure.png",
+        path: "/archive/chapters/images/figure.png",
       }),
       expect.objectContaining({
-        path: "archive/chapters/one.tex",
+        path: "/archive/chapters/one.tex",
       }),
     ]);
   });
@@ -160,15 +157,15 @@ describe("document repository integration", () => {
       },
     });
     await createDocuments(repository, project.id, owner.id, [
-      { path: "drafts/intro.tex", kind: "text", mime: null },
-      { path: "drafts/figures/plot.png", kind: "binary", mime: "image/png" },
+      { path: "/drafts/intro.tex", kind: "text", mime: null },
+      { path: "/drafts/figures/plot.png", kind: "binary", mime: "image/png" },
     ]);
 
     await expect(
       repository.createDocument({
         projectId: project.id,
         actorUserId: commenter.id,
-        path: "drafts/notes.tex",
+        path: "/drafts/notes.tex",
         kind: "text",
         mime: null,
       }),
@@ -177,7 +174,7 @@ describe("document repository integration", () => {
       repository.deleteNode({
         projectId: project.id,
         actorUserId: owner.id,
-        path: "drafts",
+        path: "/drafts",
       }),
     ).resolves.toBe(true);
     await expect(repository.listForProject(project.id)).resolves.toEqual([]);

@@ -1,11 +1,9 @@
 import { Router } from "express";
 import type {
   CreateFileRequest,
-  CreateFolderRequest,
   DeleteNodeRequest,
   MoveNodeRequest,
   ProjectDocumentResponse,
-  ProjectFolderResponse,
   RenameNodeRequest,
 } from "@collab-tex/shared";
 import type { AppConfig } from "../../config/appConfig.js";
@@ -94,39 +92,6 @@ export function createDocumentRouter(
         const response: ProjectDocumentResponse = {
           document: serializeDocument(document),
         };
-        res.status(201).json(response);
-      } catch (error) {
-        next(mapDocumentError(error));
-      }
-    },
-  );
-
-  router.post(
-    "/api/projects/:projectId/folders",
-    requireAuth,
-    async (req, res, next) => {
-      const projectId = parseUuidParam(req.params.projectId, "projectId");
-      const body = parseCreateFolderRequest(req.body);
-
-      if (projectId instanceof HttpError) {
-        next(projectId);
-        return;
-      }
-
-      if (body instanceof HttpError) {
-        next(body);
-        return;
-      }
-
-      try {
-        const authenticatedRequest = req as AuthenticatedRequest;
-        const path = await documentService.createFolder({
-          projectId,
-          actorUserId: authenticatedRequest.userId,
-          path: body.path,
-        });
-        const response: ProjectFolderResponse = { path };
-
         res.status(201).json(response);
       } catch (error) {
         next(mapDocumentError(error));
@@ -299,22 +264,6 @@ function parseCreateFileRequest(body: unknown): CreateFileRequest | HttpError {
     kind,
     ...(mime === undefined ? {} : { mime }),
   };
-}
-
-function parseCreateFolderRequest(
-  body: unknown,
-): CreateFolderRequest | HttpError {
-  if (!isObject(body)) {
-    return new HttpError(400, "request body must be an object");
-  }
-
-  const path = parseRequiredTrimmedString(body.path as string, "path");
-
-  if (path instanceof HttpError) {
-    return path;
-  }
-
-  return { path };
 }
 
 function parseMoveNodeRequest(body: unknown): MoveNodeRequest | HttpError {

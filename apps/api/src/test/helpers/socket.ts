@@ -95,9 +95,6 @@ function createStubDocumentService(): DocumentService {
     createFile: async () => {
       throw new Error("Not implemented for socket tests");
     },
-    createFolder: async () => {
-      throw new Error("Not implemented for socket tests");
-    },
     moveNode: async () => {
       throw new Error("Not implemented for socket tests");
     },

@@ -31,12 +31,6 @@ export type CreateFileInput = {
   actorUserId: string;
 } & CreateFileRequest;
 
-export type CreateFolderInput = {
-  projectId: string;
-  actorUserId: string;
-  path: string;
-};
-
 export type MoveNodeInput = {
   projectId: string;
   actorUserId: string;
@@ -76,11 +70,6 @@ export type DocumentRepository = {
     kind: DocumentKind;
     mime: string | null;
   }) => Promise<StoredDocument>;
-  ensureFolderCreatable: (input: {
-    projectId: string;
-    actorUserId: string;
-    path: string;
-  }) => Promise<void>;
   moveNode: (input: {
     projectId: string;
     actorUserId: string;
@@ -97,7 +86,6 @@ export type DocumentRepository = {
 export type DocumentService = {
   getTree: (projectId: string, userId: string) => Promise<FileTreeNode[]>;
   createFile: (input: CreateFileInput) => Promise<StoredDocument>;
-  createFolder: (input: CreateFolderInput) => Promise<string>;
   moveNode: (input: MoveNodeInput) => Promise<void>;
   renameNode: (input: RenameNodeInput) => Promise<void>;
   deleteNode: (input: DeleteNodeInput) => Promise<void>;
@@ -152,21 +140,6 @@ export function createDocumentService({
         kind: input.kind,
         mime: normalizeMime(input.mime),
       });
-    },
-    createFolder: async (input) => {
-      await requireDocumentWriteRole(
-        projectAccessService,
-        input.projectId,
-        input.actorUserId,
-      );
-
-      await documentRepository.ensureFolderCreatable({
-        projectId: input.projectId,
-        actorUserId: input.actorUserId,
-        path: normalizeDocumentPath(input.path),
-      });
-
-      return normalizeDocumentPath(input.path);
     },
     moveNode: async (input) => {
       await requireDocumentWriteRole(
@@ -275,15 +248,12 @@ export function normalizeDocumentPath(path: string): string {
     throw new InvalidDocumentPathError("path is required");
   }
 
-  if (trimmed.startsWith("/")) {
-    throw new InvalidDocumentPathError("path must be project-relative");
-  }
-
   if (trimmed.includes("\\")) {
     throw new InvalidDocumentPathError("path must use forward slashes");
   }
 
-  const segments = trimmed.split("/");
+  const relativePath = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+  const segments = relativePath.split("/");
 
   if (segments.some((segment) => segment.length === 0)) {
     throw new InvalidDocumentPathError("path must not contain empty segments");
@@ -293,7 +263,7 @@ export function normalizeDocumentPath(path: string): string {
     throw new InvalidDocumentPathError("path must not contain '.' or '..'");
   }
 
-  const normalizedPath = segments.join("/");
+  const normalizedPath = `/${segments.join("/")}`;
 
   if (normalizedPath.length > DOCUMENT_PATH_MAX_LENGTH) {
     throw new InvalidDocumentPathError(
@@ -317,30 +287,48 @@ export function normalizeOptionalParentPath(
     return null;
   }
 
+  if (trimmed === "/") {
+    return null;
+  }
+
   return normalizeDocumentPath(trimmed);
 }
 
 export function normalizeNodeName(name: string): string {
-  const normalizedName = normalizeDocumentPath(name);
+  const trimmed = name.trim();
 
-  if (normalizedName.includes("/")) {
+  if (!trimmed) {
+    throw new InvalidDocumentPathError("name is required");
+  }
+
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
     throw new InvalidDocumentPathError("name must not contain '/'");
   }
 
-  return normalizedName;
+  if (trimmed === "." || trimmed === "..") {
+    throw new InvalidDocumentPathError("name must not contain '.' or '..'");
+  }
+
+  if (trimmed.length > DOCUMENT_PATH_MAX_LENGTH) {
+    throw new InvalidDocumentPathError(
+      `name must be at most ${DOCUMENT_PATH_MAX_LENGTH} characters`,
+    );
+  }
+
+  return trimmed;
 }
 
 export function joinParentAndName(
   parentPath: string | null,
   name: string,
 ): string {
-  return parentPath ? `${parentPath}/${name}` : name;
+  return parentPath ? `${parentPath}/${name}` : `/${name}`;
 }
 
 export function getParentPath(path: string): string | null {
   const lastSlashIndex = path.lastIndexOf("/");
 
-  if (lastSlashIndex === -1) {
+  if (lastSlashIndex <= 0) {
     return null;
   }
 
@@ -406,12 +394,12 @@ export function buildFileTree(documents: StoredDocument[]): FileTreeNode[] {
   for (const document of [...documents].sort((left, right) =>
     left.path.localeCompare(right.path),
   )) {
-    const segments = document.path.split("/");
+    const segments = normalizeDocumentPath(document.path).slice(1).split("/");
     let currentChildren = rootChildren;
     let currentPath = "";
 
     for (const [index, segment] of segments.entries()) {
-      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      currentPath = currentPath ? `${currentPath}/${segment}` : `/${segment}`;
       const isLastSegment = index === segments.length - 1;
 
       if (isLastSegment) {

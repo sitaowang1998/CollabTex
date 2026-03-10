@@ -283,7 +283,6 @@ function createInMemoryDocumentRepository(): DocumentRepository {
 
       return document;
     },
-    ensureFolderCreatable: async () => {},
     moveNode: async ({ projectId, path, nextPath }) => {
       const documents = documentsByProjectId.get(projectId) ?? [];
       const documentIndex = documents.findIndex(

@@ -6,7 +6,6 @@ import {
   type StoredDocument,
 } from "../services/document.js";
 import {
-  ProjectAdminRequiredError,
   ProjectNotFoundError,
   ProjectRoleRequiredError,
 } from "../services/project.js";
@@ -70,15 +69,6 @@ export function createDocumentRepository(
 
         throw error;
       }
-    },
-    ensureFolderCreatable: async ({ projectId, actorUserId, path }) => {
-      await databaseClient.$transaction(async (tx) => {
-        await lockActiveProject(tx, projectId);
-        await assertActorCanWriteDocuments(tx, projectId, actorUserId);
-
-        const documents = await listProjectDocuments(tx, projectId);
-        assertCanCreateFolder(documents, path);
-      });
     },
     moveNode: async ({ projectId, actorUserId, path, nextPath }) => {
       return databaseClient.$transaction(async (tx) => {
@@ -186,12 +176,10 @@ async function assertActorCanWriteDocuments(
     throw new ProjectNotFoundError();
   }
 
-  if (DOCUMENT_WRITE_ROLES.includes(membership.role)) {
+  if (
+    DOCUMENT_WRITE_ROLES.some((allowedRole) => allowedRole === membership.role)
+  ) {
     return;
-  }
-
-  if (membership.role === "admin") {
-    throw new ProjectAdminRequiredError();
   }
 
   throw new ProjectRoleRequiredError(DOCUMENT_WRITE_ROLES);
@@ -208,25 +196,6 @@ function assertCanCreatePath(documents: DocumentPathRow[], path: string): void {
 
   if (documents.some((document) => isDescendantPath(document.path, path))) {
     throw new DocumentPathConflictError("path already exists as a folder");
-  }
-}
-
-function assertCanCreateFolder(
-  documents: DocumentPathRow[],
-  path: string,
-): void {
-  if (documents.some((document) => document.path === path)) {
-    throw new DocumentPathConflictError("path already exists");
-  }
-
-  if (documents.some((document) => isAncestorPath(document.path, path))) {
-    throw new DocumentPathConflictError(
-      "folder cannot be created under a file",
-    );
-  }
-
-  if (documents.some((document) => isDescendantPath(document.path, path))) {
-    throw new DocumentPathConflictError("folder already exists");
   }
 }
 

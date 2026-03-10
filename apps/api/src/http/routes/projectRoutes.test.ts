@@ -414,9 +414,6 @@ function createStubDocumentService(): DocumentService {
     createFile: async () => {
       throw new Error("Not implemented for project route tests");
     },
-    createFolder: async () => {
-      throw new Error("Not implemented for project route tests");
-    },
     moveNode: async () => {
       throw new Error("Not implemented for project route tests");
     },

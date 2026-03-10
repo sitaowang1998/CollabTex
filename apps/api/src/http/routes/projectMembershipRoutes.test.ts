@@ -705,9 +705,6 @@ function createStubDocumentService(): DocumentService {
     createFile: async () => {
       throw new Error("Not implemented for membership route tests");
     },
-    createFolder: async () => {
-      throw new Error("Not implemented for membership route tests");
-    },
     moveNode: async () => {
       throw new Error("Not implemented for membership route tests");
     },
