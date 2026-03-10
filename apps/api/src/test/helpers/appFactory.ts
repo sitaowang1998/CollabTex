@@ -18,6 +18,7 @@ import {
 } from "../../services/project.js";
 import type { MembershipService } from "../../services/membership.js";
 import { type SnapshotService } from "../../services/snapshot.js";
+import { type SnapshotRefreshTrigger } from "../../services/snapshotRefresh.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -71,6 +72,7 @@ export function createTestApp() {
       }),
     },
     snapshotService: createInMemorySnapshotService(),
+    snapshotRefreshTrigger: createNoopSnapshotRefreshTrigger(),
   });
   const membershipService = createStubMembershipService();
 
@@ -418,5 +420,12 @@ function createInMemorySnapshotService(): SnapshotService {
         createdAt: new Date(),
       };
     },
+  };
+}
+
+function createNoopSnapshotRefreshTrigger(): SnapshotRefreshTrigger {
+  return {
+    kick: () => {},
+    stop: () => {},
   };
 }

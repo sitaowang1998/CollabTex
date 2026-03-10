@@ -18,6 +18,13 @@ enum DocumentKind {
   binary
 }
 
+enum SnapshotRefreshJobStatus {
+  queued
+  processing
+  succeeded
+  failed
+}
+
 model User {
   id            String              @id @default(uuid()) @db.Uuid
   // Emails are stored lowercase; auth flows must normalize before reads and writes.
@@ -28,6 +35,7 @@ model User {
   updatedAt     DateTime            @default(now()) @updatedAt
   memberships   ProjectMembership[]
   authoredSnaps Snapshot[]          @relation("SnapshotAuthor")
+  requestedSnapshotRefreshJobs SnapshotRefreshJob[] @relation("SnapshotRefreshJobRequester")
 }
 
 model Project {
@@ -39,6 +47,7 @@ model Project {
   memberships ProjectMembership[]
   documents   Document[]
   snapshots   Snapshot[]
+  snapshotRefreshJobs SnapshotRefreshJob[]
 }
 
 model ProjectMembership {
@@ -79,4 +88,22 @@ model Snapshot {
   author      User?     @relation("SnapshotAuthor", fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+}
+
+model SnapshotRefreshJob {
+  id                String                   @id @default(uuid()) @db.Uuid
+  projectId         String                   @db.Uuid
+  requestedByUserId String?                  @db.Uuid
+  status            SnapshotRefreshJobStatus @default(queued)
+  attemptCount      Int                      @default(0)
+  lastError         String?                  @db.VarChar(512)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @default(now()) @updatedAt
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  project           Project                  @relation(fields: [projectId], references: [id])
+  requestedByUser   User?                    @relation("SnapshotRefreshJobRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([status, createdAt])
 }

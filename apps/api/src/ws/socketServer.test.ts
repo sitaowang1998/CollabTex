@@ -199,4 +199,45 @@ describe("socket server", () => {
       message: "workspace document not found",
     });
   });
+
+  it("emits a generic unavailable error for unexpected workspace failures", async () => {
+    socketServer = await createTestSocketServer({
+      snapshotService: {
+        loadDocumentContent: async () => {
+          throw new Error("disk path leaked");
+        },
+        captureProjectSnapshot: async () => {
+          throw new Error("Not implemented for socket tests");
+        },
+      },
+    });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{ code: string; message: string }>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("workspace:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "UNAVAILABLE",
+      message: "workspace unavailable",
+    });
+  });
 });

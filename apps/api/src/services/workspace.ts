@@ -19,10 +19,6 @@ export type WorkspaceOpenedDocument = {
   content: string | null;
 };
 
-export type WorkspaceProjectLookup = {
-  findActiveById: (projectId: string) => Promise<{ id: string } | null>;
-};
-
 export type WorkspaceDocumentLookup = Pick<DocumentRepository, "findById">;
 
 export type WorkspaceService = {
@@ -42,24 +38,16 @@ export class WorkspaceDocumentNotFoundError extends Error {
 }
 
 export function createWorkspaceService({
-  projectLookup,
   projectAccessService,
   documentRepository,
   snapshotService,
 }: {
-  projectLookup: WorkspaceProjectLookup;
   projectAccessService: ProjectAccessService;
   documentRepository: WorkspaceDocumentLookup;
   snapshotService: SnapshotService;
 }): WorkspaceService {
   return {
     openDocument: async ({ projectId, documentId, userId }) => {
-      const project = await projectLookup.findActiveById(projectId);
-
-      if (!project) {
-        throw new WorkspaceDocumentNotFoundError();
-      }
-
       try {
         await projectAccessService.requireProjectMember(projectId, userId);
       } catch (error) {

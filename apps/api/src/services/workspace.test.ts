@@ -3,7 +3,6 @@ import type { DocumentRepository, StoredDocument } from "./document.js";
 import {
   ProjectNotFoundError,
   type ProjectAccessService,
-  type StoredProject,
 } from "./projectAccess.js";
 import {
   createWorkspaceService,
@@ -15,11 +14,9 @@ import type { SnapshotService } from "./snapshot.js";
 describe("workspace service", () => {
   it("opens a document for an authorized member", async () => {
     const documentRepository = createDocumentRepository();
-    const projectLookup = createProjectLookup();
     const projectAccessService = createProjectAccessService();
     const snapshotService = createSnapshotService();
     const service = createWorkspaceService({
-      projectLookup,
       projectAccessService,
       documentRepository,
       snapshotService,
@@ -54,7 +51,6 @@ describe("workspace service", () => {
       new ProjectNotFoundError(),
     );
     const service = createWorkspaceService({
-      projectLookup: createProjectLookup(),
       projectAccessService,
       documentRepository: createDocumentRepository(),
       snapshotService: createSnapshotService(),
@@ -69,11 +65,8 @@ describe("workspace service", () => {
     ).rejects.toBeInstanceOf(WorkspaceAccessDeniedError);
   });
 
-  it("maps project lookup misses to not found", async () => {
-    const projectLookup = createProjectLookup();
-    projectLookup.findActiveById.mockResolvedValue(null);
+  it("maps missing documents to not found after membership succeeds", async () => {
     const service = createWorkspaceService({
-      projectLookup,
       projectAccessService: createProjectAccessService(),
       documentRepository: createDocumentRepository(),
       snapshotService: createSnapshotService(),
@@ -92,18 +85,6 @@ describe("workspace service", () => {
 function createDocumentRepository() {
   return {
     findById: vi.fn<DocumentRepository["findById"]>(),
-  };
-}
-
-function createProjectLookup() {
-  return {
-    findActiveById: vi.fn().mockResolvedValue({
-      id: "project-1",
-      name: "Project",
-      createdAt: new Date("2026-03-01T12:00:00.000Z"),
-      updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-      tombstoneAt: null,
-    } satisfies StoredProject),
   };
 }
 

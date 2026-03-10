@@ -64,6 +64,23 @@ describe("document repository integration", () => {
         mime: "text/plain",
       }),
     ]);
+    await expect(
+      getDb().snapshotRefreshJob.findMany({
+        where: {
+          projectId: project.id,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        projectId: project.id,
+        requestedByUserId: owner.id,
+        status: "queued",
+        attemptCount: 0,
+      }),
+    ]);
   });
 
   it("rejects file and folder collisions caused by path prefixes", async () => {

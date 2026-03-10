@@ -14,6 +14,7 @@ import {
   type ProjectAccessService,
 } from "./projectAccess.js";
 import { type SnapshotService } from "./snapshot.js";
+import { type SnapshotRefreshTrigger } from "./snapshotRefresh.js";
 
 describe("document service", () => {
   it("builds a nested file tree from absolute stored paths", () => {
@@ -82,6 +83,7 @@ describe("document service", () => {
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
 
     repository.createDocument.mockResolvedValue(
@@ -125,6 +127,7 @@ describe("document service", () => {
       documentRepository: createDocumentRepository(),
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
 
     await expect(
@@ -170,6 +173,7 @@ describe("document service", () => {
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
     const longName = "a".repeat(1024);
     const longParentPath = `/${"p".repeat(1023)}`;
@@ -200,6 +204,7 @@ describe("document service", () => {
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
 
     repository.moveNode.mockResolvedValue(false);
@@ -244,6 +249,7 @@ describe("document service", () => {
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
 
     repository.moveNode.mockResolvedValue(true);
@@ -294,6 +300,7 @@ describe("document service", () => {
       documentRepository: repository,
       projectAccessService,
       snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
     });
 
     await expect(
@@ -337,6 +344,13 @@ function createSnapshotService() {
         authorId: "user-1",
         createdAt: new Date("2026-03-01T12:00:00.000Z"),
       }),
+  };
+}
+
+function createSnapshotRefreshTrigger() {
+  return {
+    kick: vi.fn<SnapshotRefreshTrigger["kick"]>(),
+    stop: vi.fn<SnapshotRefreshTrigger["stop"]>(),
   };
 }
 

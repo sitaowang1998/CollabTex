@@ -10,6 +10,7 @@ import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createMembershipRepository } from "./repositories/membershipRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
 import { createSnapshotRepository } from "./repositories/snapshotRepository.js";
+import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefreshJobRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createDocumentService } from "./services/document.js";
@@ -17,6 +18,10 @@ import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
 import { createSnapshotService } from "./services/snapshot.js";
+import {
+  createSnapshotRefreshProcessor,
+  createSnapshotRefreshTrigger,
+} from "./services/snapshotRefresh.js";
 import { createWorkspaceService } from "./services/workspace.js";
 import { createSocketServer } from "./ws/socketServer.js";
 
@@ -44,12 +49,23 @@ async function main() {
     const projectRepository = createProjectRepository(databaseClient);
     const documentRepository = createDocumentRepository(databaseClient);
     const snapshotRepository = createSnapshotRepository(databaseClient);
+    const snapshotRefreshJobRepository =
+      createSnapshotRefreshJobRepository(databaseClient);
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
     const snapshotService = createSnapshotService({
       snapshotRepository,
       snapshotStore,
+    });
+    const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
+      snapshotRefreshJobRepository,
+      snapshotRepository,
+      snapshotStore,
+      documentRepository,
+    });
+    const snapshotRefreshTrigger = createSnapshotRefreshTrigger({
+      snapshotRefreshProcessor,
     });
     const authService = createAuthService({
       userRepository,
@@ -61,6 +77,7 @@ async function main() {
       documentRepository,
       projectAccessService,
       snapshotService,
+      snapshotRefreshTrigger,
     });
     const projectService = createProjectService({
       projectRepository,
@@ -80,14 +97,19 @@ async function main() {
     const server = http.createServer(app);
     const io = createSocketServer(server, config, {
       workspaceService: createWorkspaceService({
-        projectLookup: projectRepository,
         projectAccessService,
         documentRepository,
         snapshotService,
       }),
     });
 
-    installShutdownHandlers({ server, io, databaseClient });
+    installShutdownHandlers({
+      server,
+      io,
+      databaseClient,
+      snapshotRefreshTrigger,
+    });
+    snapshotRefreshTrigger.kick();
     await listen(server, config.port);
 
     console.log(`API+Socket.io listening on http://localhost:${config.port}`);
@@ -102,10 +124,12 @@ function installShutdownHandlers({
   server,
   io,
   databaseClient,
+  snapshotRefreshTrigger,
 }: {
   server: http.Server;
   io: ReturnType<typeof createSocketServer>;
   databaseClient: ReturnType<typeof createDatabaseClient>;
+  snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
 }) {
   let isShuttingDown = false;
 
@@ -118,6 +142,7 @@ function installShutdownHandlers({
     console.log(`Received ${signal}, shutting down`);
 
     try {
+      snapshotRefreshTrigger.stop();
       await closeSocketServer(io);
       await closeHttpServer(server);
       await databaseClient.$disconnect();

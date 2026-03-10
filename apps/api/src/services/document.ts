@@ -7,6 +7,7 @@ import type {
 } from "@collab-tex/shared";
 import { type ProjectAccessService } from "./projectAccess.js";
 import type { SnapshotService } from "./snapshot.js";
+import type { SnapshotRefreshTrigger } from "./snapshotRefresh.js";
 
 const DOCUMENT_PATH_MAX_LENGTH = 1024;
 const DOCUMENT_NODE_NAME_MAX_LENGTH = DOCUMENT_PATH_MAX_LENGTH - 1;
@@ -118,10 +119,12 @@ export function createDocumentService({
   documentRepository,
   projectAccessService,
   snapshotService,
+  snapshotRefreshTrigger,
 }: {
   documentRepository: DocumentRepository;
   projectAccessService: ProjectAccessService;
   snapshotService: SnapshotService;
+  snapshotRefreshTrigger: SnapshotRefreshTrigger;
 }): DocumentService {
   return {
     getTree: async (projectId, userId) => {
@@ -145,12 +148,7 @@ export function createDocumentService({
         mime: normalizeMime(input.mime),
       });
 
-      await captureProjectSnapshot(
-        snapshotService,
-        documentRepository,
-        input.projectId,
-        input.actorUserId,
-      );
+      snapshotRefreshTrigger.kick();
 
       return document;
     },
@@ -180,13 +178,7 @@ export function createDocumentService({
       if (!moved) {
         throw new DocumentNotFoundError();
       }
-
-      await captureProjectSnapshot(
-        snapshotService,
-        documentRepository,
-        input.projectId,
-        input.actorUserId,
-      );
+      snapshotRefreshTrigger.kick();
     },
     renameNode: async (input) => {
       await requireDocumentWriteRole(
@@ -213,13 +205,7 @@ export function createDocumentService({
       if (!renamed) {
         throw new DocumentNotFoundError();
       }
-
-      await captureProjectSnapshot(
-        snapshotService,
-        documentRepository,
-        input.projectId,
-        input.actorUserId,
-      );
+      snapshotRefreshTrigger.kick();
     },
     deleteNode: async (input) => {
       await requireDocumentWriteRole(
@@ -237,13 +223,7 @@ export function createDocumentService({
       if (!deleted) {
         throw new DocumentNotFoundError();
       }
-
-      await captureProjectSnapshot(
-        snapshotService,
-        documentRepository,
-        input.projectId,
-        input.actorUserId,
-      );
+      snapshotRefreshTrigger.kick();
     },
     getFileContent: async (input) => {
       await projectAccessService.requireProjectMember(
@@ -265,21 +245,6 @@ export function createDocumentService({
       };
     },
   };
-}
-
-async function captureProjectSnapshot(
-  snapshotService: SnapshotService,
-  documentRepository: DocumentRepository,
-  projectId: string,
-  authorId: string,
-): Promise<void> {
-  const documents = await documentRepository.listForProject(projectId);
-
-  await snapshotService.captureProjectSnapshot({
-    projectId,
-    authorId,
-    documents,
-  });
 }
 
 async function requireDocumentWriteRole(

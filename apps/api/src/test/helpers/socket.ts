@@ -26,10 +26,13 @@ export type TestSocketServer = {
   close: () => Promise<void>;
 };
 
-export async function createTestSocketServer(): Promise<TestSocketServer> {
+export async function createTestSocketServer(options?: {
+  snapshotService?: SnapshotService;
+}): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
-  const snapshotService = createStubSnapshotService();
+  const snapshotService =
+    options?.snapshotService ?? createStubSnapshotService();
   const app = createHttpApp(testConfig, {
     authService: createAuthService({
       userRepository: {
@@ -52,7 +55,6 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
   const server = http.createServer(app);
   const io = createSocketServer(server, testConfig, {
     workspaceService: createWorkspaceService({
-      projectLookup: projectRepository,
       projectAccessService: {
         requireProjectMember: async (projectId, userId) => {
           const project = await projectRepository.findForUser(
@@ -151,16 +153,6 @@ function createSocketTestProjectRepository() {
     createForOwner: async () => {
       throw new Error("Not implemented for socket tests");
     },
-    findActiveById: async (projectId: string) =>
-      projectId === "project-123"
-        ? {
-            id: "project-123",
-            name: "Project",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            tombstoneAt: null,
-          }
-        : null,
     listForUser: async () => [],
     findForUser: async (projectId: string, userId: string) => {
       if (projectId !== "project-123" || userId !== "alice") {

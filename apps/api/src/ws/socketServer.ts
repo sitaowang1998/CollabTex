@@ -158,16 +158,9 @@ function mapWorkspaceError(error: unknown): WorkspaceErrorEvent {
     };
   }
 
-  if (error instanceof Error) {
-    return {
-      code: "INVALID_REQUEST",
-      message: error.message,
-    };
-  }
-
   return {
-    code: "INVALID_REQUEST",
-    message: "unknown workspace error",
+    code: "UNAVAILABLE",
+    message: "workspace unavailable",
   };
 }
 
