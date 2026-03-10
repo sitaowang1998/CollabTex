@@ -5,10 +5,12 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createMembershipRepository } from "./repositories/membershipRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
@@ -42,6 +44,10 @@ async function main() {
       jwtSecret: config.jwtSecret,
       dummyPasswordHash,
     });
+    const documentService = createDocumentService({
+      documentRepository: createDocumentRepository(databaseClient),
+      projectAccessService,
+    });
     const projectService = createProjectService({
       projectRepository,
       projectAccessService,
@@ -53,6 +59,7 @@ async function main() {
     });
     const app = createHttpApp(config, {
       authService,
+      documentService,
       membershipService,
       projectService,
     });

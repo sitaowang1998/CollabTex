@@ -6,6 +6,11 @@ import {
   type AuthUserRepository,
 } from "../../services/auth.js";
 import {
+  createDocumentService,
+  type DocumentRepository,
+  type StoredDocument,
+} from "../../services/document.js";
+import {
   createProjectService,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
@@ -39,10 +44,36 @@ export function createTestApp() {
   const projectService = createProjectService({
     projectRepository: createInMemoryProjectRepository(),
   });
+  const documentService = createDocumentService({
+    documentRepository: createInMemoryDocumentRepository(),
+    projectAccessService: {
+      requireProjectMember: async () => ({
+        project: {
+          id: "project-1",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin",
+      }),
+      requireProjectRole: async () => ({
+        project: {
+          id: "project-1",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin",
+      }),
+    },
+  });
   const membershipService = createStubMembershipService();
 
   return createHttpApp(testConfig, {
     authService,
+    documentService,
     membershipService,
     projectService,
   });
@@ -217,6 +248,71 @@ function createStubMembershipService(): MembershipService {
     },
     deleteMember: async () => {
       throw new Error("Not implemented for createTestApp");
+    },
+  };
+}
+
+function createInMemoryDocumentRepository(): DocumentRepository {
+  const documentsByProjectId = new Map<string, StoredDocument[]>();
+  let nextDocumentId = 1;
+
+  return {
+    listForProject: async (projectId) =>
+      documentsByProjectId.get(projectId) ?? [],
+    findByPath: async (projectId, path) =>
+      (documentsByProjectId.get(projectId) ?? []).find(
+        (document) => document.path === path,
+      ) ?? null,
+    createDocument: async ({ projectId, path, kind, mime }) => {
+      const now = new Date();
+      const document: StoredDocument = {
+        id: `document-${nextDocumentId}`,
+        projectId,
+        path,
+        kind,
+        mime,
+        contentHash: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      nextDocumentId += 1;
+      documentsByProjectId.set(projectId, [
+        ...(documentsByProjectId.get(projectId) ?? []),
+        document,
+      ]);
+
+      return document;
+    },
+    ensureFolderCreatable: async () => {},
+    moveNode: async ({ projectId, path, nextPath }) => {
+      const documents = documentsByProjectId.get(projectId) ?? [];
+      const documentIndex = documents.findIndex(
+        (document) => document.path === path,
+      );
+
+      if (documentIndex === -1) {
+        return false;
+      }
+
+      documents[documentIndex] = {
+        ...documents[documentIndex],
+        path: nextPath,
+        updatedAt: new Date(),
+      };
+      return true;
+    },
+    deleteNode: async ({ projectId, path }) => {
+      const documents = documentsByProjectId.get(projectId) ?? [];
+      const nextDocuments = documents.filter(
+        (document) => document.path !== path,
+      );
+
+      if (nextDocuments.length === documents.length) {
+        return false;
+      }
+
+      documentsByProjectId.set(projectId, nextDocuments);
+      return true;
     },
   };
 }

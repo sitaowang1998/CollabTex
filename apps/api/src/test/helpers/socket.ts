@@ -6,6 +6,7 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
+import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
   createProjectService,
@@ -52,6 +53,7 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
         },
       },
     }),
+    documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
   });
   const server = http.createServer(app);
@@ -83,6 +85,30 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
           resolve();
         });
       });
+    },
+  };
+}
+
+function createStubDocumentService(): DocumentService {
+  return {
+    getTree: async () => [],
+    createFile: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    createFolder: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    moveNode: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    renameNode: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    deleteNode: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    getFileContent: async () => {
+      throw new Error("Not implemented for socket tests");
     },
   };
 }

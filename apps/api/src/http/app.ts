@@ -1,16 +1,19 @@
 import express from "express";
 import type { AppConfig } from "../config/appConfig.js";
 import type { AuthService } from "../services/auth.js";
+import type { DocumentService } from "../services/document.js";
 import type { MembershipService } from "../services/membership.js";
 import type { ProjectService } from "../services/project.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
+import { createDocumentRouter } from "./routes/documentRoutes.js";
 import { createHealthRouter } from "./routes/healthRoutes.js";
 import { createProjectMembershipRouter } from "./routes/projectMembershipRoutes.js";
 import { createProjectRouter } from "./routes/projectRoutes.js";
 
 export type HttpAppDependencies = {
   authService: AuthService;
+  documentService: DocumentService;
   membershipService: MembershipService;
   projectService: ProjectService;
 };
@@ -25,6 +28,7 @@ export function createHttpApp(
   app.use(createHealthRouter());
   app.use(createAuthRouter(config, dependencies.authService));
   app.use(createProjectRouter(config, dependencies.projectService));
+  app.use(createDocumentRouter(config, dependencies.documentService));
   app.use(
     createProjectMembershipRouter(config, dependencies.membershipService),
   );
