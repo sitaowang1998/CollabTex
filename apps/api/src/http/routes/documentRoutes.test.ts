@@ -186,6 +186,13 @@ describe("document routes", () => {
       .expect({ error: "request body must be an object" });
 
     await request(app)
+      .post("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/files")
+      .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: 123, kind: "text" })
+      .expect(400)
+      .expect({ error: "path must be a string" });
+
+    await request(app)
       .patch("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes/move")
       .set("authorization", `Bearer ${createToken()}`)
       .send({ path: "main.tex" })
@@ -200,10 +207,33 @@ describe("document routes", () => {
       .expect({ error: "destinationParentPath must be a string or null" });
 
     await request(app)
+      .patch("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes/rename")
+      .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: "main.tex", name: 123 })
+      .expect(400)
+      .expect({ error: "name must be a string" });
+
+    await request(app)
+      .delete("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes")
+      .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: 123 })
+      .expect(400)
+      .expect({ error: "path must be a string" });
+
+    await request(app)
       .get("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/files/content")
       .set("authorization", `Bearer ${createToken()}`)
       .expect(400)
       .expect({ error: "path is required" });
+
+    await request(app)
+      .get("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/files/content")
+      .query({ path: ["main.tex", "other.tex"] })
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(400)
+      .expect({
+        error: "Multiple 'path' query parameters are not allowed.",
+      });
   });
 
   it("maps role, conflict, not found, and missing-token errors", async () => {

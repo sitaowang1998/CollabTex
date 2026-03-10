@@ -207,10 +207,15 @@ export function createDocumentRouter(
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
         const projectId = parseUuidParam(req.params.projectId, "projectId");
-        const path = parseRequiredTrimmedString(
-          req.query.path as string,
-          "path",
-        );
+        const rawPath = req.query.path;
+        const path = Array.isArray(rawPath)
+          ? new HttpError(
+              400,
+              "Multiple 'path' query parameters are not allowed.",
+            )
+          : typeof rawPath === "string" || rawPath === undefined
+            ? parseRequiredTrimmedString(rawPath, "path")
+            : new HttpError(400, "path must be a string");
 
         if (projectId instanceof HttpError) {
           next(projectId);
@@ -243,7 +248,7 @@ function parseCreateFileRequest(body: unknown): CreateFileRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const path = parseRequiredTrimmedString(body.path as string, "path");
+  const path = parseRequiredBodyString(body.path, "path");
   const kind = parseDocumentKind(body.kind);
   const mime = parseOptionalString(body.mime, "mime");
 
@@ -271,7 +276,7 @@ function parseMoveNodeRequest(body: unknown): MoveNodeRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const path = parseRequiredTrimmedString(body.path as string, "path");
+  const path = parseRequiredBodyString(body.path, "path");
 
   if (body.destinationParentPath === undefined) {
     return new HttpError(400, "destinationParentPath is required");
@@ -301,8 +306,8 @@ function parseRenameNodeRequest(body: unknown): RenameNodeRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const path = parseRequiredTrimmedString(body.path as string, "path");
-  const name = parseRequiredTrimmedString(body.name as string, "name");
+  const path = parseRequiredBodyString(body.path, "path");
+  const name = parseRequiredBodyString(body.name, "name");
 
   if (path instanceof HttpError) {
     return path;
@@ -320,7 +325,7 @@ function parseDeleteNodeRequest(body: unknown): DeleteNodeRequest | HttpError {
     return new HttpError(400, "request body must be an object");
   }
 
-  const path = parseRequiredTrimmedString(body.path as string, "path");
+  const path = parseRequiredBodyString(body.path, "path");
 
   if (path instanceof HttpError) {
     return path;
@@ -339,6 +344,21 @@ function parseDocumentKind(value: unknown) {
   }
 
   return new HttpError(400, `kind must be one of ${DOCUMENT_KINDS.join(", ")}`);
+}
+
+function parseRequiredBodyString(
+  value: unknown,
+  name: string,
+): string | HttpError {
+  if (value === undefined) {
+    return new HttpError(400, `${name} is required`);
+  }
+
+  if (typeof value !== "string") {
+    return new HttpError(400, `${name} must be a string`);
+  }
+
+  return parseRequiredTrimmedString(value, name);
 }
 
 function parseOptionalString(
