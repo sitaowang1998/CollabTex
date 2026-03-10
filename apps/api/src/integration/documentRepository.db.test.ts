@@ -5,6 +5,7 @@ import { createDocumentRepository } from "../repositories/documentRepository.js"
 import { createProjectRepository } from "../repositories/projectRepository.js";
 import {
   DocumentPathConflictError,
+  InvalidDocumentPathError,
   type StoredDocument,
 } from "../services/document.js";
 import { ProjectRoleRequiredError } from "../services/project.js";
@@ -169,6 +170,37 @@ describe("document repository integration", () => {
     expect(documents.every((document) => document.path.startsWith("/"))).toBe(
       true,
     );
+  });
+
+  it("rejects folder moves whose rewritten descendants exceed the path limit", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-too-long-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Too Long ${suffix}`);
+    const repository = createDocumentRepository(getDb());
+    const destinationPath = `/${"b".repeat(1023)}`;
+
+    await createDocuments(repository, project.id, owner.id, [
+      { path: "/a/child.tex", kind: "text", mime: null },
+      { path: "/a/nested/figure.png", kind: "binary", mime: "image/png" },
+    ]);
+
+    await expect(
+      repository.moveNode({
+        projectId: project.id,
+        actorUserId: owner.id,
+        path: "/a",
+        nextPath: destinationPath,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDocumentPathError);
+
+    await expect(repository.listForProject(project.id)).resolves.toEqual([
+      expect.objectContaining({
+        path: "/a/child.tex",
+      }),
+      expect.objectContaining({
+        path: "/a/nested/figure.png",
+      }),
+    ]);
   });
 
   it("deletes folder descendants and restricts writers to admins and editors", async () => {

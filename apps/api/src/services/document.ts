@@ -153,7 +153,9 @@ export function createDocumentService({
       const destinationParentPath = normalizeOptionalParentPath(
         input.destinationParentPath,
       );
-      const nextPath = joinParentAndName(destinationParentPath, currentName);
+      const nextPath = normalizeDocumentPath(
+        joinParentAndName(destinationParentPath, currentName),
+      );
 
       const moved = await documentRepository.moveNode({
         projectId: input.projectId,
@@ -174,9 +176,11 @@ export function createDocumentService({
       );
 
       const currentPath = normalizeDocumentPath(input.path);
-      const nextPath = joinParentAndName(
-        getParentPath(currentPath),
-        normalizeNodeName(input.name),
+      const nextPath = normalizeDocumentPath(
+        joinParentAndName(
+          getParentPath(currentPath),
+          normalizeNodeName(input.name),
+        ),
       );
 
       const renamed = await documentRepository.moveNode({

@@ -140,6 +140,35 @@ describe("document service", () => {
     ).rejects.toBeInstanceOf(InvalidDocumentPathError);
   });
 
+  it("rejects move and rename targets whose joined persisted path exceeds 1024 characters", async () => {
+    const repository = createDocumentRepository();
+    const service = createDocumentService({
+      documentRepository: repository,
+      projectAccessService: createProjectAccessService(),
+    });
+    const longName = "a".repeat(1024);
+    const longParentPath = `/${"p".repeat(1023)}`;
+
+    await expect(
+      service.renameNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/x",
+        name: longName,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDocumentPathError);
+    await expect(
+      service.moveNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/x",
+        destinationParentPath: longParentPath,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDocumentPathError);
+
+    expect(repository.moveNode).not.toHaveBeenCalled();
+  });
+
   it("maps missing move, rename, delete, and content lookups to DocumentNotFoundError", async () => {
     const repository = createDocumentRepository();
     const service = createDocumentService({

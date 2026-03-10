@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import {
   DocumentPathConflictError,
+  normalizeDocumentPath,
   type DocumentRepository,
   type StoredDocument,
 } from "../services/document.js";
@@ -319,7 +320,11 @@ function planPathMove(
   const plan = descendants.map((document) => ({
     id: document.id,
     currentPath: document.path,
-    nextPath: `${destinationPath}${document.path.slice(sourcePath.length)}`,
+    // Revalidate each rewritten descendant path so long subtree moves fail as
+    // a deterministic validation error before any write reaches the database.
+    nextPath: normalizeDocumentPath(
+      `${destinationPath}${document.path.slice(sourcePath.length)}`,
+    ),
   }));
 
   assertMoveTargetIsValid(documents, plan);
