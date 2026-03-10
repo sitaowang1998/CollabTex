@@ -28,6 +28,7 @@ export type StoredSnapshotRefreshJob = {
 
 export type SnapshotRefreshJobRepository = {
   claimNextJob: () => Promise<StoredSnapshotRefreshJob | null>;
+  recoverInterruptedJobs: () => Promise<number>;
   markJobSucceeded: (jobId: string) => Promise<void>;
   markJobFailed: (jobId: string, lastError: string) => Promise<void>;
 };

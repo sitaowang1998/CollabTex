@@ -105,6 +105,8 @@ describe("snapshot refresh processor", () => {
 function createJobRepository() {
   return {
     claimNextJob: vi.fn<SnapshotRefreshJobRepository["claimNextJob"]>(),
+    recoverInterruptedJobs:
+      vi.fn<SnapshotRefreshJobRepository["recoverInterruptedJobs"]>(),
     markJobSucceeded: vi.fn<SnapshotRefreshJobRepository["markJobSucceeded"]>(),
     markJobFailed: vi.fn<SnapshotRefreshJobRepository["markJobFailed"]>(),
   };

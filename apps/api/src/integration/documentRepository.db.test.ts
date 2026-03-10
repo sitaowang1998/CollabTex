@@ -208,6 +208,11 @@ describe("document repository integration", () => {
       { path: "/docs/main.tex", kind: "text", mime: null },
       { path: "/docs/figures/plot.png", kind: "binary", mime: "image/png" },
     ]);
+    await getDb().snapshotRefreshJob.deleteMany({
+      where: {
+        projectId: project.id,
+      },
+    });
 
     await expect(
       repository.moveNode({
@@ -226,6 +231,46 @@ describe("document repository integration", () => {
         path: "/docs/main.tex",
       }),
     ]);
+    await expect(
+      getDb().snapshotRefreshJob.count({
+        where: {
+          projectId: project.id,
+        },
+      }),
+    ).resolves.toBe(0);
+  });
+
+  it("treats same-path file moves as no-ops without queueing refresh work", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-noop-file-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Noop File ${suffix}`);
+    const repository = createDocumentRepository(getDb());
+
+    await createDocuments(repository, project.id, owner.id, [
+      { path: "/main.tex", kind: "text", mime: null },
+    ]);
+    await getDb().snapshotRefreshJob.deleteMany({
+      where: {
+        projectId: project.id,
+      },
+    });
+
+    await expect(
+      repository.moveNode({
+        projectId: project.id,
+        actorUserId: owner.id,
+        path: "/main.tex",
+        nextPath: "/main.tex",
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      getDb().snapshotRefreshJob.count({
+        where: {
+          projectId: project.id,
+        },
+      }),
+    ).resolves.toBe(0);
   });
 
   it("rejects folder moves whose rewritten descendants exceed the path limit", async () => {

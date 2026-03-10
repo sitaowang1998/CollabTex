@@ -154,7 +154,8 @@ export type WorkspaceErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "NOT_FOUND"
-  | "INVALID_REQUEST";
+  | "INVALID_REQUEST"
+  | "UNAVAILABLE";
 
 export type WorkspaceErrorEvent = {
   code: WorkspaceErrorCode;

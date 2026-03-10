@@ -68,6 +68,7 @@ Currently emitted by `workspace:error`:
 - `INVALID_REQUEST`
 - `FORBIDDEN`
 - `NOT_FOUND`
+- `UNAVAILABLE`
 
 Connection errors during authentication:
 

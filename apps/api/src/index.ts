@@ -64,6 +64,7 @@ async function main() {
       snapshotStore,
       documentRepository,
     });
+    await snapshotRefreshJobRepository.recoverInterruptedJobs();
     const snapshotRefreshTrigger = createSnapshotRefreshTrigger({
       snapshotRefreshProcessor,
     });

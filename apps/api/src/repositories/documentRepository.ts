@@ -106,7 +106,11 @@ export function createDocumentRepository(
             return false;
           }
 
-          if (movePlan.length <= 1) {
+          if (movePlan.length === 0) {
+            return true;
+          }
+
+          if (movePlan.length === 1) {
             await applyMovePlan(tx, movePlan);
             await queueSnapshotRefreshJob(tx, {
               projectId,

@@ -6,6 +6,20 @@ export function createSnapshotRefreshJobRepository(
   databaseClient: DatabaseClient,
 ) {
   return {
+    recoverInterruptedJobs: async () => {
+      const result = await databaseClient.snapshotRefreshJob.updateMany({
+        where: {
+          status: "processing",
+        },
+        data: {
+          status: "failed",
+          lastError: "snapshot refresh interrupted",
+          finishedAt: new Date(),
+        },
+      });
+
+      return result.count;
+    },
     claimNextJob: async (): Promise<StoredSnapshotRefreshJob | null> => {
       while (true) {
         const nextJob =
