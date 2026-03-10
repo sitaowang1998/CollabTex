@@ -249,6 +249,10 @@ export function normalizeDocumentPath(path: string): string {
     throw new InvalidDocumentPathError("path is required");
   }
 
+  if (trimmed === "/") {
+    throw new InvalidDocumentPathError("path must not be the root path");
+  }
+
   if (trimmed.includes("\\")) {
     throw new InvalidDocumentPathError("path must use forward slashes");
   }

@@ -4,6 +4,7 @@ import {
   InvalidDocumentPathError,
   buildFileTree,
   createDocumentService,
+  normalizeDocumentPath,
   normalizeNodeName,
   type DocumentRepository,
   type StoredDocument,
@@ -139,6 +140,12 @@ describe("document service", () => {
         name: "docs/next.tex",
       }),
     ).rejects.toBeInstanceOf(InvalidDocumentPathError);
+  });
+
+  it("reports the root path explicitly as invalid", () => {
+    expect(() => normalizeDocumentPath("/")).toThrow(
+      "path must not be the root path",
+    );
   });
 
   it("reports path separator validation clearly for node names", () => {
