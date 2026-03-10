@@ -1,5 +1,5 @@
 import type { Server as HttpServer } from "http";
-import { Server } from "socket.io";
+import { Server, type Socket } from "socket.io";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -9,8 +9,19 @@ import type {
 import type { AppConfig } from "../config/appConfig.js";
 import { verifyToken } from "../services/auth.js";
 import type { AuthenticatedSocketData } from "../types/socket.js";
+import {
+  WorkspaceAccessDeniedError,
+  WorkspaceDocumentNotFoundError,
+  type WorkspaceService,
+} from "../services/workspace.js";
 
-export function createSocketServer(server: HttpServer, config: AppConfig) {
+export function createSocketServer(
+  server: HttpServer,
+  config: AppConfig,
+  dependencies: {
+    workspaceService: WorkspaceService;
+  },
+) {
   const io = new Server<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -55,12 +66,11 @@ export function createSocketServer(server: HttpServer, config: AppConfig) {
         return;
       }
 
-      socket.emit("workspace:joined", {
+      void openWorkspace(socket, dependencies.workspaceService, {
+        userId,
         projectId: request.projectId,
         documentId: request.documentId,
-        userId,
       });
-      socket.emit("workspace:open", request);
     });
 
     socket.on("disconnect", (reason) => {
@@ -69,6 +79,25 @@ export function createSocketServer(server: HttpServer, config: AppConfig) {
   });
 
   return io;
+}
+
+async function openWorkspace(
+  socket: WorkspaceSocket,
+  workspaceService: WorkspaceService,
+  input: {
+    userId: string;
+    projectId: string;
+    documentId: string;
+  },
+): Promise<void> {
+  try {
+    const openedWorkspace = await workspaceService.openDocument(input);
+
+    socket.join(createWorkspaceRoomName(input.projectId, input.documentId));
+    socket.emit("workspace:opened", openedWorkspace);
+  } catch (error) {
+    socket.emit("workspace:error", mapWorkspaceError(error));
+  }
 }
 
 function parseWorkspaceJoinRequest(
@@ -106,3 +135,45 @@ function parseWorkspaceJoinRequest(
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+function createWorkspaceRoomName(
+  projectId: string,
+  documentId: string,
+): string {
+  return `workspace:${projectId}:${documentId}`;
+}
+
+function mapWorkspaceError(error: unknown): WorkspaceErrorEvent {
+  if (error instanceof WorkspaceAccessDeniedError) {
+    return {
+      code: "FORBIDDEN",
+      message: "project membership required",
+    };
+  }
+
+  if (error instanceof WorkspaceDocumentNotFoundError) {
+    return {
+      code: "NOT_FOUND",
+      message: "workspace document not found",
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: "INVALID_REQUEST",
+      message: error.message,
+    };
+  }
+
+  return {
+    code: "INVALID_REQUEST",
+    message: "unknown workspace error",
+  };
+}
+
+type WorkspaceSocket = Socket<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  AuthenticatedSocketData
+>;

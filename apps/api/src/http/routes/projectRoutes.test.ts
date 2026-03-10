@@ -32,6 +32,7 @@ const testConfig: AppConfig = {
   clientOrigin: "http://localhost:5173",
   databaseUrl:
     "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
+  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
 };
 
 describe("project routes", () => {
@@ -528,6 +529,15 @@ function createInMemoryProjectRepository(
 
       projectsById.set(project.id, project);
       membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
+
+      return project;
+    },
+    findActiveById: async (projectId) => {
+      const project = projectsById.get(projectId);
+
+      if (!project || project.tombstoneAt) {
+        return null;
+      }
 
       return project;
     },

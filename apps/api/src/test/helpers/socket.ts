@@ -12,6 +12,8 @@ import {
   createProjectService,
   ProjectNotFoundError,
 } from "../../services/project.js";
+import { type SnapshotService } from "../../services/snapshot.js";
+import { createWorkspaceService } from "../../services/workspace.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
@@ -25,6 +27,9 @@ export type TestSocketServer = {
 };
 
 export async function createTestSocketServer(): Promise<TestSocketServer> {
+  const projectRepository = createSocketTestProjectRepository();
+  const documentRepository = createSocketTestDocumentRepository();
+  const snapshotService = createStubSnapshotService();
   const app = createHttpApp(testConfig, {
     authService: createAuthService({
       userRepository: {
@@ -39,25 +44,36 @@ export async function createTestSocketServer(): Promise<TestSocketServer> {
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
     projectService: createProjectService({
-      projectRepository: {
-        createForOwner: async () => {
-          throw new Error("Not implemented for socket tests");
-        },
-        listForUser: async () => [],
-        findForUser: async () => null,
-        updateName: async () => {
-          throw new ProjectNotFoundError();
-        },
-        softDelete: async () => {
-          throw new ProjectNotFoundError();
-        },
-      },
+      projectRepository,
     }),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
   });
   const server = http.createServer(app);
-  const io = createSocketServer(server, testConfig);
+  const io = createSocketServer(server, testConfig, {
+    workspaceService: createWorkspaceService({
+      projectLookup: projectRepository,
+      projectAccessService: {
+        requireProjectMember: async (projectId, userId) => {
+          const project = await projectRepository.findForUser(
+            projectId,
+            userId,
+          );
+
+          if (!project) {
+            throw new ProjectNotFoundError();
+          }
+
+          return project;
+        },
+        requireProjectRole: async () => {
+          throw new Error("Not implemented for socket tests");
+        },
+      },
+      documentRepository,
+      snapshotService,
+    }),
+  });
 
   await new Promise<void>((resolve) => {
     server.listen(0, resolve);
@@ -106,6 +122,88 @@ function createStubDocumentService(): DocumentService {
     },
     getFileContent: async () => {
       throw new Error("Not implemented for socket tests");
+    },
+  };
+}
+
+function createStubSnapshotService(): SnapshotService {
+  return {
+    loadDocumentContent: async (document) => {
+      if (document.kind === "binary") {
+        return null;
+      }
+
+      return "\\section{Test}";
+    },
+    captureProjectSnapshot: async () => ({
+      id: "snapshot-1",
+      projectId: "project-123",
+      storagePath: "project-123/snapshot.json",
+      message: null,
+      authorId: "alice",
+      createdAt: new Date(),
+    }),
+  };
+}
+
+function createSocketTestProjectRepository() {
+  return {
+    createForOwner: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    findActiveById: async (projectId: string) =>
+      projectId === "project-123"
+        ? {
+            id: "project-123",
+            name: "Project",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            tombstoneAt: null,
+          }
+        : null,
+    listForUser: async () => [],
+    findForUser: async (projectId: string, userId: string) => {
+      if (projectId !== "project-123" || userId !== "alice") {
+        return null;
+      }
+
+      return {
+        project: {
+          id: "project-123",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin" as const,
+      };
+    },
+    updateName: async () => {
+      throw new ProjectNotFoundError();
+    },
+    softDelete: async () => {
+      throw new ProjectNotFoundError();
+    },
+  };
+}
+
+function createSocketTestDocumentRepository() {
+  return {
+    findById: async (projectId: string, documentId: string) => {
+      if (projectId !== "project-123" || documentId !== "doc-456") {
+        return null;
+      }
+
+      return {
+        id: "doc-456",
+        projectId: "project-123",
+        path: "/main.tex",
+        kind: "text" as const,
+        mime: "text/x-tex",
+        contentHash: null,
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+      };
     },
   };
 }

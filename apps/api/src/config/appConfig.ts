@@ -7,6 +7,7 @@ export type AppConfig = {
   jwtSecret: string;
   clientOrigin: string;
   databaseUrl: string;
+  snapshotStorageRoot: string;
 };
 
 function parsePort(rawPort: string | undefined): number {
@@ -38,6 +39,14 @@ function parseRequiredEnv(name: string, rawValue: string | undefined): string {
   return value;
 }
 
+function parseSnapshotStorageRoot(
+  rawSnapshotStorageRoot: string | undefined,
+): string {
+  const value = rawSnapshotStorageRoot?.trim();
+
+  return value ? value : "var/snapshots";
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnv(env.NODE_ENV);
 
@@ -47,5 +56,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
     databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
+    snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
   };
 }

@@ -33,6 +33,17 @@ export function createDocumentRepository(
         },
       });
     },
+    findById: async (projectId, documentId) => {
+      return databaseClient.document.findFirst({
+        where: {
+          id: documentId,
+          projectId,
+          project: {
+            tombstoneAt: null,
+          },
+        },
+      });
+    },
     findByPath: async (projectId, path) => {
       return databaseClient.document.findFirst({
         where: {

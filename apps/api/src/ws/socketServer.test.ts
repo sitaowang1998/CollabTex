@@ -16,15 +16,22 @@ describe("socket server", () => {
     }
   });
 
-  it("acknowledges a valid workspace join after an authenticated connection", async () => {
+  it("emits the initial workspace payload after an authenticated join", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const joined = await new Promise<{
-      userId: string;
+    const opened = await new Promise<{
       projectId: string;
-      documentId: string;
+      document: {
+        id: string;
+        path: string;
+        kind: string;
+        mime: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      content: string | null;
     }>((resolve, reject) => {
       client.once("connect", () => {
         client.emit("workspace:join", {
@@ -33,7 +40,7 @@ describe("socket server", () => {
         });
       });
 
-      client.once("workspace:joined", (payload) => {
+      client.once("workspace:opened", (payload) => {
         client.close();
         resolve(payload);
       });
@@ -44,19 +51,26 @@ describe("socket server", () => {
       });
     });
 
-    expect(joined).toEqual({
-      userId: "alice",
+    expect(opened).toEqual({
       projectId: "project-123",
-      documentId: "doc-456",
+      document: {
+        id: "doc-456",
+        path: "/main.tex",
+        kind: "text",
+        mime: "text/x-tex",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      },
+      content: "\\section{Test}",
     });
   });
 
-  it("emits workspace:open after a valid workspace join", async () => {
+  it("emits workspace:error when the user is not a project member", async () => {
     socketServer = await createTestSocketServer();
-    const token = signToken("alice", testConfig.jwtSecret);
+    const token = signToken("bob", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const opened = await new Promise<{ projectId: string; documentId: string }>(
+    const errorPayload = await new Promise<{ code: string; message: string }>(
       (resolve, reject) => {
         client.once("connect", () => {
           client.emit("workspace:join", {
@@ -65,7 +79,7 @@ describe("socket server", () => {
           });
         });
 
-        client.once("workspace:open", (payload) => {
+        client.once("workspace:error", (payload) => {
           client.close();
           resolve(payload);
         });
@@ -77,9 +91,9 @@ describe("socket server", () => {
       },
     );
 
-    expect(opened).toEqual({
-      projectId: "project-123",
-      documentId: "doc-456",
+    expect(errorPayload).toEqual({
+      code: "FORBIDDEN",
+      message: "project membership required",
     });
   });
 
@@ -151,6 +165,38 @@ describe("socket server", () => {
     expect(errorPayload).toEqual({
       code: "INVALID_REQUEST",
       message: "projectId is required",
+    });
+  });
+
+  it("emits workspace:error when the document is missing", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{ code: string; message: string }>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "missing-doc",
+          });
+        });
+
+        client.once("workspace:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "NOT_FOUND",
+      message: "workspace document not found",
     });
   });
 });

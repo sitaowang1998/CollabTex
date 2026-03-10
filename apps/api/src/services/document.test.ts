@@ -13,6 +13,7 @@ import {
   ProjectRoleRequiredError,
   type ProjectAccessService,
 } from "./projectAccess.js";
+import { type SnapshotService } from "./snapshot.js";
 
 describe("document service", () => {
   it("builds a nested file tree from absolute stored paths", () => {
@@ -80,6 +81,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
     });
 
     repository.createDocument.mockResolvedValue(
@@ -122,6 +124,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: createDocumentRepository(),
       projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
     });
 
     await expect(
@@ -166,6 +169,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
     });
     const longName = "a".repeat(1024);
     const longParentPath = `/${"p".repeat(1023)}`;
@@ -195,6 +199,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
     });
 
     repository.moveNode.mockResolvedValue(false);
@@ -238,6 +243,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: repository,
       projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
     });
 
     repository.moveNode.mockResolvedValue(true);
@@ -287,6 +293,7 @@ describe("document service", () => {
     const service = createDocumentService({
       documentRepository: repository,
       projectAccessService,
+      snapshotService: createSnapshotService(),
     });
 
     await expect(
@@ -307,10 +314,29 @@ function createDocumentRepository() {
     listForProject: vi
       .fn<DocumentRepository["listForProject"]>()
       .mockResolvedValue([]),
+    findById: vi.fn<DocumentRepository["findById"]>(),
     findByPath: vi.fn<DocumentRepository["findByPath"]>(),
     createDocument: vi.fn<DocumentRepository["createDocument"]>(),
     moveNode: vi.fn<DocumentRepository["moveNode"]>(),
     deleteNode: vi.fn<DocumentRepository["deleteNode"]>(),
+  };
+}
+
+function createSnapshotService() {
+  return {
+    loadDocumentContent: vi
+      .fn<SnapshotService["loadDocumentContent"]>()
+      .mockResolvedValue(""),
+    captureProjectSnapshot: vi
+      .fn<SnapshotService["captureProjectSnapshot"]>()
+      .mockResolvedValue({
+        id: "snapshot-1",
+        projectId: "project-1",
+        storagePath: "project-1/snapshot.json",
+        message: null,
+        authorId: "user-1",
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+      }),
   };
 }
 

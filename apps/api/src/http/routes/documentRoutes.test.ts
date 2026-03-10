@@ -23,6 +23,7 @@ const testConfig: AppConfig = {
   clientOrigin: "http://localhost:5173",
   databaseUrl:
     "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
+  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
 };
 
 describe("document routes", () => {

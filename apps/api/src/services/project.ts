@@ -32,6 +32,7 @@ export type DeleteProjectInput = {
 
 export type ProjectRepository = {
   createForOwner: (input: CreateProjectInput) => Promise<StoredProject>;
+  findActiveById: (projectId: string) => Promise<StoredProject | null>;
   listForUser: (userId: string) => Promise<ProjectWithRole[]>;
   findForUser: (
     projectId: string,
