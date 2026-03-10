@@ -778,7 +778,10 @@ components:
           type: string
         path:
           type: string
-          description: Absolute project path beginning with "/".
+          description: >-
+            Absolute, non-root project path beginning with "/". Persisted
+            document paths are already normalized and never contain empty
+            segments, backslashes, or "."/".." segments.
           maxLength: 1024
         kind:
           $ref: "#/components/schemas/DocumentKind"
@@ -811,7 +814,9 @@ components:
           type: string
         path:
           type: string
-          description: Absolute project path beginning with "/".
+          description: >-
+            Absolute, non-root project path beginning with "/". File paths are
+            normalized and never contain empty segments.
         documentId:
           type: string
         documentKind:
@@ -836,7 +841,9 @@ components:
           type: string
         path:
           type: string
-          description: Absolute project path beginning with "/".
+          description: >-
+            Absolute, non-root project path beginning with "/". Folder paths
+            are derived from normalized document path prefixes.
         children:
           type: array
           items:
@@ -867,7 +874,8 @@ components:
           description: >-
             Leading and trailing whitespace is trimmed. Relative input is
             accepted and normalized to an absolute project path with a single
-            leading slash.
+            leading slash. The root path "/" is rejected, and paths with empty
+            segments, backslashes, or "."/".." segments are invalid.
           minLength: 1
           maxLength: 1024
         kind:
@@ -910,8 +918,13 @@ components:
           maxLength: 1024
         name:
           type: string
+          description: >-
+            New node name. The backend enforces a 1024-character limit on the
+            full destination path (including leading "/" and parent
+            segments), so the effective maximum name length also depends on the
+            destination parent path length.
           minLength: 1
-          maxLength: 1024
+          maxLength: 1023
     DeleteNodeRequest:
       type: object
       additionalProperties: false

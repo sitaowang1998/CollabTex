@@ -449,9 +449,19 @@ function getAncestorPaths(path: string): string[] {
 }
 
 function assertCanonicalPersistedPath(path: string): void {
-  if (!path.startsWith("/")) {
+  let normalizedPath: string;
+
+  try {
+    normalizedPath = normalizeDocumentPath(path);
+  } catch {
     throw new Error(
-      "Expected canonical persisted document path starting with '/'",
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
+    );
+  }
+
+  if (path !== normalizedPath) {
+    throw new Error(
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
     );
   }
 }

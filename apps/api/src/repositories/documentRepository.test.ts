@@ -35,6 +35,54 @@ describe("document repository", () => {
     ).rejects.toBeInstanceOf(DocumentPathConflictError);
   });
 
+  it("rejects non-canonical create paths before touching the database", async () => {
+    const databaseClient = createDatabaseClient();
+    const repository = createDocumentRepository(databaseClient);
+
+    await expect(
+      repository.createDocument({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/docs//main.tex",
+        kind: "text",
+        mime: null,
+      }),
+    ).rejects.toThrow(
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
+    );
+
+    expect(databaseClient.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-canonical move paths before touching the database", async () => {
+    const databaseClient = createDatabaseClient();
+    const repository = createDocumentRepository(databaseClient);
+
+    await expect(
+      repository.moveNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/docs/../main.tex",
+        nextPath: "/archive/main.tex",
+      }),
+    ).rejects.toThrow(
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
+    );
+
+    await expect(
+      repository.moveNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/docs/main.tex",
+        nextPath: "/archive\\main.tex",
+      }),
+    ).rejects.toThrow(
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
+    );
+
+    expect(databaseClient.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects non-canonical delete paths before touching the database", async () => {
     const databaseClient = createDatabaseClient();
     const repository = createDocumentRepository(databaseClient);
@@ -43,10 +91,10 @@ describe("document repository", () => {
       repository.deleteNode({
         projectId: "project-1",
         actorUserId: "user-1",
-        path: "docs/main.tex",
+        path: "/",
       }),
     ).rejects.toThrow(
-      "Expected canonical persisted document path starting with '/'",
+      "Expected canonical persisted document path (absolute, non-root, and already normalized)",
     );
 
     expect(databaseClient.$transaction).not.toHaveBeenCalled();

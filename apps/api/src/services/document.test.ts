@@ -147,6 +147,13 @@ describe("document service", () => {
     );
   });
 
+  it("accepts names up to 1023 characters and rejects longer names", () => {
+    expect(normalizeNodeName("a".repeat(1023))).toBe("a".repeat(1023));
+    expect(() => normalizeNodeName("a".repeat(1024))).toThrow(
+      "name must be at most 1023 characters",
+    );
+  });
+
   it("rejects move and rename targets whose joined persisted path exceeds 1024 characters", async () => {
     const repository = createDocumentRepository();
     const service = createDocumentService({

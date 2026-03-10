@@ -8,6 +8,7 @@ import type {
 import { type ProjectAccessService } from "./projectAccess.js";
 
 const DOCUMENT_PATH_MAX_LENGTH = 1024;
+const DOCUMENT_NODE_NAME_MAX_LENGTH = DOCUMENT_PATH_MAX_LENGTH - 1;
 const DOCUMENT_MIME_MAX_LENGTH = 255;
 export const DOCUMENT_WRITE_ROLES = ["admin", "editor"] as const;
 
@@ -311,9 +312,9 @@ export function normalizeNodeName(name: string): string {
     throw new InvalidDocumentPathError("name must not contain '.' or '..'");
   }
 
-  if (trimmed.length > DOCUMENT_PATH_MAX_LENGTH) {
+  if (trimmed.length > DOCUMENT_NODE_NAME_MAX_LENGTH) {
     throw new InvalidDocumentPathError(
-      `name must be at most ${DOCUMENT_PATH_MAX_LENGTH} characters`,
+      `name must be at most ${DOCUMENT_NODE_NAME_MAX_LENGTH} characters`,
     );
   }
 
