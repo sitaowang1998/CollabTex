@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import {
+  DOCUMENT_WRITE_ROLES,
   DocumentPathConflictError,
   normalizeDocumentPath,
   type DocumentRepository,
@@ -14,8 +15,6 @@ import {
   isPrismaKnownRequestLikeError,
   lockActiveProject,
 } from "./projectRepositoryUtils.js";
-
-const DOCUMENT_WRITE_ROLES = ["admin", "editor"] as const;
 
 export function createDocumentRepository(
   databaseClient: DatabaseClient,
@@ -53,8 +52,7 @@ export function createDocumentRepository(
           await lockActiveProject(tx, projectId);
           await assertActorCanWriteDocuments(tx, projectId, actorUserId);
 
-          const documents = await listProjectDocuments(tx, projectId);
-          assertCanCreatePath(documents, path);
+          await assertCanCreatePath(tx, projectId, path);
 
           return tx.document.create({
             data: {
@@ -204,16 +202,58 @@ async function assertActorCanWriteDocuments(
   throw new ProjectRoleRequiredError(DOCUMENT_WRITE_ROLES);
 }
 
-function assertCanCreatePath(documents: DocumentPathRow[], path: string): void {
-  if (documents.some((document) => document.path === path)) {
+async function assertCanCreatePath(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  path: string,
+): Promise<void> {
+  const ancestorPaths = getAncestorPaths(path);
+  const [exactDocument, ancestorDocument, descendantDocument] =
+    await Promise.all([
+      tx.document.findFirst({
+        where: {
+          projectId,
+          path,
+        },
+        select: {
+          id: true,
+        },
+      }),
+      ancestorPaths.length === 0
+        ? Promise.resolve(null)
+        : tx.document.findFirst({
+            where: {
+              projectId,
+              path: {
+                in: ancestorPaths,
+              },
+            },
+            select: {
+              id: true,
+            },
+          }),
+      tx.document.findFirst({
+        where: {
+          projectId,
+          path: {
+            startsWith: `${path}/`,
+          },
+        },
+        select: {
+          id: true,
+        },
+      }),
+    ]);
+
+  if (exactDocument) {
     throw new DocumentPathConflictError("path already exists");
   }
 
-  if (documents.some((document) => isAncestorPath(document.path, path))) {
+  if (ancestorDocument) {
     throw new DocumentPathConflictError("path cannot be created under a file");
   }
 
-  if (documents.some((document) => isDescendantPath(document.path, path))) {
+  if (descendantDocument) {
     throw new DocumentPathConflictError("path already exists as a folder");
   }
 }
@@ -390,6 +430,22 @@ function isAncestorPath(ancestorPath: string, path: string): boolean {
 
 function isDescendantPath(path: string, ancestorPath: string): boolean {
   return path.startsWith(`${ancestorPath}/`);
+}
+
+function getAncestorPaths(path: string): string[] {
+  const ancestors: string[] = [];
+  let currentPath = path;
+
+  while (true) {
+    const lastSlashIndex = currentPath.lastIndexOf("/");
+
+    if (lastSlashIndex <= 0) {
+      return ancestors;
+    }
+
+    currentPath = currentPath.slice(0, lastSlashIndex);
+    ancestors.push(currentPath);
+  }
 }
 
 function assertCanonicalPersistedPath(path: string): void {

@@ -84,6 +84,15 @@ describe("document repository integration", () => {
       repository.createDocument({
         projectId: project.id,
         actorUserId: owner.id,
+        path: "/docs/main.tex",
+        kind: "text",
+        mime: null,
+      }),
+    ).rejects.toBeInstanceOf(DocumentPathConflictError);
+    await expect(
+      repository.createDocument({
+        projectId: project.id,
+        actorUserId: owner.id,
         path: "/docs",
         kind: "binary",
         mime: "application/octet-stream",

@@ -9,7 +9,7 @@ import { type ProjectAccessService } from "./projectAccess.js";
 
 const DOCUMENT_PATH_MAX_LENGTH = 1024;
 const DOCUMENT_MIME_MAX_LENGTH = 255;
-const DOCUMENT_WRITE_ROLES = ["admin", "editor"] as const;
+export const DOCUMENT_WRITE_ROLES = ["admin", "editor"] as const;
 
 export type StoredDocument = {
   id: string;

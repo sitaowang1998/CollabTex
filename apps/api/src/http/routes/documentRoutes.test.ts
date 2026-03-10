@@ -188,6 +188,13 @@ describe("document routes", () => {
     await request(app)
       .patch("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes/move")
       .set("authorization", `Bearer ${createToken()}`)
+      .send({ path: "main.tex" })
+      .expect(400)
+      .expect({ error: "destinationParentPath is required" });
+
+    await request(app)
+      .patch("/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/nodes/move")
+      .set("authorization", `Bearer ${createToken()}`)
       .send({ path: "main.tex", destinationParentPath: 42 })
       .expect(400)
       .expect({ error: "destinationParentPath must be a string or null" });

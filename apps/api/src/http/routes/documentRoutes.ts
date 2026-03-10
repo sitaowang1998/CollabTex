@@ -272,6 +272,11 @@ function parseMoveNodeRequest(body: unknown): MoveNodeRequest | HttpError {
   }
 
   const path = parseRequiredTrimmedString(body.path as string, "path");
+
+  if (body.destinationParentPath === undefined) {
+    return new HttpError(400, "destinationParentPath is required");
+  }
+
   const destinationParentPath = parseNullableString(
     body.destinationParentPath,
     "destinationParentPath",
