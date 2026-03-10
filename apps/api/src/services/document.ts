@@ -5,11 +5,7 @@ import type {
   ProjectDocument,
   ProjectDocumentContentResponse,
 } from "@collab-tex/shared";
-import {
-  ProjectNotFoundError,
-  ProjectRoleRequiredError,
-  type ProjectAccessService,
-} from "./projectAccess.js";
+import { type ProjectAccessService } from "./projectAccess.js";
 
 const DOCUMENT_PATH_MAX_LENGTH = 1024;
 const DOCUMENT_MIME_MAX_LENGTH = 255;
@@ -479,11 +475,4 @@ function sortTreeNodes(
 
       return left.name.localeCompare(right.name);
     });
-}
-
-export function isProjectAccessError(error: unknown): boolean {
-  return (
-    error instanceof ProjectNotFoundError ||
-    error instanceof ProjectRoleRequiredError
-  );
 }

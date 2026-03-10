@@ -285,25 +285,71 @@ function createInMemoryDocumentRepository(): DocumentRepository {
     },
     moveNode: async ({ projectId, path, nextPath }) => {
       const documents = documentsByProjectId.get(projectId) ?? [];
-      const documentIndex = documents.findIndex(
+      const exactDocument = documents.find(
         (document) => document.path === path,
       );
 
-      if (documentIndex === -1) {
+      if (exactDocument) {
+        documentsByProjectId.set(
+          projectId,
+          documents.map((document) =>
+            document.id === exactDocument.id
+              ? {
+                  ...document,
+                  path: nextPath,
+                  updatedAt: new Date(),
+                }
+              : document,
+          ),
+        );
+
+        return true;
+      }
+
+      const descendantPrefix = `${path}/`;
+      const descendants = documents.filter((document) =>
+        document.path.startsWith(descendantPrefix),
+      );
+
+      if (descendants.length === 0) {
         return false;
       }
 
-      documents[documentIndex] = {
-        ...documents[documentIndex],
-        path: nextPath,
-        updatedAt: new Date(),
-      };
+      documentsByProjectId.set(
+        projectId,
+        documents.map((document) => {
+          if (!document.path.startsWith(descendantPrefix)) {
+            return document;
+          }
+
+          return {
+            ...document,
+            path: `${nextPath}${document.path.slice(path.length)}`,
+            updatedAt: new Date(),
+          };
+        }),
+      );
+
       return true;
     },
     deleteNode: async ({ projectId, path }) => {
       const documents = documentsByProjectId.get(projectId) ?? [];
+      const exactDocumentExists = documents.some(
+        (document) => document.path === path,
+      );
+
+      if (exactDocumentExists) {
+        documentsByProjectId.set(
+          projectId,
+          documents.filter((document) => document.path !== path),
+        );
+
+        return true;
+      }
+
+      const descendantPrefix = `${path}/`;
       const nextDocuments = documents.filter(
-        (document) => document.path !== path,
+        (document) => !document.path.startsWith(descendantPrefix),
       );
 
       if (nextDocuments.length === documents.length) {

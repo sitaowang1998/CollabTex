@@ -159,10 +159,14 @@ type DocumentPathRow = Pick<StoredDocument, "id" | "path">;
 async function listProjectDocuments(
   tx: Prisma.TransactionClient,
   projectId: string,
-): Promise<StoredDocument[]> {
+): Promise<DocumentPathRow[]> {
   return tx.document.findMany({
     where: {
       projectId,
+    },
+    select: {
+      id: true,
+      path: true,
     },
     orderBy: {
       path: "asc",
