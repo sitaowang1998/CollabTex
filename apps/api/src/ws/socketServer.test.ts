@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   WorkspaceErrorEvent,
   WorkspaceOpenedEvent,
@@ -206,6 +206,9 @@ describe("socket server", () => {
   });
 
   it("emits a generic unavailable error for unexpected workspace failures", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     socketServer = await createTestSocketServer({
       snapshotService: {
         loadDocumentContent: async () => {
@@ -219,31 +222,48 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const errorPayload = await new Promise<{ code: string; message: string }>(
-      (resolve, reject) => {
-        client.once("connect", () => {
-          client.emit("workspace:join", {
-            projectId: "project-123",
-            documentId: "doc-456",
+    let errorPayload: { code: string; message: string };
+
+    try {
+      errorPayload = await new Promise<{ code: string; message: string }>(
+        (resolve, reject) => {
+          client.once("connect", () => {
+            client.emit("workspace:join", {
+              projectId: "project-123",
+              documentId: "doc-456",
+            });
           });
-        });
 
-        client.once("workspace:error", (payload) => {
-          client.close();
-          resolve(payload);
-        });
+          client.once("workspace:error", (payload) => {
+            client.close();
+            resolve(payload);
+          });
 
-        client.once("connect_error", (error) => {
-          client.close();
-          reject(error);
-        });
-      },
-    );
+          client.once("connect_error", (error) => {
+            client.close();
+            reject(error);
+          });
+        },
+      );
 
-    expect(errorPayload).toEqual({
-      code: "UNAVAILABLE",
-      message: "workspace unavailable",
-    });
+      expect(errorPayload).toEqual({
+        code: "UNAVAILABLE",
+        message: "workspace unavailable",
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "Workspace open failed",
+        {
+          userId: "alice",
+          projectId: "project-123",
+          documentId: "doc-456",
+        },
+        expect.objectContaining({
+          message: "disk path leaked",
+        }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("suppresses stale workspace:opened events when a newer join finishes first", async () => {

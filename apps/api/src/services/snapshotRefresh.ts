@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import type { DocumentRepository } from "./document.js";
 import {
   buildProjectSnapshotState,
+  createSnapshotStoragePath,
   loadLatestUsableProjectSnapshotState,
   type SnapshotRepository,
   type SnapshotStore,
@@ -98,6 +98,14 @@ export function createSnapshotRefreshProcessor({
 
         return true;
       } catch (error) {
+        console.error(
+          "Snapshot refresh job failed",
+          {
+            jobId: job.id,
+            projectId: job.projectId,
+          },
+          error,
+        );
         await snapshotRefreshJobRepository.markJobFailed(
           job.id,
           sanitizeSnapshotRefreshError(error),
@@ -159,13 +167,10 @@ export function createSnapshotRefreshTrigger({
   }
 }
 
-function createSnapshotStoragePath(projectId: string): string {
-  return `${projectId}/${Date.now()}-${randomUUID()}.json`;
-}
-
 function sanitizeSnapshotRefreshError(error: unknown): string {
-  const message =
-    error instanceof Error ? error.message : "snapshot refresh failed";
+  if (error instanceof Error && error.name === "AbortError") {
+    return "snapshot refresh was aborted";
+  }
 
-  return message.slice(0, 512);
+  return "snapshot refresh failed; see logs for details";
 }

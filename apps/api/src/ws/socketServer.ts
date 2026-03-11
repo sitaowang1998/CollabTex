@@ -138,6 +138,10 @@ async function openWorkspace(
       return;
     }
 
+    if (isUnexpectedWorkspaceError(error)) {
+      console.error("Workspace open failed", input.workspaceOpenInput, error);
+    }
+
     socket.emit("workspace:error", mapWorkspaceError(error));
   }
 }
@@ -204,6 +208,13 @@ function mapWorkspaceError(error: unknown): WorkspaceErrorEvent {
     code: "UNAVAILABLE",
     message: "workspace unavailable",
   };
+}
+
+function isUnexpectedWorkspaceError(error: unknown): boolean {
+  return (
+    !(error instanceof WorkspaceAccessDeniedError) &&
+    !(error instanceof WorkspaceDocumentNotFoundError)
+  );
 }
 
 type WorkspaceSocket = Socket<

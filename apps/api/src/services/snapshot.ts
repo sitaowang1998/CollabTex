@@ -237,7 +237,7 @@ export function parseProjectSnapshotState(
   };
 }
 
-function createSnapshotStoragePath(projectId: string): string {
+export function createSnapshotStoragePath(projectId: string): string {
   return `${projectId}/${Date.now()}-${randomUUID()}.json`;
 }
 

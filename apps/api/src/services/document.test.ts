@@ -290,6 +290,42 @@ describe("document service", () => {
     });
   });
 
+  it("returns snapshot-backed file content from the stored document lookup", async () => {
+    const repository = createDocumentRepository();
+    const snapshotService = createSnapshotService();
+    const service = createDocumentService({
+      documentRepository: repository,
+      projectAccessService: createProjectAccessService(),
+      snapshotService,
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+    });
+    const document = createStoredDocument({
+      path: "/docs/main.tex",
+    });
+
+    repository.findByPath.mockResolvedValue(document);
+    snapshotService.loadDocumentContent.mockResolvedValue("\\section{Loaded}");
+
+    const response = await service.getFileContent({
+      projectId: "project-1",
+      userId: "user-1",
+      path: "/docs/main.tex",
+    });
+
+    expect(snapshotService.loadDocumentContent).toHaveBeenCalledWith(document);
+    expect(response).toEqual({
+      document: {
+        id: "document-1",
+        path: "/docs/main.tex",
+        kind: "text",
+        mime: null,
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      },
+      content: "\\section{Loaded}",
+    });
+  });
+
   it("checks write access before file creation", async () => {
     const repository = createDocumentRepository();
     const projectAccessService = createProjectAccessService();

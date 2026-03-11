@@ -91,6 +91,9 @@ describe("snapshot refresh processor", () => {
   it("marks the job failed when snapshot persistence throws", async () => {
     const jobRepository = createJobRepository();
     const snapshotStore = createSnapshotStore();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
       projectLookup: createProjectLookup(),
@@ -104,11 +107,26 @@ describe("snapshot refresh processor", () => {
       new Error("disk full at /tmp/private"),
     );
 
-    await expect(processor.processNextJob()).resolves.toBe(false);
-    expect(jobRepository.markJobFailed).toHaveBeenCalledWith(
-      "job-1",
-      "disk full at /tmp/private",
-    );
+    try {
+      await expect(processor.processNextJob()).resolves.toBe(false);
+
+      expect(consoleError).toHaveBeenCalledWith(
+        "Snapshot refresh job failed",
+        {
+          jobId: "job-1",
+          projectId: "project-1",
+        },
+        expect.objectContaining({
+          message: "disk full at /tmp/private",
+        }),
+      );
+      expect(jobRepository.markJobFailed).toHaveBeenCalledWith(
+        "job-1",
+        "snapshot refresh failed; see logs for details",
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("rebuilds from the newest readable snapshot when the latest blob is missing", async () => {
