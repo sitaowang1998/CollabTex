@@ -5,8 +5,8 @@ export function createSnapshotRepository(
   databaseClient: DatabaseClient,
 ): SnapshotRepository {
   return {
-    findLatestForProject: async (projectId) => {
-      return databaseClient.snapshot.findFirst({
+    listForProject: async (projectId) => {
+      return databaseClient.snapshot.findMany({
         where: {
           projectId,
           project: {

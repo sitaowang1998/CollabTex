@@ -32,7 +32,7 @@ export type SnapshotStore = {
 };
 
 export type SnapshotRepository = {
-  findLatestForProject: (projectId: string) => Promise<StoredSnapshot | null>;
+  listForProject: (projectId: string) => Promise<StoredSnapshot[]>;
   createSnapshot: (input: {
     projectId: string;
     storagePath: string;
@@ -120,22 +120,25 @@ export async function loadLatestUsableProjectSnapshotState(
   snapshotStore: SnapshotStore,
   projectId: string,
 ): Promise<ProjectSnapshotState> {
-  const latestSnapshot =
-    await snapshotRepository.findLatestForProject(projectId);
+  const snapshots = await snapshotRepository.listForProject(projectId);
 
-  if (!latestSnapshot) {
+  if (snapshots.length === 0) {
     return createEmptyProjectSnapshotState();
   }
 
-  try {
-    return await snapshotStore.readProjectSnapshot(latestSnapshot.storagePath);
-  } catch (error) {
-    if (isRecoverableSnapshotReadError(error)) {
-      return createEmptyProjectSnapshotState();
-    }
+  for (const snapshot of snapshots) {
+    try {
+      return await snapshotStore.readProjectSnapshot(snapshot.storagePath);
+    } catch (error) {
+      if (isRecoverableSnapshotReadError(error)) {
+        continue;
+      }
 
-    throw error;
+      throw error;
+    }
   }
+
+  return createEmptyProjectSnapshotState();
 }
 
 export function buildProjectSnapshotState(

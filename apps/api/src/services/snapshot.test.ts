@@ -20,7 +20,7 @@ describe("snapshot service", () => {
     });
     const snapshot = createStoredSnapshot();
 
-    repository.findLatestForProject.mockResolvedValue(snapshot);
+    repository.listForProject.mockResolvedValue([snapshot]);
     store.readProjectSnapshot.mockResolvedValue({
       version: 1,
       documents: {
@@ -48,14 +48,14 @@ describe("snapshot service", () => {
       snapshotStore: createSnapshotStore(),
     });
 
-    repository.findLatestForProject.mockResolvedValue(null);
+    repository.listForProject.mockResolvedValue([]);
 
     await expect(
       service.loadDocumentContent(createStoredDocument()),
     ).resolves.toBe("");
   });
 
-  it("falls back to default content when the latest snapshot blob is missing", async () => {
+  it("falls back to an older readable snapshot when the latest blob is missing", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
     const service = createSnapshotService({
@@ -63,25 +63,45 @@ describe("snapshot service", () => {
       snapshotStore: store,
     });
 
-    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
-    store.readProjectSnapshot.mockRejectedValue(
-      new SnapshotDataNotFoundError(),
-    );
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+        createdAt: new Date("2026-03-02T00:00:00.000Z"),
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
+    store.readProjectSnapshot
+      .mockRejectedValueOnce(new SnapshotDataNotFoundError())
+      .mockResolvedValueOnce({
+        version: 1,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            content: "\\section{Recovered}",
+          },
+        },
+      });
 
     await expect(
       service.loadDocumentContent(createStoredDocument()),
-    ).resolves.toBe("");
-    await expect(
-      service.loadDocumentContent(
-        createStoredDocument({
-          kind: "binary",
-          mime: "image/png",
-        }),
-      ),
-    ).resolves.toBeNull();
+    ).resolves.toBe("\\section{Recovered}");
+    expect(store.readProjectSnapshot).toHaveBeenNthCalledWith(
+      1,
+      "project-1/latest.json",
+    );
+    expect(store.readProjectSnapshot).toHaveBeenNthCalledWith(
+      2,
+      "project-1/older.json",
+    );
   });
 
-  it("treats invalid latest snapshot data as no snapshot for reads", async () => {
+  it("falls back to an older readable snapshot when the latest blob is invalid", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
     const service = createSnapshotService({
@@ -89,10 +109,64 @@ describe("snapshot service", () => {
       snapshotStore: store,
     });
 
-    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
-    store.readProjectSnapshot.mockRejectedValue(
-      new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
-    );
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+        createdAt: new Date("2026-03-02T00:00:00.000Z"),
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
+    store.readProjectSnapshot
+      .mockRejectedValueOnce(
+        new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
+      )
+      .mockResolvedValueOnce({
+        version: 1,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            content: "\\section{Recovered}",
+          },
+        },
+      });
+
+    await expect(
+      service.loadDocumentContent(createStoredDocument()),
+    ).resolves.toBe("\\section{Recovered}");
+  });
+
+  it("returns default content when every snapshot blob is unreadable", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+    });
+
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+        createdAt: new Date("2026-03-02T00:00:00.000Z"),
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
+    store.readProjectSnapshot.mockImplementation(async (storagePath) => {
+      if (storagePath === "project-1/latest.json") {
+        throw new SnapshotDataNotFoundError();
+      }
+
+      throw new InvalidSnapshotDataError("snapshot payload must be valid JSON");
+    });
 
     await expect(
       service.loadDocumentContent(createStoredDocument()),
@@ -115,7 +189,7 @@ describe("snapshot service", () => {
       snapshotStore: store,
     });
 
-    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
+    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
     repository.createSnapshot.mockImplementation(async (input) => ({
       id: "snapshot-2",
       projectId: input.projectId,
@@ -183,7 +257,7 @@ describe("snapshot service", () => {
       snapshotStore: store,
     });
 
-    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
+    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
     repository.createSnapshot.mockImplementation(async (input) => ({
       id: "snapshot-3",
       projectId: input.projectId,
@@ -276,7 +350,7 @@ describe("snapshot service", () => {
 
 function createSnapshotRepository() {
   return {
-    findLatestForProject: vi.fn<SnapshotRepository["findLatestForProject"]>(),
+    listForProject: vi.fn<SnapshotRepository["listForProject"]>(),
     createSnapshot: vi.fn<SnapshotRepository["createSnapshot"]>(),
   };
 }
