@@ -93,12 +93,19 @@ describe("persistence schema integration", () => {
         authorId: user.id,
       },
     });
+    const snapshotRefreshJob = await getDb().snapshotRefreshJob.create({
+      data: {
+        projectId: project.id,
+        requestedByUserId: user.id,
+      },
+    });
 
     expect(user.email).toBe(`user-${suffix}@example.com`);
     expect(project.name).toBe(`Project ${suffix}`);
     expect(membership.role).toBe("admin");
     expect(document.path).toBe("/main.tex");
     expect(snapshot.authorId).toBe(user.id);
+    expect(snapshotRefreshJob.status).toBe("queued");
   });
 
   it("rejects duplicate document paths within the same project", async () => {
@@ -157,6 +164,7 @@ describe("persistence schema integration", () => {
       "Project",
       "ProjectMembership",
       "Snapshot",
+      "SnapshotRefreshJob",
       "User",
       "_prisma_migrations",
     ]);

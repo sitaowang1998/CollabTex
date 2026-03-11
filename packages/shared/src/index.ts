@@ -144,17 +144,18 @@ export type WorkspaceJoinRequest = {
   documentId: string;
 };
 
-export type WorkspaceJoinedEvent = WorkspaceJoinRequest & {
-  userId: string;
+export type WorkspaceOpenedEvent = {
+  projectId: string;
+  document: ProjectDocument;
+  content: string | null;
 };
-
-export type WorkspaceOpenEvent = WorkspaceJoinRequest;
 
 export type WorkspaceErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
   | "NOT_FOUND"
-  | "INVALID_REQUEST";
+  | "INVALID_REQUEST"
+  | "UNAVAILABLE";
 
 export type WorkspaceErrorEvent = {
   code: WorkspaceErrorCode;
@@ -162,8 +163,7 @@ export type WorkspaceErrorEvent = {
 };
 
 export type ServerToClientEvents = {
-  "workspace:joined": (data: WorkspaceJoinedEvent) => void;
-  "workspace:open": (data: WorkspaceOpenEvent) => void;
+  "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "workspace:error": (data: WorkspaceErrorEvent) => void;
 };
 

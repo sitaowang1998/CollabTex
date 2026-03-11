@@ -18,6 +18,7 @@ describe("loadConfig", () => {
       jwtSecret: "test-secret",
       clientOrigin: "http://localhost:5173",
       databaseUrl: INVALID_TEST_DATABASE_URL,
+      snapshotStorageRoot: "var/snapshots",
     });
   });
 
@@ -29,6 +30,7 @@ describe("loadConfig", () => {
         JWT_SECRET: "test-secret",
         CLIENT_ORIGIN: "http://localhost:4000",
         DATABASE_URL: INVALID_TEST_DATABASE_URL,
+        SNAPSHOT_STORAGE_ROOT: "tmp/snapshots",
       }),
     ).toEqual({
       nodeEnv: "test",
@@ -36,6 +38,7 @@ describe("loadConfig", () => {
       jwtSecret: "test-secret",
       clientOrigin: "http://localhost:4000",
       databaseUrl: INVALID_TEST_DATABASE_URL,
+      snapshotStorageRoot: "tmp/snapshots",
     });
   });
 

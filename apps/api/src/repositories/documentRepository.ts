@@ -15,6 +15,7 @@ import {
   isPrismaKnownRequestLikeError,
   lockActiveProject,
 } from "./projectRepositoryUtils.js";
+import { queueSnapshotRefreshJob } from "./snapshotRefreshJobRepository.js";
 
 export function createDocumentRepository(
   databaseClient: DatabaseClient,
@@ -30,6 +31,17 @@ export function createDocumentRepository(
         },
         orderBy: {
           path: "asc",
+        },
+      });
+    },
+    findById: async (projectId, documentId) => {
+      return databaseClient.document.findFirst({
+        where: {
+          id: documentId,
+          projectId,
+          project: {
+            tombstoneAt: null,
+          },
         },
       });
     },
@@ -54,7 +66,7 @@ export function createDocumentRepository(
 
           await assertCanCreatePath(tx, projectId, path);
 
-          return tx.document.create({
+          const createdDocument = await tx.document.create({
             data: {
               projectId,
               path,
@@ -62,6 +74,13 @@ export function createDocumentRepository(
               mime,
             },
           });
+
+          await queueSnapshotRefreshJob(tx, {
+            projectId,
+            requestedByUserId: actorUserId,
+          });
+
+          return createdDocument;
         });
       } catch (error) {
         if (isPrismaKnownRequestLikeError(error) && error.code === "P2002") {
@@ -87,8 +106,16 @@ export function createDocumentRepository(
             return false;
           }
 
-          if (movePlan.length <= 1) {
+          if (movePlan.length === 0) {
+            return true;
+          }
+
+          if (movePlan.length === 1) {
             await applyMovePlan(tx, movePlan);
+            await queueSnapshotRefreshJob(tx, {
+              projectId,
+              requestedByUserId: actorUserId,
+            });
             return true;
           }
 
@@ -96,6 +123,10 @@ export function createDocumentRepository(
 
           await applyMovePlan(tx, stagedMovePlan);
           await applyMovePlan(tx, movePlan);
+          await queueSnapshotRefreshJob(tx, {
+            projectId,
+            requestedByUserId: actorUserId,
+          });
 
           return true;
         });
@@ -130,6 +161,10 @@ export function createDocumentRepository(
               id: exactDocument.id,
             },
           });
+          await queueSnapshotRefreshJob(tx, {
+            projectId,
+            requestedByUserId: actorUserId,
+          });
 
           return true;
         }
@@ -145,6 +180,13 @@ export function createDocumentRepository(
             },
           },
         });
+
+        if (deletedDescendants.count > 0) {
+          await queueSnapshotRefreshJob(tx, {
+            projectId,
+            requestedByUserId: actorUserId,
+          });
+        }
 
         return deletedDescendants.count > 0;
       });

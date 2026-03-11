@@ -127,6 +127,7 @@ describe("project service", () => {
 function createProjectRepository() {
   return {
     createForOwner: vi.fn<ProjectRepository["createForOwner"]>(),
+    findActiveById: vi.fn<ProjectRepository["findActiveById"]>(),
     listForUser: vi.fn<ProjectRepository["listForUser"]>(),
     findForUser: vi.fn<ProjectRepository["findForUser"]>(),
     updateName: vi.fn<ProjectRepository["updateName"]>(),

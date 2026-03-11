@@ -6,6 +6,8 @@ import type {
   ProjectDocumentContentResponse,
 } from "@collab-tex/shared";
 import { type ProjectAccessService } from "./projectAccess.js";
+import type { SnapshotService } from "./snapshot.js";
+import type { SnapshotRefreshTrigger } from "./snapshotRefresh.js";
 
 const DOCUMENT_PATH_MAX_LENGTH = 1024;
 const DOCUMENT_NODE_NAME_MAX_LENGTH = DOCUMENT_PATH_MAX_LENGTH - 1;
@@ -56,6 +58,10 @@ export type GetDocumentContentInput = {
 
 export type DocumentRepository = {
   listForProject: (projectId: string) => Promise<StoredDocument[]>;
+  findById: (
+    projectId: string,
+    documentId: string,
+  ) => Promise<StoredDocument | null>;
   findByPath: (
     projectId: string,
     path: string,
@@ -112,9 +118,13 @@ export class DocumentNotFoundError extends Error {
 export function createDocumentService({
   documentRepository,
   projectAccessService,
+  snapshotService,
+  snapshotRefreshTrigger,
 }: {
   documentRepository: DocumentRepository;
   projectAccessService: ProjectAccessService;
+  snapshotService: SnapshotService;
+  snapshotRefreshTrigger: SnapshotRefreshTrigger;
 }): DocumentService {
   return {
     getTree: async (projectId, userId) => {
@@ -130,13 +140,17 @@ export function createDocumentService({
         input.actorUserId,
       );
 
-      return documentRepository.createDocument({
+      const document = await documentRepository.createDocument({
         projectId: input.projectId,
         actorUserId: input.actorUserId,
         path: normalizeDocumentPath(input.path),
         kind: input.kind,
         mime: normalizeMime(input.mime),
       });
+
+      snapshotRefreshTrigger.kick();
+
+      return document;
     },
     moveNode: async (input) => {
       await requireDocumentWriteRole(
@@ -164,6 +178,7 @@ export function createDocumentService({
       if (!moved) {
         throw new DocumentNotFoundError();
       }
+      snapshotRefreshTrigger.kick();
     },
     renameNode: async (input) => {
       await requireDocumentWriteRole(
@@ -190,6 +205,7 @@ export function createDocumentService({
       if (!renamed) {
         throw new DocumentNotFoundError();
       }
+      snapshotRefreshTrigger.kick();
     },
     deleteNode: async (input) => {
       await requireDocumentWriteRole(
@@ -207,6 +223,7 @@ export function createDocumentService({
       if (!deleted) {
         throw new DocumentNotFoundError();
       }
+      snapshotRefreshTrigger.kick();
     },
     getFileContent: async (input) => {
       await projectAccessService.requireProjectMember(
@@ -224,7 +241,7 @@ export function createDocumentService({
 
       return {
         document: serializeDocument(document),
-        content: document.kind === "text" ? "" : null,
+        content: await snapshotService.loadDocumentContent(document),
       };
     },
   };

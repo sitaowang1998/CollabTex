@@ -51,6 +51,14 @@ export function createProjectRepository(
         throw error;
       }
     },
+    findActiveById: async (projectId) => {
+      return databaseClient.project.findFirst({
+        where: {
+          id: projectId,
+          tombstoneAt: null,
+        },
+      });
+    },
     listForUser: async (userId) => {
       const projects = await databaseClient.project.findMany({
         where: {

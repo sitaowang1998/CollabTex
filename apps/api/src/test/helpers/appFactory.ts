@@ -17,6 +17,8 @@ import {
   type ProjectRepository,
 } from "../../services/project.js";
 import type { MembershipService } from "../../services/membership.js";
+import { type SnapshotService } from "../../services/snapshot.js";
+import { type SnapshotRefreshTrigger } from "../../services/snapshotRefresh.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -31,6 +33,7 @@ export const testConfig: AppConfig = {
   jwtSecret: "test_secret",
   clientOrigin: "http://localhost:5173",
   databaseUrl: INVALID_TEST_DATABASE_URL,
+  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
 };
 
 export function createTestApp() {
@@ -68,6 +71,8 @@ export function createTestApp() {
         myRole: "admin",
       }),
     },
+    snapshotService: createInMemorySnapshotService(),
+    snapshotRefreshTrigger: createNoopSnapshotRefreshTrigger(),
   });
   const membershipService = createStubMembershipService();
 
@@ -146,6 +151,15 @@ function createInMemoryProjectRepository(): ProjectRepository {
       nextProjectId += 1;
       projectsById.set(project.id, project);
       membershipsByProjectId.set(project.id, new Map([[ownerUserId, "admin"]]));
+
+      return project;
+    },
+    findActiveById: async (projectId) => {
+      const project = projectsById.get(projectId);
+
+      if (!project || project.tombstoneAt) {
+        return null;
+      }
 
       return project;
     },
@@ -259,6 +273,10 @@ function createInMemoryDocumentRepository(): DocumentRepository {
   return {
     listForProject: async (projectId) =>
       documentsByProjectId.get(projectId) ?? [],
+    findById: async (projectId, documentId) =>
+      (documentsByProjectId.get(projectId) ?? []).find(
+        (document) => document.id === documentId,
+      ) ?? null,
     findByPath: async (projectId, path) =>
       (documentsByProjectId.get(projectId) ?? []).find(
         (document) => document.path === path,
@@ -359,5 +377,55 @@ function createInMemoryDocumentRepository(): DocumentRepository {
       documentsByProjectId.set(projectId, nextDocuments);
       return true;
     },
+  };
+}
+
+function createInMemorySnapshotService(): SnapshotService {
+  const contentsByDocumentId = new Map<string, string | null>();
+
+  return {
+    loadDocumentContent: async (document) => {
+      if (!contentsByDocumentId.has(document.id)) {
+        return document.kind === "text" ? "" : null;
+      }
+
+      return contentsByDocumentId.get(document.id) ?? null;
+    },
+    captureProjectSnapshot: async ({ projectId, authorId, documents }) => {
+      const activeDocumentIds = new Set(
+        documents.map((document) => document.id),
+      );
+
+      for (const document of documents) {
+        if (!contentsByDocumentId.has(document.id)) {
+          contentsByDocumentId.set(
+            document.id,
+            document.kind === "text" ? "" : null,
+          );
+        }
+      }
+
+      for (const documentId of [...contentsByDocumentId.keys()]) {
+        if (!activeDocumentIds.has(documentId)) {
+          contentsByDocumentId.delete(documentId);
+        }
+      }
+
+      return {
+        id: `snapshot-${projectId}`,
+        projectId,
+        storagePath: `${projectId}/snapshot.json`,
+        message: null,
+        authorId,
+        createdAt: new Date(),
+      };
+    },
+  };
+}
+
+function createNoopSnapshotRefreshTrigger(): SnapshotRefreshTrigger {
+  return {
+    kick: () => {},
+    stop: () => {},
   };
 }

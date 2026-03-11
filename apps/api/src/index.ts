@@ -5,15 +5,24 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createMembershipRepository } from "./repositories/membershipRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
+import { createSnapshotRepository } from "./repositories/snapshotRepository.js";
+import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefreshJobRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
+import { createSnapshotService } from "./services/snapshot.js";
+import {
+  createSnapshotRefreshProcessor,
+  createSnapshotRefreshTrigger,
+} from "./services/snapshotRefresh.js";
+import { createWorkspaceService } from "./services/workspace.js";
 import { createSocketServer } from "./ws/socketServer.js";
 
 dotenv.config({
@@ -28,6 +37,9 @@ async function main() {
   const config = loadConfig();
   const databaseClient = createDatabaseClient(config.databaseUrl);
   const passwordHasher = createArgon2PasswordHasher();
+  const snapshotStore = createLocalFilesystemSnapshotStore(
+    config.snapshotStorageRoot,
+  );
 
   try {
     await databaseClient.$connect();
@@ -35,8 +47,27 @@ async function main() {
     const dummyPasswordHash = await passwordHasher.hash(DUMMY_PASSWORD);
     const userRepository = createUserRepository(databaseClient);
     const projectRepository = createProjectRepository(databaseClient);
+    const documentRepository = createDocumentRepository(databaseClient);
+    const snapshotRepository = createSnapshotRepository(databaseClient);
+    const snapshotRefreshJobRepository =
+      createSnapshotRefreshJobRepository(databaseClient);
     const projectAccessService = createProjectAccessService({
       projectRepository,
+    });
+    const snapshotService = createSnapshotService({
+      snapshotRepository,
+      snapshotStore,
+    });
+    const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
+      snapshotRefreshJobRepository,
+      projectLookup: projectRepository,
+      snapshotRepository,
+      snapshotStore,
+      documentRepository,
+    });
+    await snapshotRefreshJobRepository.recoverInterruptedJobs();
+    const snapshotRefreshTrigger = createSnapshotRefreshTrigger({
+      snapshotRefreshProcessor,
     });
     const authService = createAuthService({
       userRepository,
@@ -45,8 +76,10 @@ async function main() {
       dummyPasswordHash,
     });
     const documentService = createDocumentService({
-      documentRepository: createDocumentRepository(databaseClient),
+      documentRepository,
       projectAccessService,
+      snapshotService,
+      snapshotRefreshTrigger,
     });
     const projectService = createProjectService({
       projectRepository,
@@ -64,9 +97,21 @@ async function main() {
       projectService,
     });
     const server = http.createServer(app);
-    const io = createSocketServer(server, config);
+    const io = createSocketServer(server, config, {
+      workspaceService: createWorkspaceService({
+        projectAccessService,
+        documentRepository,
+        snapshotService,
+      }),
+    });
 
-    installShutdownHandlers({ server, io, databaseClient });
+    installShutdownHandlers({
+      server,
+      io,
+      databaseClient,
+      snapshotRefreshTrigger,
+    });
+    snapshotRefreshTrigger.kick();
     await listen(server, config.port);
 
     console.log(`API+Socket.io listening on http://localhost:${config.port}`);
@@ -81,10 +126,12 @@ function installShutdownHandlers({
   server,
   io,
   databaseClient,
+  snapshotRefreshTrigger,
 }: {
   server: http.Server;
   io: ReturnType<typeof createSocketServer>;
   databaseClient: ReturnType<typeof createDatabaseClient>;
+  snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
 }) {
   let isShuttingDown = false;
 
@@ -97,6 +144,7 @@ function installShutdownHandlers({
     console.log(`Received ${signal}, shutting down`);
 
     try {
+      snapshotRefreshTrigger.stop();
       await closeSocketServer(io);
       await closeHttpServer(server);
       await databaseClient.$disconnect();
