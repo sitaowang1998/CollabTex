@@ -1,9 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalFilesystemSnapshotStore } from "./localFilesystemSnapshotStore.js";
-import { SnapshotDataNotFoundError } from "../../services/snapshot.js";
+import {
+  InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
+} from "../../services/snapshot.js";
 
 describe("local filesystem snapshot store", () => {
   let rootDirectory: string | undefined;
@@ -56,6 +59,24 @@ describe("local filesystem snapshot store", () => {
     await expect(
       store.readProjectSnapshot("project-1/missing.json"),
     ).rejects.toBeInstanceOf(SnapshotDataNotFoundError);
+  });
+
+  it("maps invalid JSON snapshot files to InvalidSnapshotDataError", async () => {
+    rootDirectory = await mkdtemp(path.join(tmpdir(), "collabtex-snapshots-"));
+    const store = createLocalFilesystemSnapshotStore(rootDirectory);
+
+    await mkdir(path.join(rootDirectory, "project-1"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootDirectory, "project-1", "invalid.json"),
+      "{not-json",
+      "utf8",
+    );
+
+    await expect(
+      store.readProjectSnapshot("project-1/invalid.json"),
+    ).rejects.toBeInstanceOf(InvalidSnapshotDataError);
   });
 
   it("rejects paths that escape the storage root", async () => {

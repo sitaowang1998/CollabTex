@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
   buildProjectSnapshotState,
   createSnapshotService,
   type SnapshotRepository,
@@ -51,6 +53,58 @@ describe("snapshot service", () => {
     await expect(
       service.loadDocumentContent(createStoredDocument()),
     ).resolves.toBe("");
+  });
+
+  it("falls back to default content when the latest snapshot blob is missing", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+    });
+
+    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
+    store.readProjectSnapshot.mockRejectedValue(
+      new SnapshotDataNotFoundError(),
+    );
+
+    await expect(
+      service.loadDocumentContent(createStoredDocument()),
+    ).resolves.toBe("");
+    await expect(
+      service.loadDocumentContent(
+        createStoredDocument({
+          kind: "binary",
+          mime: "image/png",
+        }),
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("treats invalid latest snapshot data as no snapshot for reads", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+    });
+
+    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
+    store.readProjectSnapshot.mockRejectedValue(
+      new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
+    );
+
+    await expect(
+      service.loadDocumentContent(createStoredDocument()),
+    ).resolves.toBe("");
+    await expect(
+      service.loadDocumentContent(
+        createStoredDocument({
+          kind: "binary",
+          mime: "image/png",
+        }),
+      ),
+    ).resolves.toBeNull();
   });
 
   it("captures a new project snapshot with carried-forward text content", async () => {
@@ -119,6 +173,54 @@ describe("snapshot service", () => {
       },
     );
     expect(created.authorId).toBe("user-1");
+  });
+
+  it("rebuilds from an empty prior state when the latest snapshot blob is missing", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+    });
+
+    repository.findLatestForProject.mockResolvedValue(createStoredSnapshot());
+    repository.createSnapshot.mockImplementation(async (input) => ({
+      id: "snapshot-3",
+      projectId: input.projectId,
+      storagePath: input.storagePath,
+      message: input.message,
+      authorId: input.authorId,
+      createdAt: new Date("2026-03-02T00:00:00.000Z"),
+    }));
+    store.readProjectSnapshot.mockRejectedValue(
+      new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
+    );
+
+    await expect(
+      service.captureProjectSnapshot({
+        projectId: "project-1",
+        authorId: "user-1",
+        documents: [createStoredDocument()],
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: "snapshot-3",
+      }),
+    );
+    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.any(String),
+      {
+        version: 1,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            content: "",
+          },
+        },
+      },
+    );
   });
 
   it("rebuilds project snapshot state from the active document list", () => {

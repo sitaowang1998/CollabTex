@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
+} from "./snapshot.js";
+import {
   createSnapshotRefreshProcessor,
   type SnapshotRefreshJobRepository,
   type StoredSnapshotRefreshJob,
@@ -99,6 +103,77 @@ describe("snapshot refresh processor", () => {
       "job-1",
       "disk full at /tmp/private",
     );
+  });
+
+  it("rebuilds from current documents when the previous snapshot blob is missing", async () => {
+    const jobRepository = createJobRepository();
+    const snapshotRepository = createSnapshotRepository();
+    const snapshotStore = createSnapshotStore();
+    const documentRepository = createDocumentRepository();
+    const processor = createSnapshotRefreshProcessor({
+      snapshotRefreshJobRepository: jobRepository,
+      snapshotRepository,
+      snapshotStore,
+      documentRepository,
+    });
+
+    jobRepository.claimNextJob.mockResolvedValue(createJob());
+    snapshotRepository.findLatestForProject.mockResolvedValue({
+      id: "snapshot-1",
+      projectId: "project-1",
+      storagePath: "project-1/missing.json",
+      message: null,
+      authorId: "user-1",
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+    });
+    snapshotStore.readProjectSnapshot.mockRejectedValue(
+      new SnapshotDataNotFoundError(),
+    );
+
+    await expect(processor.processNextJob()).resolves.toBe(true);
+    expect(snapshotStore.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.any(String),
+      {
+        version: 1,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            content: "",
+          },
+        },
+      },
+    );
+    expect(jobRepository.markJobSucceeded).toHaveBeenCalledWith("job-1");
+  });
+
+  it("rebuilds from current documents when the previous snapshot blob is invalid", async () => {
+    const jobRepository = createJobRepository();
+    const snapshotRepository = createSnapshotRepository();
+    const snapshotStore = createSnapshotStore();
+    const processor = createSnapshotRefreshProcessor({
+      snapshotRefreshJobRepository: jobRepository,
+      snapshotRepository,
+      snapshotStore,
+      documentRepository: createDocumentRepository(),
+    });
+
+    jobRepository.claimNextJob.mockResolvedValue(createJob());
+    snapshotRepository.findLatestForProject.mockResolvedValue({
+      id: "snapshot-1",
+      projectId: "project-1",
+      storagePath: "project-1/invalid.json",
+      message: null,
+      authorId: "user-1",
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+    });
+    snapshotStore.readProjectSnapshot.mockRejectedValue(
+      new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
+    );
+
+    await expect(processor.processNextJob()).resolves.toBe(true);
+    expect(jobRepository.markJobSucceeded).toHaveBeenCalledWith("job-1");
   });
 });
 

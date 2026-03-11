@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  InvalidSnapshotDataError,
   parseProjectSnapshotState,
   SnapshotDataNotFoundError,
   type ProjectSnapshotState,
@@ -21,7 +22,7 @@ export function createLocalFilesystemSnapshotStore(
 
       try {
         const rawSnapshot = await readFile(absolutePath, "utf8");
-        return parseProjectSnapshotState(JSON.parse(rawSnapshot) as unknown);
+        return parseProjectSnapshotState(parseSnapshotJson(rawSnapshot));
       } catch (error) {
         if (isMissingFileError(error)) {
           throw new SnapshotDataNotFoundError();
@@ -46,6 +47,14 @@ export function createLocalFilesystemSnapshotStore(
       );
     },
   };
+}
+
+function parseSnapshotJson(rawSnapshot: string): unknown {
+  try {
+    return JSON.parse(rawSnapshot) as unknown;
+  } catch {
+    throw new InvalidSnapshotDataError("snapshot payload must be valid JSON");
+  }
 }
 
 function resolveStoragePath(

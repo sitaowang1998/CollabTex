@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { DocumentRepository } from "./document.js";
 import {
   buildProjectSnapshotState,
-  createEmptyProjectSnapshotState,
+  loadLatestUsableProjectSnapshotState,
   type SnapshotRepository,
   type SnapshotStore,
 } from "./snapshot.js";
@@ -65,12 +65,11 @@ export function createSnapshotRefreshProcessor({
         const documents = await documentRepository.listForProject(
           job.projectId,
         );
-        const latestSnapshot = await snapshotRepository.findLatestForProject(
+        const previousState = await loadLatestUsableProjectSnapshotState(
+          snapshotRepository,
+          snapshotStore,
           job.projectId,
         );
-        const previousState = latestSnapshot
-          ? await snapshotStore.readProjectSnapshot(latestSnapshot.storagePath)
-          : createEmptyProjectSnapshotState();
         const nextState = buildProjectSnapshotState(documents, previousState);
         const storagePath = createSnapshotStoragePath(job.projectId);
 

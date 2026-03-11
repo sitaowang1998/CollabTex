@@ -75,16 +75,10 @@ export function createSnapshotService({
 }): SnapshotService {
   return {
     loadDocumentContent: async (document) => {
-      const latestSnapshot = await snapshotRepository.findLatestForProject(
+      const snapshotState = await loadLatestUsableProjectSnapshotState(
+        snapshotRepository,
+        snapshotStore,
         document.projectId,
-      );
-
-      if (!latestSnapshot) {
-        return getDefaultDocumentContent(document.kind);
-      }
-
-      const snapshotState = await snapshotStore.readProjectSnapshot(
-        latestSnapshot.storagePath,
       );
       const snapshotDocument = snapshotState.documents[document.id];
 
@@ -101,11 +95,11 @@ export function createSnapshotService({
         : "";
     },
     captureProjectSnapshot: async ({ projectId, authorId, documents }) => {
-      const latestSnapshot =
-        await snapshotRepository.findLatestForProject(projectId);
-      const previousState = latestSnapshot
-        ? await snapshotStore.readProjectSnapshot(latestSnapshot.storagePath)
-        : createEmptyProjectSnapshotState();
+      const previousState = await loadLatestUsableProjectSnapshotState(
+        snapshotRepository,
+        snapshotStore,
+        projectId,
+      );
       const nextState = buildProjectSnapshotState(documents, previousState);
       const storagePath = createSnapshotStoragePath(projectId);
 
@@ -119,6 +113,29 @@ export function createSnapshotService({
       });
     },
   };
+}
+
+export async function loadLatestUsableProjectSnapshotState(
+  snapshotRepository: SnapshotRepository,
+  snapshotStore: SnapshotStore,
+  projectId: string,
+): Promise<ProjectSnapshotState> {
+  const latestSnapshot =
+    await snapshotRepository.findLatestForProject(projectId);
+
+  if (!latestSnapshot) {
+    return createEmptyProjectSnapshotState();
+  }
+
+  try {
+    return await snapshotStore.readProjectSnapshot(latestSnapshot.storagePath);
+  } catch (error) {
+    if (isRecoverableSnapshotReadError(error)) {
+      return createEmptyProjectSnapshotState();
+    }
+
+    throw error;
+  }
 }
 
 export function buildProjectSnapshotState(
@@ -223,6 +240,13 @@ function createSnapshotStoragePath(projectId: string): string {
 
 function getDefaultDocumentContent(kind: DocumentKind): string | null {
   return kind === "text" ? "" : null;
+}
+
+function isRecoverableSnapshotReadError(error: unknown): boolean {
+  return (
+    error instanceof SnapshotDataNotFoundError ||
+    error instanceof InvalidSnapshotDataError
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
