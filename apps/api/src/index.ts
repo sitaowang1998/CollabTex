@@ -60,6 +60,7 @@ async function main() {
     });
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
+      projectLookup: projectRepository,
       snapshotRepository,
       snapshotStore,
       documentRepository,

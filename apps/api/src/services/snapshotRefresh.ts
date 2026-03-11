@@ -33,6 +33,10 @@ export type SnapshotRefreshJobRepository = {
   markJobFailed: (jobId: string, lastError: string) => Promise<void>;
 };
 
+export type SnapshotRefreshProjectLookup = {
+  findActiveById: (projectId: string) => Promise<{ id: string } | null>;
+};
+
 export type SnapshotRefreshProcessor = {
   processNextJob: () => Promise<boolean>;
 };
@@ -44,11 +48,13 @@ export type SnapshotRefreshTrigger = {
 
 export function createSnapshotRefreshProcessor({
   snapshotRefreshJobRepository,
+  projectLookup,
   snapshotRepository,
   snapshotStore,
   documentRepository,
 }: {
   snapshotRefreshJobRepository: SnapshotRefreshJobRepository;
+  projectLookup: SnapshotRefreshProjectLookup;
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;
   documentRepository: Pick<DocumentRepository, "listForProject">;
@@ -62,6 +68,14 @@ export function createSnapshotRefreshProcessor({
       }
 
       try {
+        const project = await projectLookup.findActiveById(job.projectId);
+
+        if (!project) {
+          await snapshotRefreshJobRepository.markJobSucceeded(job.id);
+
+          return true;
+        }
+
         const documents = await documentRepository.listForProject(
           job.projectId,
         );

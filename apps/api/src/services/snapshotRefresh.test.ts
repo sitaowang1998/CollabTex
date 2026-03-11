@@ -6,6 +6,7 @@ import {
 import {
   createSnapshotRefreshProcessor,
   type SnapshotRefreshJobRepository,
+  type SnapshotRefreshProjectLookup,
   type StoredSnapshotRefreshJob,
 } from "./snapshotRefresh.js";
 import type { DocumentRepository, StoredDocument } from "./document.js";
@@ -16,6 +17,7 @@ describe("snapshot refresh processor", () => {
     const jobRepository = createJobRepository();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository: createSnapshotRepository(),
       snapshotStore: createSnapshotStore(),
       documentRepository: createDocumentRepository(),
@@ -33,6 +35,7 @@ describe("snapshot refresh processor", () => {
     const documentRepository = createDocumentRepository();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository,
       snapshotStore,
       documentRepository,
@@ -90,6 +93,7 @@ describe("snapshot refresh processor", () => {
     const snapshotStore = createSnapshotStore();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository: createSnapshotRepository(),
       snapshotStore,
       documentRepository: createDocumentRepository(),
@@ -114,6 +118,7 @@ describe("snapshot refresh processor", () => {
     const documentRepository = createDocumentRepository();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository,
       snapshotStore,
       documentRepository,
@@ -176,6 +181,7 @@ describe("snapshot refresh processor", () => {
     const snapshotStore = createSnapshotStore();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository,
       snapshotStore,
       documentRepository: createDocumentRepository(),
@@ -236,6 +242,7 @@ describe("snapshot refresh processor", () => {
     const snapshotStore = createSnapshotStore();
     const processor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository: jobRepository,
+      projectLookup: createProjectLookup(),
       snapshotRepository,
       snapshotStore,
       documentRepository: createDocumentRepository(),
@@ -278,6 +285,30 @@ describe("snapshot refresh processor", () => {
       }),
     );
   });
+
+  it("marks deleted projects complete without writing a snapshot", async () => {
+    const jobRepository = createJobRepository();
+    const projectLookup = createProjectLookup();
+    const snapshotRepository = createSnapshotRepository();
+    const snapshotStore = createSnapshotStore();
+    const documentRepository = createDocumentRepository();
+    const processor = createSnapshotRefreshProcessor({
+      snapshotRefreshJobRepository: jobRepository,
+      projectLookup,
+      snapshotRepository,
+      snapshotStore,
+      documentRepository,
+    });
+
+    jobRepository.claimNextJob.mockResolvedValue(createJob());
+    projectLookup.findActiveById.mockResolvedValue(null);
+
+    await expect(processor.processNextJob()).resolves.toBe(true);
+    expect(jobRepository.markJobSucceeded).toHaveBeenCalledWith("job-1");
+    expect(documentRepository.listForProject).not.toHaveBeenCalled();
+    expect(snapshotStore.writeProjectSnapshot).not.toHaveBeenCalled();
+    expect(snapshotRepository.createSnapshot).not.toHaveBeenCalled();
+  });
 });
 
 function createJobRepository() {
@@ -287,6 +318,16 @@ function createJobRepository() {
       vi.fn<SnapshotRefreshJobRepository["recoverInterruptedJobs"]>(),
     markJobSucceeded: vi.fn<SnapshotRefreshJobRepository["markJobSucceeded"]>(),
     markJobFailed: vi.fn<SnapshotRefreshJobRepository["markJobFailed"]>(),
+  };
+}
+
+function createProjectLookup() {
+  return {
+    findActiveById: vi
+      .fn<SnapshotRefreshProjectLookup["findActiveById"]>()
+      .mockResolvedValue({
+        id: "project-1",
+      }),
   };
 }
 
