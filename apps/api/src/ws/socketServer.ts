@@ -70,12 +70,14 @@ export function createSocketServer(
 
       latestJoinSequence += 1;
       const joinSequence = latestJoinSequence;
-
-      void openWorkspace(socket, dependencies.workspaceService, {
+      const workspaceOpenInput = {
         userId,
         projectId: request.projectId,
         documentId: request.documentId,
-        joinSequence,
+      };
+
+      void openWorkspace(socket, dependencies.workspaceService, {
+        workspaceOpenInput,
         isLatestJoin: () => joinSequence === latestJoinSequence,
         getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
         setActiveWorkspaceRoomName: (roomName) => {
@@ -96,20 +98,23 @@ async function openWorkspace(
   socket: WorkspaceSocket,
   workspaceService: WorkspaceService,
   input: {
-    userId: string;
-    projectId: string;
-    documentId: string;
-    joinSequence: number;
+    workspaceOpenInput: {
+      userId: string;
+      projectId: string;
+      documentId: string;
+    };
     isLatestJoin: () => boolean;
     getActiveWorkspaceRoomName: () => string | null;
     setActiveWorkspaceRoomName: (roomName: string) => void;
   },
 ): Promise<void> {
   try {
-    const openedWorkspace = await workspaceService.openDocument(input);
+    const openedWorkspace = await workspaceService.openDocument(
+      input.workspaceOpenInput,
+    );
     const nextWorkspaceRoomName = createWorkspaceRoomName(
-      input.projectId,
-      input.documentId,
+      input.workspaceOpenInput.projectId,
+      input.workspaceOpenInput.documentId,
     );
 
     if (!input.isLatestJoin()) {

@@ -98,13 +98,20 @@ async function findNextClaimableJob(
   return databaseClient.snapshotRefreshJob.findFirst({
     where: {
       status,
-      project: {
-        tombstoneAt: null,
-      },
     },
-    orderBy: {
-      createdAt: "asc",
-    },
+    orderBy:
+      status === "queued"
+        ? {
+            createdAt: "asc",
+          }
+        : [
+            {
+              finishedAt: "asc",
+            },
+            {
+              createdAt: "asc",
+            },
+          ],
   });
 }
 
