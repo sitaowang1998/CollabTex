@@ -13,7 +13,10 @@ import {
   ProjectNotFoundError,
 } from "../../services/project.js";
 import { type SnapshotService } from "../../services/snapshot.js";
-import { createWorkspaceService } from "../../services/workspace.js";
+import {
+  createWorkspaceService,
+  type WorkspaceService,
+} from "../../services/workspace.js";
 import { createSocketServer } from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
@@ -28,6 +31,7 @@ export type TestSocketServer = {
 
 export async function createTestSocketServer(options?: {
   snapshotService?: SnapshotService;
+  workspaceService?: WorkspaceService;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
@@ -53,8 +57,9 @@ export async function createTestSocketServer(options?: {
     membershipService: createStubMembershipService(),
   });
   const server = http.createServer(app);
-  const io = createSocketServer(server, testConfig, {
-    workspaceService: createWorkspaceService({
+  const workspaceService =
+    options?.workspaceService ??
+    createWorkspaceService({
       projectAccessService: {
         requireProjectMember: async (projectId, userId) => {
           const project = await projectRepository.findForUser(
@@ -74,7 +79,9 @@ export async function createTestSocketServer(options?: {
       },
       documentRepository,
       snapshotService,
-    }),
+    });
+  const io = createSocketServer(server, testConfig, {
+    workspaceService,
   });
 
   await new Promise<void>((resolve) => {

@@ -52,6 +52,8 @@ export function createSocketServer(
 
   io.on("connection", (socket) => {
     const userId = socket.data.userId;
+    let latestJoinSequence = 0;
+    let activeWorkspaceRoomName: string | null = null;
 
     if (!userId) {
       socket.disconnect(true);
@@ -66,10 +68,19 @@ export function createSocketServer(
         return;
       }
 
+      latestJoinSequence += 1;
+      const joinSequence = latestJoinSequence;
+
       void openWorkspace(socket, dependencies.workspaceService, {
         userId,
         projectId: request.projectId,
         documentId: request.documentId,
+        joinSequence,
+        isLatestJoin: () => joinSequence === latestJoinSequence,
+        getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
+        setActiveWorkspaceRoomName: (roomName) => {
+          activeWorkspaceRoomName = roomName;
+        },
       });
     });
 
@@ -88,14 +99,40 @@ async function openWorkspace(
     userId: string;
     projectId: string;
     documentId: string;
+    joinSequence: number;
+    isLatestJoin: () => boolean;
+    getActiveWorkspaceRoomName: () => string | null;
+    setActiveWorkspaceRoomName: (roomName: string) => void;
   },
 ): Promise<void> {
   try {
     const openedWorkspace = await workspaceService.openDocument(input);
+    const nextWorkspaceRoomName = createWorkspaceRoomName(
+      input.projectId,
+      input.documentId,
+    );
 
-    socket.join(createWorkspaceRoomName(input.projectId, input.documentId));
+    if (!input.isLatestJoin()) {
+      return;
+    }
+
+    const previousWorkspaceRoomName = input.getActiveWorkspaceRoomName();
+
+    if (
+      previousWorkspaceRoomName &&
+      previousWorkspaceRoomName !== nextWorkspaceRoomName
+    ) {
+      void socket.leave(previousWorkspaceRoomName);
+    }
+
+    void socket.join(nextWorkspaceRoomName);
+    input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
     socket.emit("workspace:opened", openedWorkspace);
   } catch (error) {
+    if (!input.isLatestJoin()) {
+      return;
+    }
+
     socket.emit("workspace:error", mapWorkspaceError(error));
   }
 }
