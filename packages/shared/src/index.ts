@@ -183,7 +183,7 @@ export type WorkspaceErrorEvent = {
 
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
-  "workspace:error": (data: WorkspaceErrorEvent) => void;
+  error: (data: WorkspaceErrorEvent) => void;
   "doc.sync.response": (data: DocumentSyncResponseEvent) => void;
   "doc.update": (data: DocumentUpdateEvent) => void;
   "doc.reset": (data: DocumentResetEvent) => void;

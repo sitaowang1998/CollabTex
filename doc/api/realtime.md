@@ -3,10 +3,9 @@
 This document is the checked-in Socket.IO contract for the intended Week 2
 realtime surface in `apps/api`.
 
-`workspace:join`, `workspace:opened`, and `workspace:error` are the existing
-foundation. The document sync/update/reset events below are defined now so the
-shared contract stays stable while the later Yjs-backed implementation slices
-land.
+`workspace:join` and `workspace:opened` remain the workspace entrypoint events.
+The document sync/update/reset events below are defined now so the shared
+contract stays stable while the later Yjs-backed implementation slices land.
 
 ## Authentication
 
@@ -19,10 +18,11 @@ land.
 
 ## Role Behavior
 
-- `admin` and `editor` may join a workspace, request sync state, and send
-  `doc.update`
-- `commenter` and `reader` may join a workspace and receive sync/update/reset
-  events, but are read-only and must not be allowed to send `doc.update`
+- `admin`, `editor`, `commenter`, and `reader` may join a workspace and send
+  `doc.sync.request`
+- `admin` and `editor` may send `doc.update`
+- `commenter` and `reader` may receive sync/update/reset events, but are
+  read-only and must not be allowed to send `doc.update`
 - Project membership is still required for all workspace and document events
 
 ## Client To Server Events
@@ -55,6 +55,8 @@ Validation behavior:
 - payload must be an object
 - `docId` must be a non-empty string
 - valid only after the socket has joined the matching workspace/document
+- available to any joined project member so read-only clients can bootstrap the
+  full CRDT state
 
 ### `doc.update`
 
@@ -144,7 +146,7 @@ Behavior:
   re-sync the document
 - the initial Week 2 use case is snapshot restore / reopen resynchronization
 
-### `workspace:error`
+### `error`
 
 ```json
 {
@@ -160,7 +162,15 @@ Error codes:
 - `NOT_FOUND`
 - `UNAVAILABLE`
 - `UNAUTHORIZED` is reserved in shared types but not currently emitted by
-  `workspace:error`
+  `error`
+
+Behavior:
+
+- used for validation, permission, not-found, and availability failures across
+  workspace and document-level events
+- examples include invalid `workspace:join` payloads, invalid `doc.update`
+  payloads, document/session mismatches, and read-only members attempting to
+  send `doc.update`
 
 ## Deferred From This Change
 
