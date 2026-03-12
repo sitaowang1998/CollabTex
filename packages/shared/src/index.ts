@@ -150,6 +150,25 @@ export type WorkspaceOpenedEvent = {
   content: string | null;
 };
 
+export type DocumentSyncRequest = {
+  docId: string;
+};
+
+export type DocumentSyncResponseEvent = {
+  docId: string;
+  stateB64: string;
+};
+
+export type DocumentUpdateEvent = {
+  docId: string;
+  updateB64: string;
+};
+
+export type DocumentResetEvent = {
+  docId: string;
+  reason: string;
+};
+
 export type WorkspaceErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
@@ -165,8 +184,13 @@ export type WorkspaceErrorEvent = {
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "workspace:error": (data: WorkspaceErrorEvent) => void;
+  "doc.sync.response": (data: DocumentSyncResponseEvent) => void;
+  "doc.update": (data: DocumentUpdateEvent) => void;
+  "doc.reset": (data: DocumentResetEvent) => void;
 };
 
 export type ClientToServerEvents = {
   "workspace:join": (data: WorkspaceJoinRequest) => void;
+  "doc.sync.request": (data: DocumentSyncRequest) => void;
+  "doc.update": (data: DocumentUpdateEvent) => void;
 };
