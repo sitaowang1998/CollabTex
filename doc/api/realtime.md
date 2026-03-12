@@ -46,14 +46,14 @@ Validation behavior:
 
 ```json
 {
-  "docId": "document-456"
+  "documentId": "document-456"
 }
 ```
 
 Validation behavior:
 
 - payload must be an object
-- `docId` must be a non-empty string
+- `documentId` must be a non-empty string
 - valid only after the socket has joined the matching workspace/document
 - available to any joined project member so read-only clients can bootstrap the
   full CRDT state
@@ -62,7 +62,7 @@ Validation behavior:
 
 ```json
 {
-  "docId": "document-456",
+  "documentId": "document-456",
   "updateB64": "AQIDBA=="
 }
 ```
@@ -70,7 +70,7 @@ Validation behavior:
 Validation behavior:
 
 - payload must be an object
-- `docId` must be a non-empty string
+- `documentId` must be a non-empty string
 - `updateB64` must be a non-empty base64-encoded Yjs update payload
 - valid only after the socket has joined the matching workspace/document
 - write access is limited to `admin` and `editor`
@@ -105,7 +105,7 @@ Behavior:
 
 ```json
 {
-  "docId": "document-456",
+  "documentId": "document-456",
   "stateB64": "AQIDBA=="
 }
 ```
@@ -120,7 +120,7 @@ Behavior:
 
 ```json
 {
-  "docId": "document-456",
+  "documentId": "document-456",
   "updateB64": "AQIDBA=="
 }
 ```
@@ -135,7 +135,7 @@ Behavior:
 
 ```json
 {
-  "docId": "document-456",
+  "documentId": "document-456",
   "reason": "snapshot-restored"
 }
 ```
@@ -146,7 +146,7 @@ Behavior:
   re-sync the document
 - the initial Week 2 use case is snapshot restore / reopen resynchronization
 
-### `error`
+### `realtime:error`
 
 ```json
 {
@@ -162,7 +162,7 @@ Error codes:
 - `NOT_FOUND`
 - `UNAVAILABLE`
 - `UNAUTHORIZED` is reserved in shared types but not currently emitted by
-  `error`
+  `realtime:error`
 
 Behavior:
 

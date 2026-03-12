@@ -151,21 +151,21 @@ export type WorkspaceOpenedEvent = {
 };
 
 export type DocumentSyncRequest = {
-  docId: string;
+  documentId: string;
 };
 
 export type DocumentSyncResponseEvent = {
-  docId: string;
+  documentId: string;
   stateB64: string;
 };
 
 export type DocumentUpdateEvent = {
-  docId: string;
+  documentId: string;
   updateB64: string;
 };
 
 export type DocumentResetEvent = {
-  docId: string;
+  documentId: string;
   reason: string;
 };
 
@@ -183,7 +183,7 @@ export type WorkspaceErrorEvent = {
 
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
-  error: (data: WorkspaceErrorEvent) => void;
+  "realtime:error": (data: WorkspaceErrorEvent) => void;
   "doc.sync.response": (data: DocumentSyncResponseEvent) => void;
   "doc.update": (data: DocumentUpdateEvent) => void;
   "doc.reset": (data: DocumentResetEvent) => void;
