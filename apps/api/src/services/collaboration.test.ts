@@ -33,6 +33,15 @@ describe("collaboration service", () => {
     expect(document.getText()).toBe("");
   });
 
+  it("does not change an empty document update when getText is called", () => {
+    const service = createCollaborationService();
+    const document = track(openedDocuments, service.createEmptyTextDocument());
+    const beforeRead = document.exportUpdate();
+
+    expect(document.getText()).toBe("");
+    expect(document.exportUpdate()).toEqual(beforeRead);
+  });
+
   it("hydrates an empty replica from authoritative server state without duplication", () => {
     const service = createCollaborationService();
     const authoritativeDocument = track(

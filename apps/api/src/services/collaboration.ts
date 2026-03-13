@@ -39,12 +39,14 @@ export function createCollaborationService(): CollaborationService {
 }
 
 function createCollaborationDocument(document: Y.Doc): CollaborationDocument {
+  const text = document.getText(TEXT_FIELD_NAME);
+
   return {
     applyUpdate: (update) => {
       applyCollaborationUpdate(document, update);
     },
     exportUpdate: () => Y.encodeStateAsUpdate(document),
-    getText: () => document.getText(TEXT_FIELD_NAME).toString(),
+    getText: () => text.toString(),
     destroy: () => {
       document.destroy();
     },
