@@ -14,28 +14,51 @@ describe("collaboration service", () => {
     }
   });
 
-  it("initializes a collaboration document from plain text", () => {
+  it("initializes a collaboration document from canonical text state", () => {
     const service = createCollaborationService();
     const document = track(
       openedDocuments,
-      service.createTextDocument("Hello"),
+      service.createDocumentFromState(
+        service.createCanonicalTextState("Hello"),
+      ),
     );
 
     expect(document.getText()).toBe("Hello");
   });
 
-  it("keeps empty-string initialization as an empty text document", () => {
+  it("creates explicit empty text documents", () => {
     const service = createCollaborationService();
-    const document = track(openedDocuments, service.createTextDocument(""));
+    const document = track(openedDocuments, service.createEmptyTextDocument());
 
     expect(document.getText()).toBe("");
+  });
+
+  it("generates stable canonical state for repeated text seeding", () => {
+    const service = createCollaborationService();
+    const seedStateA = service.createCanonicalTextState("Hello");
+    const seedStateB = service.createCanonicalTextState("Hello");
+    const firstReplica = track(
+      openedDocuments,
+      service.createDocumentFromState(seedStateA),
+    );
+    const secondReplica = track(
+      openedDocuments,
+      service.createDocumentFromState(seedStateB),
+    );
+
+    firstReplica.applyUpdate(secondReplica.exportState());
+
+    expect(seedStateB).toEqual(seedStateA);
+    expect(firstReplica.getText()).toBe("Hello");
   });
 
   it("reproduces the same state in another instance from exported state", () => {
     const service = createCollaborationService();
     const source = track(
       openedDocuments,
-      service.createTextDocument("\\section{Intro}"),
+      service.createDocumentFromState(
+        service.createCanonicalTextState("\\section{Intro}"),
+      ),
     );
     const replica = track(openedDocuments, service.createEmptyTextDocument());
 
@@ -47,9 +70,18 @@ describe("collaboration service", () => {
 
   it("applies an incremental update from another synced instance", () => {
     const service = createCollaborationService();
-    const source = track(openedDocuments, service.createTextDocument("Hello"));
-    const replica = track(openedDocuments, service.createEmptyTextDocument());
-    replica.applyUpdate(source.exportState());
+    const source = track(
+      openedDocuments,
+      service.createDocumentFromState(
+        service.createCanonicalTextState("Hello"),
+      ),
+    );
+    const replica = track(
+      openedDocuments,
+      service.createDocumentFromState(
+        service.createCanonicalTextState("Hello"),
+      ),
+    );
 
     const sourceDoc = new Y.Doc();
     const replicaDoc = new Y.Doc();
@@ -75,14 +107,20 @@ describe("collaboration service", () => {
 
   it("exports the full final state after multiple applied updates", () => {
     const service = createCollaborationService();
-    const source = track(openedDocuments, service.createTextDocument("A"));
-    const replica = track(openedDocuments, service.createEmptyTextDocument());
+    const seedState = service.createCanonicalTextState("A");
+    const source = track(
+      openedDocuments,
+      service.createDocumentFromState(seedState),
+    );
+    const replica = track(
+      openedDocuments,
+      service.createDocumentFromState(seedState),
+    );
     const reopened = track(openedDocuments, service.createEmptyTextDocument());
     const sourceDoc = new Y.Doc();
 
     try {
       Y.applyUpdate(sourceDoc, source.exportState());
-      replica.applyUpdate(source.exportState());
 
       replica.applyUpdate(
         createIncrementalUpdate(
