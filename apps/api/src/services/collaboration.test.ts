@@ -14,13 +14,12 @@ describe("collaboration service", () => {
     }
   });
 
-  it("initializes a collaboration document from canonical text state", () => {
+  it("initializes a collaboration document from authoritative server state", () => {
     const service = createCollaborationService();
+    const authoritativeState = createAuthoritativeServerState("Hello");
     const document = track(
       openedDocuments,
-      service.createDocumentFromState(
-        service.createCanonicalTextState("Hello"),
-      ),
+      service.createDocumentFromState(authoritativeState),
     );
 
     expect(document.getText()).toBe("Hello");
@@ -33,23 +32,17 @@ describe("collaboration service", () => {
     expect(document.getText()).toBe("");
   });
 
-  it("generates stable canonical state for repeated text seeding", () => {
+  it("hydrates an empty replica from authoritative server state without duplication", () => {
     const service = createCollaborationService();
-    const seedStateA = service.createCanonicalTextState("Hello");
-    const seedStateB = service.createCanonicalTextState("Hello");
-    const firstReplica = track(
+    const authoritativeDocument = track(
       openedDocuments,
-      service.createDocumentFromState(seedStateA),
+      service.createDocumentFromState(createAuthoritativeServerState("Hello")),
     );
-    const secondReplica = track(
-      openedDocuments,
-      service.createDocumentFromState(seedStateB),
-    );
+    const replica = track(openedDocuments, service.createEmptyTextDocument());
 
-    firstReplica.applyUpdate(secondReplica.exportState());
+    replica.applyUpdate(authoritativeDocument.exportState());
 
-    expect(seedStateB).toEqual(seedStateA);
-    expect(firstReplica.getText()).toBe("Hello");
+    expect(replica.getText()).toBe("Hello");
   });
 
   it("reproduces the same state in another instance from exported state", () => {
@@ -57,7 +50,7 @@ describe("collaboration service", () => {
     const source = track(
       openedDocuments,
       service.createDocumentFromState(
-        service.createCanonicalTextState("\\section{Intro}"),
+        createAuthoritativeServerState("\\section{Intro}"),
       ),
     );
     const replica = track(openedDocuments, service.createEmptyTextDocument());
@@ -72,16 +65,10 @@ describe("collaboration service", () => {
     const service = createCollaborationService();
     const source = track(
       openedDocuments,
-      service.createDocumentFromState(
-        service.createCanonicalTextState("Hello"),
-      ),
+      service.createDocumentFromState(createAuthoritativeServerState("Hello")),
     );
-    const replica = track(
-      openedDocuments,
-      service.createDocumentFromState(
-        service.createCanonicalTextState("Hello"),
-      ),
-    );
+    const replica = track(openedDocuments, service.createEmptyTextDocument());
+    replica.applyUpdate(source.exportState());
 
     const sourceDoc = new Y.Doc();
     const replicaDoc = new Y.Doc();
@@ -107,20 +94,17 @@ describe("collaboration service", () => {
 
   it("exports the full final state after multiple applied updates", () => {
     const service = createCollaborationService();
-    const seedState = service.createCanonicalTextState("A");
     const source = track(
       openedDocuments,
-      service.createDocumentFromState(seedState),
+      service.createDocumentFromState(createAuthoritativeServerState("A")),
     );
-    const replica = track(
-      openedDocuments,
-      service.createDocumentFromState(seedState),
-    );
+    const replica = track(openedDocuments, service.createEmptyTextDocument());
     const reopened = track(openedDocuments, service.createEmptyTextDocument());
     const sourceDoc = new Y.Doc();
 
     try {
       Y.applyUpdate(sourceDoc, source.exportState());
+      replica.applyUpdate(source.exportState());
 
       replica.applyUpdate(
         createIncrementalUpdate(
@@ -169,6 +153,21 @@ function createIncrementalUpdate(
     );
   } finally {
     targetDocument.destroy();
+  }
+}
+
+function createAuthoritativeServerState(initialText: string) {
+  const document = new Y.Doc();
+  const text = document.getText("content");
+
+  try {
+    if (initialText.length > 0) {
+      text.insert(0, initialText);
+    }
+
+    return Y.encodeStateAsUpdate(document);
+  } finally {
+    document.destroy();
   }
 }
 
