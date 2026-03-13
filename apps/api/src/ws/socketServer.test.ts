@@ -70,7 +70,7 @@ describe("socket server", () => {
     });
   });
 
-  it("emits workspace:error when the user is not a project member", async () => {
+  it("emits realtime:error when the user is not a project member", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("bob", testConfig.jwtSecret);
     const client = socketServer.connect(token);
@@ -84,7 +84,7 @@ describe("socket server", () => {
           });
         });
 
-        client.once("workspace:error", (payload) => {
+        client.once("realtime:error", (payload) => {
           client.close();
           resolve(payload);
         });
@@ -140,7 +140,7 @@ describe("socket server", () => {
     expect(message).toBe("invalid token");
   });
 
-  it("emits workspace:error for an invalid workspace join payload", async () => {
+  it("emits realtime:error for an invalid workspace join payload", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
@@ -156,7 +156,7 @@ describe("socket server", () => {
         });
       });
 
-      client.once("workspace:error", (payload) => {
+      client.once("realtime:error", (payload) => {
         client.close();
         resolve(payload);
       });
@@ -173,7 +173,7 @@ describe("socket server", () => {
     });
   });
 
-  it("emits workspace:error when the document is missing", async () => {
+  it("emits realtime:error when the document is missing", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
@@ -187,7 +187,7 @@ describe("socket server", () => {
           });
         });
 
-        client.once("workspace:error", (payload) => {
+        client.once("realtime:error", (payload) => {
           client.close();
           resolve(payload);
         });
@@ -234,7 +234,7 @@ describe("socket server", () => {
             });
           });
 
-          client.once("workspace:error", (payload) => {
+          client.once("realtime:error", (payload) => {
             client.close();
             resolve(payload);
           });
@@ -306,7 +306,7 @@ describe("socket server", () => {
         resolve();
       });
 
-      client.on("workspace:error", (payload) => {
+      client.on("realtime:error", (payload) => {
         errorEvents.push(payload);
       });
 
@@ -320,7 +320,7 @@ describe("socket server", () => {
     expect(errorEvents).toEqual([]);
   });
 
-  it("suppresses stale workspace:error events when a newer join succeeds", async () => {
+  it("suppresses stale realtime:error events when a newer join succeeds", async () => {
     const firstJoin = createDeferred<WorkspaceOpenedEvent>();
     const secondJoin = createDeferred<WorkspaceOpenedEvent>();
     socketServer = await createTestSocketServer({
@@ -360,7 +360,7 @@ describe("socket server", () => {
         resolve();
       });
 
-      client.on("workspace:error", (payload) => {
+      client.on("realtime:error", (payload) => {
         errorEvents.push(payload);
       });
 

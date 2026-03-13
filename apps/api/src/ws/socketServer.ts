@@ -64,7 +64,7 @@ export function createSocketServer(
       const request = parseWorkspaceJoinRequest(payload);
 
       if ("code" in request) {
-        socket.emit("workspace:error", request);
+        socket.emit("realtime:error", request);
         return;
       }
 
@@ -142,7 +142,7 @@ async function openWorkspace(
       console.error("Workspace open failed", input.workspaceOpenInput, error);
     }
 
-    socket.emit("workspace:error", mapWorkspaceError(error));
+    socket.emit("realtime:error", mapWorkspaceError(error));
   }
 }
 
