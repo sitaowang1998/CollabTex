@@ -4,21 +4,33 @@ const TEXT_FIELD_NAME = "content";
 
 export type CollaborationDocument = {
   applyUpdate: (update: Uint8Array) => void;
-  exportState: () => Uint8Array;
+  exportUpdate: () => Uint8Array;
   getText: () => string;
   destroy: () => void;
 };
 
 export type CollaborationService = {
-  createDocumentFromState: (state: Uint8Array) => CollaborationDocument;
+  createDocumentFromUpdate: (update: Uint8Array) => CollaborationDocument;
   createEmptyTextDocument: () => CollaborationDocument;
 };
 
+export class InvalidCollaborationUpdateError extends Error {
+  constructor() {
+    super("Collaboration update is invalid");
+  }
+}
+
 export function createCollaborationService(): CollaborationService {
   return {
-    createDocumentFromState: (state) => {
+    createDocumentFromUpdate: (update) => {
       const document = new Y.Doc();
-      Y.applyUpdate(document, state);
+
+      try {
+        applyCollaborationUpdate(document, update);
+      } catch (error) {
+        document.destroy();
+        throw error;
+      }
 
       return createCollaborationDocument(document);
     },
@@ -29,12 +41,20 @@ export function createCollaborationService(): CollaborationService {
 function createCollaborationDocument(document: Y.Doc): CollaborationDocument {
   return {
     applyUpdate: (update) => {
-      Y.applyUpdate(document, update);
+      applyCollaborationUpdate(document, update);
     },
-    exportState: () => Y.encodeStateAsUpdate(document),
+    exportUpdate: () => Y.encodeStateAsUpdate(document),
     getText: () => document.getText(TEXT_FIELD_NAME).toString(),
     destroy: () => {
       document.destroy();
     },
   };
+}
+
+function applyCollaborationUpdate(document: Y.Doc, update: Uint8Array) {
+  try {
+    Y.applyUpdate(document, update);
+  } catch {
+    throw new InvalidCollaborationUpdateError();
+  }
 }

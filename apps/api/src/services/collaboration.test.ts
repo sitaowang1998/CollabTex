@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import {
   createCollaborationService,
+  InvalidCollaborationUpdateError,
   type CollaborationDocument,
 } from "./collaboration.js";
 
@@ -16,10 +17,10 @@ describe("collaboration service", () => {
 
   it("initializes a collaboration document from authoritative server state", () => {
     const service = createCollaborationService();
-    const authoritativeState = createAuthoritativeServerState("Hello");
+    const authoritativeUpdate = createAuthoritativeServerUpdate("Hello");
     const document = track(
       openedDocuments,
-      service.createDocumentFromState(authoritativeState),
+      service.createDocumentFromUpdate(authoritativeUpdate),
     );
 
     expect(document.getText()).toBe("Hello");
@@ -36,46 +37,50 @@ describe("collaboration service", () => {
     const service = createCollaborationService();
     const authoritativeDocument = track(
       openedDocuments,
-      service.createDocumentFromState(createAuthoritativeServerState("Hello")),
-    );
-    const replica = track(openedDocuments, service.createEmptyTextDocument());
-
-    replica.applyUpdate(authoritativeDocument.exportState());
-
-    expect(replica.getText()).toBe("Hello");
-  });
-
-  it("reproduces the same state in another instance from exported state", () => {
-    const service = createCollaborationService();
-    const source = track(
-      openedDocuments,
-      service.createDocumentFromState(
-        createAuthoritativeServerState("\\section{Intro}"),
+      service.createDocumentFromUpdate(
+        createAuthoritativeServerUpdate("Hello"),
       ),
     );
     const replica = track(openedDocuments, service.createEmptyTextDocument());
 
-    replica.applyUpdate(source.exportState());
+    replica.applyUpdate(authoritativeDocument.exportUpdate());
+
+    expect(replica.getText()).toBe("Hello");
+  });
+
+  it("reproduces the same update in another instance from exported state", () => {
+    const service = createCollaborationService();
+    const source = track(
+      openedDocuments,
+      service.createDocumentFromUpdate(
+        createAuthoritativeServerUpdate("\\section{Intro}"),
+      ),
+    );
+    const replica = track(openedDocuments, service.createEmptyTextDocument());
+
+    replica.applyUpdate(source.exportUpdate());
 
     expect(replica.getText()).toBe("\\section{Intro}");
-    expect(replica.exportState()).toEqual(source.exportState());
+    expect(replica.exportUpdate()).toEqual(source.exportUpdate());
   });
 
   it("applies an incremental update from another synced instance", () => {
     const service = createCollaborationService();
     const source = track(
       openedDocuments,
-      service.createDocumentFromState(createAuthoritativeServerState("Hello")),
+      service.createDocumentFromUpdate(
+        createAuthoritativeServerUpdate("Hello"),
+      ),
     );
     const replica = track(openedDocuments, service.createEmptyTextDocument());
-    replica.applyUpdate(source.exportState());
+    replica.applyUpdate(source.exportUpdate());
 
     const sourceDoc = new Y.Doc();
     const replicaDoc = new Y.Doc();
 
     try {
-      Y.applyUpdate(sourceDoc, source.exportState());
-      Y.applyUpdate(replicaDoc, replica.exportState());
+      Y.applyUpdate(sourceDoc, source.exportUpdate());
+      Y.applyUpdate(replicaDoc, replica.exportUpdate());
 
       sourceDoc.getText("content").insert(5, " world");
       const incrementalUpdate = Y.encodeStateAsUpdate(
@@ -96,20 +101,20 @@ describe("collaboration service", () => {
     const service = createCollaborationService();
     const source = track(
       openedDocuments,
-      service.createDocumentFromState(createAuthoritativeServerState("A")),
+      service.createDocumentFromUpdate(createAuthoritativeServerUpdate("A")),
     );
     const replica = track(openedDocuments, service.createEmptyTextDocument());
     const reopened = track(openedDocuments, service.createEmptyTextDocument());
     const sourceDoc = new Y.Doc();
 
     try {
-      Y.applyUpdate(sourceDoc, source.exportState());
-      replica.applyUpdate(source.exportState());
+      Y.applyUpdate(sourceDoc, source.exportUpdate());
+      replica.applyUpdate(source.exportUpdate());
 
       replica.applyUpdate(
         createIncrementalUpdate(
           sourceDoc,
-          replica.exportState(),
+          replica.exportUpdate(),
           (document) => {
             document.getText("content").insert(1, "B");
           },
@@ -118,14 +123,14 @@ describe("collaboration service", () => {
       replica.applyUpdate(
         createIncrementalUpdate(
           sourceDoc,
-          replica.exportState(),
+          replica.exportUpdate(),
           (document) => {
             document.getText("content").insert(2, "C");
           },
         ),
       );
 
-      reopened.applyUpdate(replica.exportState());
+      reopened.applyUpdate(replica.exportUpdate());
 
       expect(source.getText()).toBe("A");
       expect(replica.getText()).toBe("ABC");
@@ -133,6 +138,23 @@ describe("collaboration service", () => {
     } finally {
       sourceDoc.destroy();
     }
+  });
+
+  it("maps malformed creation updates to a domain error", () => {
+    const service = createCollaborationService();
+
+    expect(() =>
+      service.createDocumentFromUpdate(Uint8Array.from([1, 2, 3])),
+    ).toThrow(InvalidCollaborationUpdateError);
+  });
+
+  it("maps malformed applied updates to a domain error", () => {
+    const service = createCollaborationService();
+    const document = track(openedDocuments, service.createEmptyTextDocument());
+
+    expect(() => document.applyUpdate(Uint8Array.from([1, 2, 3]))).toThrow(
+      InvalidCollaborationUpdateError,
+    );
   });
 });
 
@@ -156,7 +178,7 @@ function createIncrementalUpdate(
   }
 }
 
-function createAuthoritativeServerState(initialText: string) {
+function createAuthoritativeServerUpdate(initialText: string) {
   const document = new Y.Doc();
   const text = document.getText("content");
 
