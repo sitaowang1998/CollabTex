@@ -151,7 +151,7 @@ describe("persistence schema integration", () => {
     );
   });
 
-  it("only includes the Change 2 public tables", async () => {
+  it("includes the current public tables", async () => {
     const rows = await getDb().$queryRaw<Array<{ tablename: string }>>`
       SELECT tablename
       FROM pg_tables
@@ -161,6 +161,7 @@ describe("persistence schema integration", () => {
 
     expect(rows.map(({ tablename }) => tablename)).toEqual([
       "Document",
+      "DocumentTextState",
       "Project",
       "ProjectMembership",
       "Snapshot",
