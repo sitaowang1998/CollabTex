@@ -104,6 +104,30 @@ describe("document text state repository integration", () => {
     ).resolves.toBeNull();
   });
 
+  it("treats updates without an existing text-state row as not found", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `doc-state-missing-row-${suffix}@example.com`,
+    );
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const document = await createDocumentRepository(getDb()).createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: null,
+    });
+    const repository = createDocumentTextStateRepository(getDb());
+
+    await expect(
+      repository.update({
+        documentId: document.id,
+        ...createStoredTextState("Draft v2"),
+        expectedVersion: 1,
+      }),
+    ).rejects.toBeInstanceOf(DocumentTextStateDocumentNotFoundError);
+  });
+
   it("rejects missing and binary documents", async () => {
     const suffix = randomUUID();
     const owner = await createUser(`doc-state-invalid-${suffix}@example.com`);

@@ -77,6 +77,16 @@ export function createDocumentTextStateRepository(
         });
 
         if (result.count === 0) {
+          const existingRow = await tx.documentTextState.findUnique({
+            where: {
+              documentId,
+            },
+          });
+
+          if (!existingRow) {
+            throw new DocumentTextStateDocumentNotFoundError();
+          }
+
           return null;
         }
 

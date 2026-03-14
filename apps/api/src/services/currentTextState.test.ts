@@ -5,6 +5,7 @@ import type { SnapshotService } from "./snapshot.js";
 import {
   createCurrentTextStateService,
   DocumentTextStateAlreadyExistsError,
+  DocumentTextStateDocumentNotFoundError,
   DocumentTextStateVersionConflictError,
   DocumentTextStateVersionRequiredError,
   type CurrentTextStateService,
@@ -215,6 +216,32 @@ describe("current text state service", () => {
           expectedVersion: 2,
         }),
       ).rejects.toBeInstanceOf(DocumentTextStateVersionConflictError);
+    } finally {
+      document.destroy();
+    }
+  });
+
+  it("propagates missing current-state rows from the repository", async () => {
+    const repository = createDocumentTextStateRepositoryDouble();
+    repository.update.mockRejectedValue(
+      new DocumentTextStateDocumentNotFoundError(),
+    );
+    const document =
+      createCollaborationService().createDocumentFromText("Text");
+    const service = createCurrentTextStateService({
+      documentTextStateRepository: repository,
+      snapshotService: createSnapshotServiceDouble(),
+      collaborationService: createCollaborationService(),
+    });
+
+    try {
+      await expect(
+        service.persist({
+          documentId: "document-1",
+          document,
+          expectedVersion: 2,
+        }),
+      ).rejects.toBeInstanceOf(DocumentTextStateDocumentNotFoundError);
     } finally {
       document.destroy();
     }
