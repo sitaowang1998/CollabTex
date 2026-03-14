@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
+import { isPrismaKnownRequestLikeError } from "./projectRepositoryUtils.js";
 import {
   DocumentTextStateAlreadyExistsError,
   DocumentTextStateDocumentNotFoundError,
@@ -123,15 +124,10 @@ async function assertActiveTextDocument(
     },
     select: {
       kind: true,
-      project: {
-        select: {
-          tombstoneAt: true,
-        },
-      },
     },
   });
 
-  if (!document || document.project.tombstoneAt !== null) {
+  if (!document) {
     throw new DocumentTextStateDocumentNotFoundError();
   }
 
@@ -145,21 +141,10 @@ function mapStoredDocumentTextState(
 ): StoredDocumentTextState {
   return {
     documentId: row.documentId,
-    yjsState: new Uint8Array(row.yjsState),
+    yjsState: row.yjsState,
     textContent: row.textContent,
     version: row.version,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
-}
-
-function isPrismaKnownRequestLikeError(
-  error: unknown,
-): error is Pick<Prisma.PrismaClientKnownRequestError, "code"> {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-  );
 }

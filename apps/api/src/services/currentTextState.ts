@@ -54,7 +54,7 @@ export class DocumentTextStateAlreadyExistsError extends Error {
 
 export class DocumentTextStateDocumentNotFoundError extends Error {
   constructor() {
-    super("Document text state document not found");
+    super("Document not found");
   }
 }
 
