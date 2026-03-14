@@ -6,6 +6,8 @@ import {
   createCurrentTextStateService,
   DocumentTextStateAlreadyExistsError,
   DocumentTextStateVersionConflictError,
+  DocumentTextStateVersionRequiredError,
+  type CurrentTextStateService,
   type DocumentTextStateRepository,
   type StoredDocumentTextState,
   UnsupportedCurrentTextStateDocumentError,
@@ -135,15 +137,12 @@ describe("current text state service", () => {
 
   it("persists edits without reading snapshots", async () => {
     const repository = createDocumentTextStateRepositoryDouble();
-    repository.findByDocumentId.mockResolvedValueOnce(
-      createStoredDocumentTextState({ version: 4, textContent: "Draft" }),
-    );
     repository.update.mockImplementation(async (input) =>
       createStoredDocumentTextState({
         documentId: input.documentId,
         yjsState: input.yjsState,
         textContent: input.textContent,
-        version: input.expectedVersion + 1,
+        version: 5,
       }),
     );
     const snapshotService = createSnapshotServiceDouble();
@@ -161,14 +160,39 @@ describe("current text state service", () => {
         service.persist({
           documentId: "document-1",
           document: currentDocument,
+          expectedVersion: 4,
         }),
       ).resolves.toMatchObject({
         textContent: "Draft v2",
         version: 5,
       });
       expect(snapshotService.loadDocumentContent).not.toHaveBeenCalled();
+      expect(repository.findByDocumentId).not.toHaveBeenCalled();
     } finally {
       currentDocument.destroy();
+    }
+  });
+
+  it("rejects persistence without an expected version", async () => {
+    const repository = createDocumentTextStateRepositoryDouble();
+    const document =
+      createCollaborationService().createDocumentFromText("Text");
+    const service = createCurrentTextStateService({
+      documentTextStateRepository: repository,
+      snapshotService: createSnapshotServiceDouble(),
+      collaborationService: createCollaborationService(),
+    });
+
+    try {
+      await expect(
+        service.persist({
+          documentId: "document-1",
+          document,
+        } as Parameters<CurrentTextStateService["persist"]>[0]),
+      ).rejects.toBeInstanceOf(DocumentTextStateVersionRequiredError);
+      expect(repository.update).not.toHaveBeenCalled();
+    } finally {
+      document.destroy();
     }
   });
 

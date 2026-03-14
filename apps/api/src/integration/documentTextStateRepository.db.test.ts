@@ -160,6 +160,99 @@ describe("document text state repository integration", () => {
 
     await expect(repository.findByDocumentId(document.id)).resolves.toBeNull();
   });
+
+  it("hides current text state for tombstoned projects", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-state-tombstone-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const document = await createDocumentRepository(getDb()).createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: null,
+    });
+    const repository = createDocumentTextStateRepository(getDb());
+
+    await repository.create({
+      documentId: document.id,
+      ...createStoredTextState("Draft"),
+    });
+    await getDb().project.update({
+      where: {
+        id: project.id,
+      },
+      data: {
+        tombstoneAt: new Date("2026-03-14T12:00:00.000Z"),
+      },
+    });
+
+    await expect(repository.findByDocumentId(document.id)).resolves.toBeNull();
+  });
+
+  it("treats tombstoned projects as missing for writes", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `doc-state-tombstone-write-${suffix}@example.com`,
+    );
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const document = await createDocumentRepository(getDb()).createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: null,
+    });
+    const repository = createDocumentTextStateRepository(getDb());
+    const draftState = createStoredTextState("Draft");
+
+    await getDb().project.update({
+      where: {
+        id: project.id,
+      },
+      data: {
+        tombstoneAt: new Date("2026-03-14T12:00:00.000Z"),
+      },
+    });
+
+    await expect(
+      repository.create({
+        documentId: document.id,
+        yjsState: draftState.yjsState,
+        textContent: draftState.textContent,
+      }),
+    ).rejects.toBeInstanceOf(DocumentTextStateDocumentNotFoundError);
+
+    await getDb().project.update({
+      where: {
+        id: project.id,
+      },
+      data: {
+        tombstoneAt: null,
+      },
+    });
+    await repository.create({
+      documentId: document.id,
+      yjsState: draftState.yjsState,
+      textContent: draftState.textContent,
+    });
+    await getDb().project.update({
+      where: {
+        id: project.id,
+      },
+      data: {
+        tombstoneAt: new Date("2026-03-14T12:05:00.000Z"),
+      },
+    });
+
+    await expect(
+      repository.update({
+        documentId: document.id,
+        ...createStoredTextState("Draft v2"),
+        expectedVersion: 1,
+      }),
+    ).rejects.toBeInstanceOf(DocumentTextStateDocumentNotFoundError);
+  });
 });
 
 async function createUser(email: string) {

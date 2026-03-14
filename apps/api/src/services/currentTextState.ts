@@ -36,7 +36,7 @@ export type CurrentTextStateService = {
   persist: (input: {
     documentId: string;
     document: CollaborationDocument;
-    expectedVersion?: number;
+    expectedVersion: number;
   }) => Promise<StoredDocumentTextState>;
 };
 
@@ -61,6 +61,12 @@ export class DocumentTextStateDocumentNotFoundError extends Error {
 export class DocumentTextStateVersionConflictError extends Error {
   constructor() {
     super("Document text state version conflict");
+  }
+}
+
+export class DocumentTextStateVersionRequiredError extends Error {
+  constructor() {
+    super("Document text state expected version is required");
   }
 }
 
@@ -116,55 +122,22 @@ export function createCurrentTextStateService({
       }
     },
     persist: async ({ documentId, document, expectedVersion }) => {
-      const yjsState = document.exportUpdate();
-      const textContent = document.getText();
-
-      if (typeof expectedVersion === "number") {
-        const updated = await documentTextStateRepository.update({
-          documentId,
-          yjsState,
-          textContent,
-          expectedVersion,
-        });
-
-        if (!updated) {
-          throw new DocumentTextStateVersionConflictError();
-        }
-
-        return updated;
+      if (typeof expectedVersion !== "number") {
+        throw new DocumentTextStateVersionRequiredError();
       }
 
-      while (true) {
-        const existing =
-          await documentTextStateRepository.findByDocumentId(documentId);
+      const updated = await documentTextStateRepository.update({
+        documentId,
+        yjsState: document.exportUpdate(),
+        textContent: document.getText(),
+        expectedVersion,
+      });
 
-        if (!existing) {
-          try {
-            return await documentTextStateRepository.create({
-              documentId,
-              yjsState,
-              textContent,
-            });
-          } catch (error) {
-            if (error instanceof DocumentTextStateAlreadyExistsError) {
-              continue;
-            }
-
-            throw error;
-          }
-        }
-
-        const updated = await documentTextStateRepository.update({
-          documentId,
-          yjsState,
-          textContent,
-          expectedVersion: existing.version,
-        });
-
-        if (updated) {
-          return updated;
-        }
+      if (!updated) {
+        throw new DocumentTextStateVersionConflictError();
       }
+
+      return updated;
     },
   };
 }
