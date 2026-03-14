@@ -56,6 +56,37 @@ describe("active document registry", () => {
     expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("exposes a read-only live session view", async () => {
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue({
+        kind: "empty",
+      }),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const firstHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+    const secondHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    expect(firstHandle.session.clientCount).toBe(2);
+    expect(() => {
+      (firstHandle.session as { clientCount: number }).clientCount = 99;
+    }).toThrow();
+    expect(firstHandle.session.clientCount).toBe(2);
+
+    await secondHandle.leave();
+
+    expect(firstHandle.session.clientCount).toBe(1);
+
+    await firstHandle.leave();
+  });
+
   it("deduplicates concurrent joins while the initial state is still loading", async () => {
     const collaborationService = createCollaborationServiceDouble();
     const initialState = createDeferred<InitialDocumentState>();
@@ -378,6 +409,43 @@ describe("active document registry", () => {
     await firstLeavePromise;
     await secondLeavePromise;
 
+    expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reject leave when idle persistence fails after the session becomes active again", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const firstPersist = createDeferred<void>();
+    const persistOnIdle = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValueOnce(firstPersist.promise)
+      .mockResolvedValueOnce(undefined);
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: vi.fn().mockResolvedValue({
+        kind: "empty",
+      }),
+      persistOnIdle,
+    });
+
+    const firstHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+    const firstLeavePromise = firstHandle.leave();
+    const secondHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    firstPersist.reject(new Error("write failed"));
+
+    await expect(firstLeavePromise).resolves.toBeUndefined();
+    expect(secondHandle.session).toBe(firstHandle.session);
+    expect(secondHandle.session.clientCount).toBe(1);
+
+    await secondHandle.leave();
+
+    expect(persistOnIdle).toHaveBeenCalledTimes(2);
     expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
   });
 });

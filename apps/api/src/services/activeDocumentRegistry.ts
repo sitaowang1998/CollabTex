@@ -16,8 +16,15 @@ export type ActiveDocumentSession = {
   document: CollaborationDocument;
 };
 
+export type ActiveDocumentSessionView = Readonly<{
+  projectId: string;
+  documentId: string;
+  clientCount: number;
+  document: CollaborationDocument;
+}>;
+
 export type ActiveDocumentSessionHandle = {
-  session: ActiveDocumentSession;
+  session: ActiveDocumentSessionView;
   leave: () => Promise<void>;
 };
 
@@ -41,6 +48,7 @@ export type ActiveDocumentRegistry = {
 
 type ActiveSessionRecord = {
   session: ActiveDocumentSession;
+  sessionView: ActiveDocumentSessionView;
   closePromise: Promise<void> | null;
   needsAnotherCloseCycle: boolean;
 };
@@ -121,14 +129,16 @@ export function createActiveDocumentRegistry({
       initialState.kind === "empty"
         ? collaborationService.createEmptyTextDocument()
         : collaborationService.createDocumentFromUpdate(initialState.update);
+    const session: ActiveDocumentSession = {
+      projectId: input.projectId,
+      documentId: input.documentId,
+      clientCount: 0,
+      document,
+    };
 
     return {
-      session: {
-        projectId: input.projectId,
-        documentId: input.documentId,
-        clientCount: 0,
-        document,
-      },
+      session,
+      sessionView: createSessionView(session),
       closePromise: null,
       needsAnotherCloseCycle: false,
     };
@@ -141,7 +151,7 @@ export function createActiveDocumentRegistry({
     let isLeft = false;
 
     return {
-      session: input.record.session,
+      session: input.record.sessionView,
       leave: async () => {
         if (isLeft) {
           return;
@@ -190,10 +200,11 @@ export function createActiveDocumentRegistry({
         lastCloseError = error;
       }
 
-      if (
-        record.session.clientCount > 0 ||
-        activeSessions.get(sessionKey) !== record
-      ) {
+      if (record.session.clientCount > 0) {
+        return;
+      }
+
+      if (activeSessions.get(sessionKey) !== record) {
         if (lastCloseError) {
           throw lastCloseError;
         }
@@ -239,4 +250,23 @@ export function createActiveDocumentRegistry({
 
 function createSessionKey(projectId: string, documentId: string) {
   return `${projectId}:${documentId}`;
+}
+
+function createSessionView(
+  session: ActiveDocumentSession,
+): ActiveDocumentSessionView {
+  return Object.freeze({
+    get projectId() {
+      return session.projectId;
+    },
+    get documentId() {
+      return session.documentId;
+    },
+    get clientCount() {
+      return session.clientCount;
+    },
+    get document() {
+      return session.document;
+    },
+  });
 }
