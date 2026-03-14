@@ -11,6 +11,7 @@ export type CollaborationDocument = {
 
 export type CollaborationService = {
   createDocumentFromUpdate: (update: Uint8Array) => CollaborationDocument;
+  createDocumentFromText: (text: string) => CollaborationDocument;
   createEmptyTextDocument: () => CollaborationDocument;
 };
 
@@ -30,6 +31,15 @@ export function createCollaborationService(): CollaborationService {
       } catch (error) {
         document.destroy();
         throw error;
+      }
+
+      return createCollaborationDocument(document);
+    },
+    createDocumentFromText: (text) => {
+      const document = new Y.Doc();
+
+      if (text.length > 0) {
+        document.getText(TEXT_FIELD_NAME).insert(0, text);
       }
 
       return createCollaborationDocument(document);
