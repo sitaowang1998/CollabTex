@@ -92,7 +92,10 @@ export function createActiveDocumentRegistry({
       return pendingSession;
     }
 
-    const createdSession = createSessionRecord(input)
+    const createdSession = createSessionRecord({
+      projectId: input.projectId,
+      documentId: input.documentId,
+    })
       .then((record) => {
         activeSessions.set(input.sessionKey, record);
         return record;

@@ -3,6 +3,7 @@ import type {
   CollaborationDocument,
   CollaborationService,
 } from "./collaboration.js";
+import { createDeferred } from "../test/helpers/deferred.js";
 import {
   createActiveDocumentRegistry,
   type InitialDocumentState,
@@ -53,6 +54,54 @@ describe("active document registry", () => {
 
     expect(persistOnIdle).toHaveBeenCalledTimes(1);
     expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("deduplicates concurrent joins while the initial state is still loading", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const initialState = createDeferred<InitialDocumentState>();
+    const loadInitialDocumentState = vi
+      .fn<
+        (input: {
+          projectId: string;
+          documentId: string;
+        }) => Promise<InitialDocumentState>
+      >()
+      .mockReturnValue(initialState.promise);
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState,
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const firstJoin = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+    const secondJoin = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    expect(loadInitialDocumentState).toHaveBeenCalledTimes(1);
+    expect(collaborationService.createEmptyTextDocument).not.toHaveBeenCalled();
+
+    initialState.resolve({
+      kind: "empty",
+    });
+
+    const [firstHandle, secondHandle] = await Promise.all([
+      firstJoin,
+      secondJoin,
+    ]);
+
+    expect(collaborationService.createEmptyTextDocument).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(firstHandle.session).toBe(secondHandle.session);
+    expect(firstHandle.session.clientCount).toBe(2);
+
+    await firstHandle.leave();
+    await secondHandle.leave();
   });
 
   it("hydrates from a persisted yjs update when present", async () => {
@@ -350,20 +399,5 @@ function createDocumentDouble(): CollaborationDocument {
     exportUpdate: vi.fn().mockReturnValue(Uint8Array.from([])),
     getText: vi.fn().mockReturnValue(""),
     destroy: vi.fn(),
-  };
-}
-
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-
-  return {
-    promise,
-    resolve,
-    reject,
   };
 }

@@ -6,6 +6,7 @@ import type {
 import type { WorkspaceService } from "../services/workspace.js";
 import { signToken } from "../services/auth.js";
 import { testConfig } from "../test/helpers/appFactory.js";
+import { createDeferred } from "../test/helpers/deferred.js";
 import {
   createTestSocketServer,
   type TestSocketServer,
@@ -403,21 +404,6 @@ function createWorkspaceOpenedEvent(documentId: string): WorkspaceOpenedEvent {
       updatedAt: "2026-03-01T12:00:00.000Z",
     },
     content: `\\section{${documentId}}`,
-  };
-}
-
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-
-  return {
-    promise,
-    resolve,
-    reject,
   };
 }
 
