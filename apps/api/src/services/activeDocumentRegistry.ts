@@ -5,13 +5,9 @@ import type {
 
 export type InitialDocumentState =
   | {
-      kind: "text";
-      text: string;
+      kind: "empty";
     }
-  | {
-      kind: "yjs-update";
-      update: Uint8Array;
-    };
+  | { kind: "yjs-update"; update: Uint8Array };
 
 export type ActiveDocumentSession = {
   projectId: string;
@@ -46,6 +42,7 @@ export type ActiveDocumentRegistry = {
 type ActiveSessionRecord = {
   session: ActiveDocumentSession;
   closePromise: Promise<void> | null;
+  needsAnotherCloseCycle: boolean;
 };
 
 export function createActiveDocumentRegistry({
@@ -118,8 +115,8 @@ export function createActiveDocumentRegistry({
       documentId: input.documentId,
     });
     const document =
-      initialState.kind === "text"
-        ? collaborationService.createTextDocument(initialState.text)
+      initialState.kind === "empty"
+        ? collaborationService.createEmptyTextDocument()
         : collaborationService.createDocumentFromUpdate(initialState.update);
 
     return {
@@ -130,6 +127,7 @@ export function createActiveDocumentRegistry({
         document,
       },
       closePromise: null,
+      needsAnotherCloseCycle: false,
     };
   }
 
@@ -152,33 +150,87 @@ export function createActiveDocumentRegistry({
           return;
         }
 
+        if (input.record.closePromise) {
+          input.record.needsAnotherCloseCycle = true;
+        }
+
         input.record.session.clientCount -= 1;
 
         if (input.record.session.clientCount > 0) {
           return;
         }
 
-        if (!input.record.closePromise) {
-          if (activeSessions.get(input.sessionKey) === input.record) {
-            activeSessions.delete(input.sessionKey);
-          }
-
-          input.record.closePromise = (async () => {
-            try {
-              await persistOnIdle({
-                projectId: input.record.session.projectId,
-                documentId: input.record.session.documentId,
-                document: input.record.session.document,
-              });
-            } finally {
-              input.record.session.document.destroy();
-            }
-          })();
-        }
-
-        await input.record.closePromise;
+        await closeSessionWhenIdle(input.record, input.sessionKey);
       },
     };
+  }
+
+  async function closeSessionWhenIdle(
+    record: ActiveSessionRecord,
+    sessionKey: string,
+  ) {
+    let lastCloseError: unknown = null;
+
+    while (
+      record.session.clientCount === 0 &&
+      activeSessions.get(sessionKey) === record
+    ) {
+      if (!record.closePromise) {
+        record.needsAnotherCloseCycle = false;
+        record.closePromise = runCloseCycle(record, sessionKey);
+      }
+
+      try {
+        await record.closePromise;
+        lastCloseError = null;
+      } catch (error) {
+        lastCloseError = error;
+      }
+
+      if (
+        record.session.clientCount > 0 ||
+        activeSessions.get(sessionKey) !== record
+      ) {
+        if (lastCloseError) {
+          throw lastCloseError;
+        }
+
+        return;
+      }
+
+      if (!record.needsAnotherCloseCycle) {
+        if (lastCloseError) {
+          throw lastCloseError;
+        }
+
+        return;
+      }
+    }
+  }
+
+  function runCloseCycle(record: ActiveSessionRecord, sessionKey: string) {
+    return (async () => {
+      try {
+        await persistOnIdle({
+          projectId: record.session.projectId,
+          documentId: record.session.documentId,
+          document: record.session.document,
+        });
+      } finally {
+        record.closePromise = null;
+
+        if (
+          record.session.clientCount === 0 &&
+          !record.needsAnotherCloseCycle
+        ) {
+          if (activeSessions.get(sessionKey) === record) {
+            activeSessions.delete(sessionKey);
+          }
+
+          record.session.document.destroy();
+        }
+      }
+    })();
   }
 }
 

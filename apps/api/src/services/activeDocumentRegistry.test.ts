@@ -19,8 +19,7 @@ describe("active document registry", () => {
         }) => Promise<InitialDocumentState>
       >()
       .mockResolvedValue({
-        kind: "text",
-        text: "\\section{Intro}",
+        kind: "empty",
       });
     const persistOnIdle = vi.fn().mockResolvedValue(undefined);
     const registry = createActiveDocumentRegistry({
@@ -39,8 +38,8 @@ describe("active document registry", () => {
     });
 
     expect(loadInitialDocumentState).toHaveBeenCalledTimes(1);
-    expect(collaborationService.createTextDocument).toHaveBeenCalledWith(
-      "\\section{Intro}",
+    expect(collaborationService.createEmptyTextDocument).toHaveBeenCalledTimes(
+      1,
     );
     expect(firstHandle.session).toBe(secondHandle.session);
     expect(firstHandle.session.clientCount).toBe(2);
@@ -76,7 +75,7 @@ describe("active document registry", () => {
     expect(collaborationService.createDocumentFromUpdate).toHaveBeenCalledWith(
       update,
     );
-    expect(collaborationService.createTextDocument).not.toHaveBeenCalled();
+    expect(collaborationService.createEmptyTextDocument).not.toHaveBeenCalled();
 
     await handle.leave();
   });
@@ -91,8 +90,7 @@ describe("active document registry", () => {
         }) => Promise<InitialDocumentState>
       >()
       .mockResolvedValue({
-        kind: "text",
-        text: "A",
+        kind: "empty",
       });
     const persistOnIdle = vi.fn().mockResolvedValue(undefined);
     const registry = createActiveDocumentRegistry({
@@ -131,10 +129,11 @@ describe("active document registry", () => {
             documentId: string;
           }) => Promise<InitialDocumentState>
         >()
-        .mockImplementation(async ({ projectId, documentId }) => ({
-          kind: "text",
-          text: `${projectId}:${documentId}`,
-        })),
+        .mockImplementation(async ({ documentId }) =>
+          documentId === "doc-1"
+            ? { kind: "empty" }
+            : { kind: "yjs-update", update: Uint8Array.from([1, 2, 3, 4]) },
+        ),
       persistOnIdle: vi.fn().mockResolvedValue(undefined),
     });
 
@@ -166,8 +165,7 @@ describe("active document registry", () => {
     const registry = createActiveDocumentRegistry({
       collaborationService,
       loadInitialDocumentState: vi.fn().mockResolvedValue({
-        kind: "text",
-        text: "Hello",
+        kind: "empty",
       }),
       persistOnIdle,
     });
@@ -196,8 +194,7 @@ describe("active document registry", () => {
       >()
       .mockRejectedValueOnce(new Error("snapshot unavailable"))
       .mockResolvedValueOnce({
-        kind: "text",
-        text: "Recovered",
+        kind: "empty",
       });
     const registry = createActiveDocumentRegistry({
       collaborationService,
@@ -237,8 +234,7 @@ describe("active document registry", () => {
     const registry = createActiveDocumentRegistry({
       collaborationService,
       loadInitialDocumentState: vi.fn().mockResolvedValue({
-        kind: "text",
-        text: "Hello",
+        kind: "empty",
       }),
       persistOnIdle,
     });
@@ -260,15 +256,87 @@ describe("active document registry", () => {
 
     await secondHandle.leave();
   });
+
+  it("reuses the same session while idle persistence is still running", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const persistOnIdle = createDeferred<void>();
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: vi.fn().mockResolvedValue({
+        kind: "empty",
+      }),
+      persistOnIdle: vi.fn().mockReturnValue(persistOnIdle.promise),
+    });
+
+    const firstHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const leavePromise = firstHandle.leave();
+    const secondHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    expect(secondHandle.session).toBe(firstHandle.session);
+    expect(firstHandle.session.document.destroy).not.toHaveBeenCalled();
+
+    persistOnIdle.resolve();
+
+    await leavePromise;
+
+    expect(firstHandle.session.document.destroy).not.toHaveBeenCalled();
+
+    await secondHandle.leave();
+  });
+
+  it("runs another idle persistence cycle when a session rejoins during close and becomes idle again", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const firstPersist = createDeferred<void>();
+    const secondPersist = createDeferred<void>();
+    const persistOnIdle = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValueOnce(firstPersist.promise)
+      .mockReturnValueOnce(secondPersist.promise);
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: vi.fn().mockResolvedValue({
+        kind: "empty",
+      }),
+      persistOnIdle,
+    });
+
+    const firstHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+    const firstLeavePromise = firstHandle.leave();
+    const secondHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+    const secondLeavePromise = secondHandle.leave();
+
+    firstPersist.resolve();
+    await vi.waitFor(() => {
+      expect(persistOnIdle).toHaveBeenCalledTimes(2);
+    });
+
+    expect(firstHandle.session.document.destroy).not.toHaveBeenCalled();
+
+    secondPersist.resolve();
+    await firstLeavePromise;
+    await secondLeavePromise;
+
+    expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createCollaborationServiceDouble(): CollaborationService {
   return {
     createDocumentFromUpdate: vi
       .fn<CollaborationService["createDocumentFromUpdate"]>()
-      .mockImplementation(() => createDocumentDouble()),
-    createTextDocument: vi
-      .fn<CollaborationService["createTextDocument"]>()
       .mockImplementation(() => createDocumentDouble()),
     createEmptyTextDocument: vi
       .fn<CollaborationService["createEmptyTextDocument"]>()
@@ -282,5 +350,20 @@ function createDocumentDouble(): CollaborationDocument {
     exportUpdate: vi.fn().mockReturnValue(Uint8Array.from([])),
     getText: vi.fn().mockReturnValue(""),
     destroy: vi.fn(),
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
   };
 }
