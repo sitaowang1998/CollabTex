@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
-import { lockActiveProject } from "./projectRepositoryUtils.js";
 import {
   DocumentTextStateAlreadyExistsError,
   DocumentTextStateDocumentNotFoundError,
@@ -30,9 +29,8 @@ export function createDocumentTextStateRepository(
     },
     create: async ({ documentId, yjsState, textContent }) =>
       databaseClient.$transaction(async (tx) => {
-        const document = await getActiveTextDocument(tx, documentId);
-
-        await lockActiveProject(tx, document.projectId);
+        await lockActiveProjectForDocument(tx, documentId);
+        await assertActiveTextDocument(tx, documentId);
 
         try {
           const row = await tx.documentTextState.create({
@@ -60,9 +58,8 @@ export function createDocumentTextStateRepository(
       }),
     update: async ({ documentId, yjsState, textContent, expectedVersion }) =>
       databaseClient.$transaction(async (tx) => {
-        const document = await getActiveTextDocument(tx, documentId);
-
-        await lockActiveProject(tx, document.projectId);
+        await lockActiveProjectForDocument(tx, documentId);
+        await assertActiveTextDocument(tx, documentId);
 
         const result = await tx.documentTextState.updateMany({
           where: {
@@ -97,17 +94,35 @@ export function createDocumentTextStateRepository(
   };
 }
 
-async function getActiveTextDocument(
-  databaseClient: DatabaseClient | Prisma.TransactionClient,
+async function lockActiveProjectForDocument(
+  tx: Prisma.TransactionClient,
   documentId: string,
-): Promise<{ projectId: string }> {
-  const document = await databaseClient.document.findUnique({
+): Promise<void> {
+  const rows = await tx.$queryRaw<Array<{ projectId: string }>>(Prisma.sql`
+    SELECT p.id AS "projectId"
+    FROM "Document" d
+    INNER JOIN "Project" p
+      ON p.id = d."projectId"
+    WHERE d.id = CAST(${documentId} AS uuid)
+      AND p."tombstoneAt" IS NULL
+    FOR UPDATE OF p
+  `);
+
+  if (rows.length === 0) {
+    throw new DocumentTextStateDocumentNotFoundError();
+  }
+}
+
+async function assertActiveTextDocument(
+  tx: Prisma.TransactionClient,
+  documentId: string,
+): Promise<void> {
+  const document = await tx.document.findUnique({
     where: {
       id: documentId,
     },
     select: {
       kind: true,
-      projectId: true,
       project: {
         select: {
           tombstoneAt: true,
@@ -123,10 +138,6 @@ async function getActiveTextDocument(
   if (document.kind !== "text") {
     throw new UnsupportedCurrentTextStateDocumentError();
   }
-
-  return {
-    projectId: document.projectId,
-  };
 }
 
 function mapStoredDocumentTextState(

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import { createDocumentRepository } from "../repositories/documentRepository.js";
@@ -252,6 +253,159 @@ describe("document text state repository integration", () => {
         expectedVersion: 1,
       }),
     ).rejects.toBeInstanceOf(DocumentTextStateDocumentNotFoundError);
+  });
+
+  it("treats a document deleted while the write waits on the project lock as missing", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `doc-state-race-delete-${suffix}@example.com`,
+    );
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const documentRepository = createDocumentRepository(getDb());
+    const repository = createDocumentTextStateRepository(getDb());
+    const lockClient = createTestDatabaseClient();
+    const document = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: null,
+    });
+
+    await repository.create({
+      documentId: document.id,
+      ...createStoredTextState("Draft"),
+    });
+    await lockClient.$connect();
+
+    let markLockAcquired: (() => void) | undefined;
+    const lockAcquired = new Promise<void>((resolve) => {
+      markLockAcquired = resolve;
+    });
+    let releaseLock: (() => void) | undefined;
+    const lockReleased = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    const deleteDocument = lockClient.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id
+        FROM "Project"
+        WHERE id = CAST(${project.id} AS uuid)
+        FOR UPDATE
+      `);
+
+      if (!markLockAcquired) {
+        throw new Error("Expected test lock acquired handler");
+      }
+
+      markLockAcquired();
+      await lockReleased;
+
+      await tx.document.delete({
+        where: {
+          id: document.id,
+        },
+      });
+    });
+
+    try {
+      await lockAcquired;
+
+      const pendingUpdate = repository.update({
+        documentId: document.id,
+        ...createStoredTextState("Draft v2"),
+        expectedVersion: 1,
+      });
+
+      if (!releaseLock) {
+        throw new Error("Expected test lock release handler");
+      }
+
+      releaseLock();
+      await deleteDocument;
+
+      await expect(pendingUpdate).rejects.toBeInstanceOf(
+        DocumentTextStateDocumentNotFoundError,
+      );
+    } finally {
+      await lockClient.$disconnect();
+    }
+  });
+
+  it("treats a project tombstoned while create waits on the project lock as missing", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `doc-state-race-tombstone-${suffix}@example.com`,
+    );
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const document = await createDocumentRepository(getDb()).createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: null,
+    });
+    const repository = createDocumentTextStateRepository(getDb());
+    const lockClient = createTestDatabaseClient();
+
+    await lockClient.$connect();
+
+    let markLockAcquired: (() => void) | undefined;
+    const lockAcquired = new Promise<void>((resolve) => {
+      markLockAcquired = resolve;
+    });
+    let releaseLock: (() => void) | undefined;
+    const lockReleased = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    const tombstoneProject = lockClient.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT id
+        FROM "Project"
+        WHERE id = CAST(${project.id} AS uuid)
+        FOR UPDATE
+      `);
+
+      if (!markLockAcquired) {
+        throw new Error("Expected test lock acquired handler");
+      }
+
+      markLockAcquired();
+      await lockReleased;
+
+      await tx.project.update({
+        where: {
+          id: project.id,
+        },
+        data: {
+          tombstoneAt: new Date("2026-03-14T13:00:00.000Z"),
+        },
+      });
+    });
+
+    try {
+      await lockAcquired;
+
+      const pendingCreate = repository.create({
+        documentId: document.id,
+        ...createStoredTextState("Draft"),
+      });
+
+      if (!releaseLock) {
+        throw new Error("Expected test lock release handler");
+      }
+
+      releaseLock();
+      await tombstoneProject;
+
+      await expect(pendingCreate).rejects.toBeInstanceOf(
+        DocumentTextStateDocumentNotFoundError,
+      );
+    } finally {
+      await lockClient.$disconnect();
+    }
   });
 });
 
