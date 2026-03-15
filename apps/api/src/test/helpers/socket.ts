@@ -13,11 +13,15 @@ import {
   ProjectNotFoundError,
 } from "../../services/project.js";
 import { type SnapshotService } from "../../services/snapshot.js";
+import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import {
   createWorkspaceService,
   type WorkspaceService,
 } from "../../services/workspace.js";
-import { createSocketServer } from "../../ws/socketServer.js";
+import {
+  createSocketDocumentResetPublisher,
+  createSocketServer,
+} from "../../ws/socketServer.js";
 import { testConfig } from "./appFactory.js";
 import {
   createTestPasswordHasher,
@@ -26,6 +30,11 @@ import {
 
 export type TestSocketServer = {
   connect: (token?: string) => ClientSocket;
+  emitDocumentReset: (input: {
+    projectId: string;
+    documentId: string;
+    reason: string;
+  }) => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -55,6 +64,7 @@ export async function createTestSocketServer(options?: {
     }),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
   const server = http.createServer(app);
   const workspaceService =
@@ -98,6 +108,9 @@ export async function createTestSocketServer(options?: {
         transports: ["websocket"],
         forceNew: true,
       }),
+    emitDocumentReset: async (input) => {
+      await createSocketDocumentResetPublisher(io).emitDocumentReset(input);
+    },
     close: async () => {
       // Socket.IO closes the attached HTTP server as part of io.close().
       await new Promise<void>((resolve, reject) => {
@@ -152,6 +165,19 @@ function createStubSnapshotService(): SnapshotService {
       authorId: "alice",
       createdAt: new Date(),
     }),
+    listProjectSnapshots: async () => [],
+    restoreProjectSnapshot: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+  };
+}
+
+function createStubSnapshotManagementService(): SnapshotManagementService {
+  return {
+    listSnapshots: async () => [],
+    restoreSnapshot: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
   };
 }
 

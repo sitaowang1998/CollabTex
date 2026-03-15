@@ -28,6 +28,27 @@ export function createDocumentTextStateRepository(
 
       return row ? mapStoredDocumentTextState(row) : null;
     },
+    findByDocumentIds: async (documentIds) => {
+      if (documentIds.length === 0) {
+        return [];
+      }
+
+      const rows = await databaseClient.documentTextState.findMany({
+        where: {
+          documentId: {
+            in: documentIds,
+          },
+          document: {
+            kind: "text",
+            project: {
+              tombstoneAt: null,
+            },
+          },
+        },
+      });
+
+      return rows.map(mapStoredDocumentTextState);
+    },
     create: async ({ documentId, yjsState, textContent }) =>
       databaseClient.$transaction(async (tx) => {
         await lockActiveProjectForDocument(tx, documentId);

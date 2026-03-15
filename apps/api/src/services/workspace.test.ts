@@ -110,6 +110,8 @@ function createSnapshotService() {
   return {
     loadDocumentContent: vi.fn<SnapshotService["loadDocumentContent"]>(),
     captureProjectSnapshot: vi.fn<SnapshotService["captureProjectSnapshot"]>(),
+    listProjectSnapshots: vi.fn<SnapshotService["listProjectSnapshots"]>(),
+    restoreProjectSnapshot: vi.fn<SnapshotService["restoreProjectSnapshot"]>(),
   };
 }
 

@@ -23,6 +23,17 @@ export function createSnapshotRepository(
         ],
       });
     },
+    findById: async (projectId, snapshotId) => {
+      return databaseClient.snapshot.findFirst({
+        where: {
+          id: snapshotId,
+          projectId,
+          project: {
+            tombstoneAt: null,
+          },
+        },
+      });
+    },
     createSnapshot: async ({ projectId, storagePath, message, authorId }) => {
       return databaseClient.snapshot.create({
         data: {

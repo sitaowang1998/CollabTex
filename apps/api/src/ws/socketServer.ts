@@ -94,6 +94,27 @@ export function createSocketServer(
   return io;
 }
 
+export function createSocketDocumentResetPublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitDocumentReset: async ({
+      projectId,
+      documentId,
+      reason,
+    }: {
+      projectId: string;
+      documentId: string;
+      reason: string;
+    }) => {
+      io.to(createWorkspaceRoomName(projectId, documentId)).emit("doc.reset", {
+        documentId,
+        reason,
+      });
+    },
+  };
+}
+
 async function openWorkspace(
   socket: WorkspaceSocket,
   workspaceService: WorkspaceService,
@@ -182,7 +203,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function createWorkspaceRoomName(
+export function createWorkspaceRoomName(
   projectId: string,
   documentId: string,
 ): string {

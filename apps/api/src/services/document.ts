@@ -275,7 +275,7 @@ export function normalizeDocumentPath(path: string): string {
   }
 
   // Persisted backend document paths are always canonical absolute paths.
-  // We accept relative input for compatibility, then normalize it to "/...".
+  // We still accept relative input here, then normalize it to "/...".
   const relativePath = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   const segments = relativePath.split("/");
 
