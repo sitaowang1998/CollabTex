@@ -6,7 +6,9 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
+import { createCollaborationService } from "../../services/collaboration.js";
 import type { CurrentTextStateService } from "../../services/currentTextState.js";
+import { UnsupportedCurrentTextStateDocumentError } from "../../services/currentTextState.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
@@ -177,15 +179,33 @@ function createStubSnapshotService(): SnapshotService {
 function createStubCurrentTextStateService(
   snapshotService: SnapshotService,
 ): Pick<CurrentTextStateService, "loadOrHydrate"> {
+  const collaborationService = createCollaborationService();
+
   return {
-    loadOrHydrate: async (document) => ({
-      documentId: document.id,
-      yjsState: Uint8Array.from([]),
-      textContent: (await snapshotService.loadDocumentContent(document)) ?? "",
-      version: 1,
-      createdAt: new Date("2026-03-01T12:00:00.000Z"),
-      updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-    }),
+    loadOrHydrate: async (document) => {
+      if (document.kind !== "text") {
+        throw new UnsupportedCurrentTextStateDocumentError();
+      }
+
+      const hydratedContent =
+        await snapshotService.loadDocumentContent(document);
+      const hydratedDocument = collaborationService.createDocumentFromText(
+        typeof hydratedContent === "string" ? hydratedContent : "",
+      );
+
+      try {
+        return {
+          documentId: document.id,
+          yjsState: hydratedDocument.exportUpdate(),
+          textContent: hydratedDocument.getText(),
+          version: 1,
+          createdAt: new Date("2026-03-01T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+        };
+      } finally {
+        hydratedDocument.destroy();
+      }
+    },
   };
 }
 
@@ -232,20 +252,37 @@ function createSocketTestProjectRepository() {
 function createSocketTestDocumentRepository() {
   return {
     findById: async (projectId: string, documentId: string) => {
-      if (projectId !== "project-123" || documentId !== "doc-456") {
+      if (projectId !== "project-123") {
         return null;
       }
 
-      return {
-        id: "doc-456",
-        projectId: "project-123",
-        path: "/main.tex",
-        kind: "text" as const,
-        mime: "text/x-tex",
-        contentHash: null,
-        createdAt: new Date("2026-03-01T12:00:00.000Z"),
-        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-      };
+      if (documentId === "doc-456") {
+        return {
+          id: "doc-456",
+          projectId: "project-123",
+          path: "/main.tex",
+          kind: "text" as const,
+          mime: "text/x-tex",
+          contentHash: null,
+          createdAt: new Date("2026-03-01T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+        };
+      }
+
+      if (documentId === "doc-binary") {
+        return {
+          id: "doc-binary",
+          projectId: "project-123",
+          path: "/figure.png",
+          kind: "binary" as const,
+          mime: "image/png",
+          contentHash: null,
+          createdAt: new Date("2026-03-01T12:00:00.000Z"),
+          updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+        };
+      }
+
+      return null;
     },
   };
 }
