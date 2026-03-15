@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createSnapshotManagementService,
-} from "./snapshotManagement.js";
-import type {
-  ProjectAccessService,
-  ProjectWithRole,
-} from "./projectAccess.js";
+import { createSnapshotManagementService } from "./snapshotManagement.js";
+import type { ProjectAccessService, ProjectWithRole } from "./projectAccess.js";
 import type { SnapshotService, StoredSnapshot } from "./snapshot.js";
 
 describe("snapshot management service", () => {
