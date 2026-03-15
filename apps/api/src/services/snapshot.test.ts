@@ -160,21 +160,18 @@ describe("snapshot service", () => {
       },
     });
     documentTextStateRepository.findByDocumentId.mockImplementation(
-      async (documentId) => {
-        if (documentId !== "document-1") {
-          return null;
-        }
-
-        return {
-          documentId,
-          yjsState: Uint8Array.from([]),
-          textContent: "\\section{Live}",
-          version: 5,
-          createdAt: new Date("2026-03-01T12:00:00.000Z"),
-          updatedAt: new Date("2026-03-01T12:00:00.000Z"),
-        };
-      },
+      async () => null,
     );
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([
+      {
+        documentId: "document-1",
+        yjsState: Uint8Array.from([]),
+        textContent: "\\section{Live}",
+        version: 5,
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+      },
+    ]);
 
     await service.captureProjectSnapshot({
       projectId: "project-1",
@@ -210,6 +207,10 @@ describe("snapshot service", () => {
         },
       },
     );
+    expect(documentTextStateRepository.findByDocumentIds).toHaveBeenCalledWith([
+      "document-1",
+    ]);
+    expect(documentTextStateRepository.findByDocumentId).not.toHaveBeenCalled();
   });
 
   it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
@@ -242,6 +243,7 @@ describe("snapshot service", () => {
       authorId: input.authorId,
       createdAt: new Date("2026-03-03T00:00:00.000Z"),
     }));
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
     store.readProjectSnapshot
       .mockRejectedValueOnce(new InvalidSnapshotDataError("invalid snapshot"))
       .mockResolvedValueOnce({
@@ -282,6 +284,9 @@ describe("snapshot service", () => {
           },
         },
       },
+    );
+    expect(documentTextStateRepository.findByDocumentIds).toHaveBeenCalledWith(
+      [],
     );
   });
 
@@ -498,8 +503,14 @@ function createSnapshotStore() {
 }
 
 function createDocumentTextStateRepository() {
+  const findByDocumentIds = vi.fn<
+    DocumentTextStateRepository["findByDocumentIds"]
+  >();
+  findByDocumentIds.mockResolvedValue([]);
+
   return {
     findByDocumentId: vi.fn<DocumentTextStateRepository["findByDocumentId"]>(),
+    findByDocumentIds,
     create: vi.fn<DocumentTextStateRepository["create"]>(),
     update: vi.fn<DocumentTextStateRepository["update"]>(),
   };

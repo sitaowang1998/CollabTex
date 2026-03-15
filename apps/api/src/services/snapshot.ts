@@ -269,42 +269,44 @@ export async function buildProjectSnapshotState({
   previousState: ProjectSnapshotState;
   documentTextStateRepository: Pick<
     DocumentTextStateRepository,
-    "findByDocumentId"
+    "findByDocumentIds"
   >;
 }): Promise<ProjectSnapshotState> {
+  const currentTextStates = await loadCurrentTextStateMap(
+    documents,
+    documentTextStateRepository,
+  );
   const nextDocuments = Object.fromEntries(
-    await Promise.all(
-      documents.map(async (document) => {
-        if (document.kind === "text") {
-          return [
-            document.id,
-            {
-              path: document.path,
-              kind: "text",
-              mime: document.mime,
-              textContent: await loadTextDocumentContent({
-                document,
-                previousState,
-                documentTextStateRepository,
-              }),
-            } satisfies SnapshotTextDocumentState,
-          ] as const;
-        }
-
+    documents.map((document) => {
+      if (document.kind === "text") {
         return [
           document.id,
           {
             path: document.path,
-            kind: "binary",
+            kind: "text",
             mime: document.mime,
-            binaryContentBase64: loadBinaryDocumentContent(
+            textContent: loadTextDocumentContent({
+              documentId: document.id,
               previousState,
-              document.id,
-            ),
-          } satisfies SnapshotBinaryDocumentState,
+              currentTextStates,
+            }),
+          } satisfies SnapshotTextDocumentState,
         ] as const;
-      }),
-    ),
+      }
+
+      return [
+        document.id,
+        {
+          path: document.path,
+          kind: "binary",
+          mime: document.mime,
+          binaryContentBase64: loadBinaryDocumentContent(
+            previousState,
+            document.id,
+          ),
+        } satisfies SnapshotBinaryDocumentState,
+      ] as const;
+    }),
   );
 
   return {
@@ -450,27 +452,45 @@ function buildRestoredProjectDocumentStates({
   );
 }
 
-async function loadTextDocumentContent({
-  document,
-  previousState,
-  documentTextStateRepository,
-}: {
-  document: StoredDocument;
-  previousState: ProjectSnapshotState;
+async function loadCurrentTextStateMap(
+  documents: StoredDocument[],
   documentTextStateRepository: Pick<
     DocumentTextStateRepository,
-    "findByDocumentId"
-  >;
-}): Promise<string> {
-  const currentState = await documentTextStateRepository.findByDocumentId(
-    document.id,
+    "findByDocumentIds"
+  >,
+): Promise<Map<string, string>> {
+  const textDocumentIds = documents
+    .filter((document) => document.kind === "text")
+    .map((document) => document.id);
+
+  const currentStates = await documentTextStateRepository.findByDocumentIds(
+    textDocumentIds,
   );
 
-  if (currentState) {
-    return currentState.textContent;
+  return new Map(
+    currentStates.map((currentState) => [
+      currentState.documentId,
+      currentState.textContent,
+    ]),
+  );
+}
+
+function loadTextDocumentContent({
+  documentId,
+  previousState,
+  currentTextStates,
+}: {
+  documentId: string;
+  previousState: ProjectSnapshotState;
+  currentTextStates: ReadonlyMap<string, string>;
+}): string {
+  const currentTextContent = currentTextStates.get(documentId);
+
+  if (typeof currentTextContent === "string") {
+    return currentTextContent;
   }
 
-  return loadTextDocumentFallback(previousState, document.id);
+  return loadTextDocumentFallback(previousState, documentId);
 }
 
 function loadTextDocumentFallback(

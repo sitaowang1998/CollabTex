@@ -259,6 +259,9 @@ function createDocumentTextStateRepositoryDouble(
 } {
   return {
     findByDocumentId: vi.fn<DocumentTextStateRepository["findByDocumentId"]>(),
+    findByDocumentIds: vi.fn<
+      DocumentTextStateRepository["findByDocumentIds"]
+    >(),
     create: vi.fn<DocumentTextStateRepository["create"]>(),
     update: vi.fn<DocumentTextStateRepository["update"]>(),
     ...overrides,
