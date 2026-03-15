@@ -12,7 +12,10 @@ import {
   SnapshotNotFoundError,
   type SnapshotManagementService,
 } from "../../services/snapshotManagement.js";
-import { InvalidSnapshotDataError } from "../../services/snapshot.js";
+import {
+  InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
+} from "../../services/snapshot.js";
 
 const testConfig: AppConfig = {
   nodeEnv: "test",
@@ -87,7 +90,7 @@ describe("snapshot routes", () => {
     });
   });
 
-  it("maps not found, forbidden, and invalid snapshot errors", async () => {
+  it("maps not found, forbidden, and unreadable snapshot errors", async () => {
     const snapshotManagementService = createSnapshotManagementService();
     snapshotManagementService.listSnapshots.mockRejectedValue(
       new ProjectNotFoundError(),
@@ -95,6 +98,7 @@ describe("snapshot routes", () => {
     snapshotManagementService.restoreSnapshot
       .mockRejectedValueOnce(new ProjectRoleRequiredError(["admin", "editor"]))
       .mockRejectedValueOnce(new SnapshotNotFoundError())
+      .mockRejectedValueOnce(new SnapshotDataNotFoundError())
       .mockRejectedValueOnce(
         new InvalidSnapshotDataError("snapshot version must be 2"),
       );
@@ -119,6 +123,12 @@ describe("snapshot routes", () => {
       .set("authorization", `Bearer ${createToken()}`)
       .expect(404)
       .expect({ error: "snapshot not found" });
+
+    await request(app)
+      .post(`/api/projects/${projectId}/snapshots/${snapshotId}/restore`)
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(422)
+      .expect({ error: "selected snapshot data is missing" });
 
     await request(app)
       .post(`/api/projects/${projectId}/snapshots/${snapshotId}/restore`)

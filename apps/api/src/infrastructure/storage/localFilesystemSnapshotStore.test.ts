@@ -28,7 +28,7 @@ describe("local filesystem snapshot store", () => {
     await store.writeProjectSnapshot("project-1/one.json", {
       version: 2,
       documents: {
-        "document-1": {
+        "11111111-1111-1111-1111-111111111111": {
           path: "/main.tex",
           kind: "text",
           mime: null,
@@ -42,7 +42,7 @@ describe("local filesystem snapshot store", () => {
     ).resolves.toEqual({
       version: 2,
       documents: {
-        "document-1": {
+        "11111111-1111-1111-1111-111111111111": {
           path: "/main.tex",
           kind: "text",
           mime: null,

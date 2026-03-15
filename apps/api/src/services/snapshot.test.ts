@@ -400,13 +400,13 @@ describe("snapshot service", () => {
       parseProjectSnapshotState({
         version: 2,
         documents: {
-          "document-1": {
+          "11111111-1111-1111-1111-111111111111": {
             path: "/same.tex",
             kind: "text",
             mime: null,
             textContent: "one",
           },
-          "document-2": {
+          "22222222-2222-2222-2222-222222222222": {
             path: "/same.tex",
             kind: "text",
             mime: null,
@@ -416,6 +416,64 @@ describe("snapshot service", () => {
       }),
     ).toThrow(
       new InvalidSnapshotDataError("snapshot document paths must be unique"),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "not-a-uuid": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "body",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError("snapshot document id must be a valid UUID"),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "11111111-1111-1111-1111-111111111111": {
+            path: "docs/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "body",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot document path must be a canonical absolute path",
+      ),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "11111111-1111-1111-1111-111111111111": {
+            path: "/docs",
+            kind: "text",
+            mime: null,
+            textContent: "folder-file-conflict",
+          },
+          "22222222-2222-2222-2222-222222222222": {
+            path: "/docs/a.tex",
+            kind: "text",
+            mime: null,
+            textContent: "descendant",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot document paths must not contain file/descendant conflicts",
+      ),
     );
   });
 });

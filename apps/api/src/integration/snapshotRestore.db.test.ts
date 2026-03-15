@@ -300,6 +300,180 @@ describe("snapshot restore integration", () => {
     expect(snapshots).toHaveLength(1);
   });
 
+  it("fails clearly on non-UUID snapshot document ids without partially restoring", async () => {
+    const suffix = randomUUID();
+    const snapshotRoot = await mkdtemp(
+      path.join(os.tmpdir(), "collabtex-snapshot-invalid-id-"),
+    );
+    const owner = await createUser(`snapshot-invalid-id-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `Snapshot Invalid Id ${suffix}`,
+    );
+    const documentRepository = createDocumentRepository(getDb());
+    const textStateRepository = createDocumentTextStateRepository(getDb());
+    const liveMain = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+    const collaborationService = createCollaborationService();
+
+    await textStateRepository.create({
+      documentId: liveMain.id,
+      ...createStoredTextState(collaborationService, "\\section{Live}"),
+    });
+
+    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+    const snapshotStoragePath = `${project.id}/invalid-id.json`;
+    await snapshotStore.writeProjectSnapshot(snapshotStoragePath, {
+      version: 2,
+      documents: {
+        "not-a-uuid": {
+          path: "/restored.tex",
+          kind: "text",
+          mime: "text/x-tex",
+          textContent: "\\section{Broken}",
+        },
+      },
+    });
+    const targetSnapshot = await getDb().snapshot.create({
+      data: {
+        projectId: project.id,
+        storagePath: snapshotStoragePath,
+        message: "Invalid id snapshot",
+        authorId: owner.id,
+      },
+    });
+    const service = createSnapshotService({
+      snapshotRepository: createSnapshotRepository(getDb()),
+      snapshotStore,
+      documentTextStateRepository: textStateRepository,
+      collaborationService,
+      projectStateRepository: createProjectStateRepository(getDb()),
+      resetPublisher: {
+        emitDocumentReset: vi.fn(),
+      },
+    });
+
+    await expect(
+      service.restoreProjectSnapshot({
+        projectId: project.id,
+        snapshotId: targetSnapshot.id,
+        actorUserId: owner.id,
+      }),
+    ).rejects.toThrow("snapshot document id must be a valid UUID");
+
+    const documents = await getDb().document.findMany({
+      where: {
+        projectId: project.id,
+      },
+    });
+    const textState = await getDb().documentTextState.findUnique({
+      where: {
+        documentId: liveMain.id,
+      },
+    });
+
+    expect(documents).toHaveLength(1);
+    expect(documents[0]?.path).toBe("/main.tex");
+    expect(textState?.textContent).toBe("\\section{Live}");
+  });
+
+  it("fails clearly on conflicting snapshot paths without partially restoring", async () => {
+    const suffix = randomUUID();
+    const snapshotRoot = await mkdtemp(
+      path.join(os.tmpdir(), "collabtex-snapshot-invalid-paths-"),
+    );
+    const owner = await createUser(
+      `snapshot-invalid-paths-${suffix}@example.com`,
+    );
+    const project = await createProject(
+      owner.id,
+      `Snapshot Invalid Paths ${suffix}`,
+    );
+    const documentRepository = createDocumentRepository(getDb());
+    const textStateRepository = createDocumentTextStateRepository(getDb());
+    const liveMain = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+    const collaborationService = createCollaborationService();
+
+    await textStateRepository.create({
+      documentId: liveMain.id,
+      ...createStoredTextState(collaborationService, "\\section{Live}"),
+    });
+
+    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+    const snapshotStoragePath = `${project.id}/invalid-paths.json`;
+    await snapshotStore.writeProjectSnapshot(snapshotStoragePath, {
+      version: 2,
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/docs",
+          kind: "text",
+          mime: "text/x-tex",
+          textContent: "\\section{Conflict parent}",
+        },
+        "22222222-2222-2222-2222-222222222222": {
+          path: "/docs/a.tex",
+          kind: "text",
+          mime: "text/x-tex",
+          textContent: "\\section{Conflict child}",
+        },
+      },
+    });
+    const targetSnapshot = await getDb().snapshot.create({
+      data: {
+        projectId: project.id,
+        storagePath: snapshotStoragePath,
+        message: "Invalid path snapshot",
+        authorId: owner.id,
+      },
+    });
+    const service = createSnapshotService({
+      snapshotRepository: createSnapshotRepository(getDb()),
+      snapshotStore,
+      documentTextStateRepository: textStateRepository,
+      collaborationService,
+      projectStateRepository: createProjectStateRepository(getDb()),
+      resetPublisher: {
+        emitDocumentReset: vi.fn(),
+      },
+    });
+
+    await expect(
+      service.restoreProjectSnapshot({
+        projectId: project.id,
+        snapshotId: targetSnapshot.id,
+        actorUserId: owner.id,
+      }),
+    ).rejects.toThrow(
+      "snapshot document paths must not contain file/descendant conflicts",
+    );
+
+    const documents = await getDb().document.findMany({
+      where: {
+        projectId: project.id,
+      },
+    });
+    const textState = await getDb().documentTextState.findUnique({
+      where: {
+        documentId: liveMain.id,
+      },
+    });
+
+    expect(documents).toHaveLength(1);
+    expect(documents[0]?.path).toBe("/main.tex");
+    expect(textState?.textContent).toBe("\\section{Live}");
+  });
+
   it("restores renamed documents whose legal paths are already at the length limit", async () => {
     const suffix = randomUUID();
     const snapshotRoot = await mkdtemp(

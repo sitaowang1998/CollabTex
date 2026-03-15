@@ -6,6 +6,7 @@ import { HttpError } from "../errors/httpError.js";
 import { parseUuidParam } from "../validation/requestValidation.js";
 import {
   InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
   type StoredSnapshot,
 } from "../../services/snapshot.js";
 import {
@@ -101,6 +102,10 @@ function mapSnapshotError(error: unknown): Error {
 
   if (error instanceof InvalidSnapshotDataError) {
     return new HttpError(422, error.message);
+  }
+
+  if (error instanceof SnapshotDataNotFoundError) {
+    return new HttpError(422, "selected snapshot data is missing");
   }
 
   if (error instanceof Error) {

@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { CollaborationService } from "./collaboration.js";
-import type { StoredDocument } from "./document.js";
+import {
+  InvalidDocumentPathError,
+  normalizeDocumentPath,
+  type StoredDocument,
+} from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
 
@@ -332,6 +336,8 @@ export function parseProjectSnapshotState(
   const seenPaths = new Set<string>();
 
   for (const [documentId, document] of Object.entries(value.documents)) {
+    assertSnapshotDocumentId(documentId);
+
     if (!isObject(document)) {
       throw new InvalidSnapshotDataError(
         "snapshot document entry must be an object",
@@ -386,6 +392,8 @@ export function parseProjectSnapshotState(
       "snapshot document kind must be text or binary",
     );
   }
+
+  assertSnapshotPathsDoNotConflict(Object.values(documents));
 
   return {
     version: 2,
@@ -491,7 +499,25 @@ function parseSnapshotDocumentPath(value: unknown): string {
     throw new InvalidSnapshotDataError("snapshot document path is required");
   }
 
-  return value;
+  try {
+    const normalizedPath = normalizeDocumentPath(value);
+
+    if (value !== normalizedPath) {
+      throw new InvalidSnapshotDataError(
+        "snapshot document path must be a canonical absolute path",
+      );
+    }
+
+    return normalizedPath;
+  } catch (error) {
+    if (error instanceof InvalidDocumentPathError) {
+      throw new InvalidSnapshotDataError(
+        `snapshot document path is invalid: ${error.message}`,
+      );
+    }
+
+    throw error;
+  }
 }
 
 function parseSnapshotDocumentMime(value: unknown): string | null {
@@ -514,3 +540,33 @@ function isRecoverableSnapshotReadError(error: unknown): boolean {
     error instanceof InvalidSnapshotDataError
   );
 }
+
+function assertSnapshotDocumentId(documentId: string) {
+  if (!UUID_PATTERN.test(documentId)) {
+    throw new InvalidSnapshotDataError(
+      "snapshot document id must be a valid UUID",
+    );
+  }
+}
+
+function assertSnapshotPathsDoNotConflict(
+  documents: SnapshotDocumentState[],
+): void {
+  const sortedPaths = documents
+    .map((document) => document.path)
+    .sort((left, right) => left.localeCompare(right));
+
+  for (let index = 0; index < sortedPaths.length - 1; index += 1) {
+    const currentPath = sortedPaths[index];
+    const nextPath = sortedPaths[index + 1];
+
+    if (nextPath.startsWith(`${currentPath}/`)) {
+      throw new InvalidSnapshotDataError(
+        "snapshot document paths must not contain file/descendant conflicts",
+      );
+    }
+  }
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
