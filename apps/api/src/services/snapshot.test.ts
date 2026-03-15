@@ -503,9 +503,8 @@ function createSnapshotStore() {
 }
 
 function createDocumentTextStateRepository() {
-  const findByDocumentIds = vi.fn<
-    DocumentTextStateRepository["findByDocumentIds"]
-  >();
+  const findByDocumentIds =
+    vi.fn<DocumentTextStateRepository["findByDocumentIds"]>();
   findByDocumentIds.mockResolvedValue([]);
 
   return {

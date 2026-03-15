@@ -463,9 +463,8 @@ async function loadCurrentTextStateMap(
     .filter((document) => document.kind === "text")
     .map((document) => document.id);
 
-  const currentStates = await documentTextStateRepository.findByDocumentIds(
-    textDocumentIds,
-  );
+  const currentStates =
+    await documentTextStateRepository.findByDocumentIds(textDocumentIds);
 
   return new Map(
     currentStates.map((currentState) => [
