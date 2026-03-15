@@ -26,13 +26,13 @@ describe("local filesystem snapshot store", () => {
     const store = createLocalFilesystemSnapshotStore(rootDirectory);
 
     await store.writeProjectSnapshot("project-1/one.json", {
-      version: 1,
+      version: 2,
       documents: {
         "document-1": {
           path: "/main.tex",
           kind: "text",
           mime: null,
-          content: "\\section{Stored}",
+          textContent: "\\section{Stored}",
         },
       },
     });
@@ -40,13 +40,13 @@ describe("local filesystem snapshot store", () => {
     await expect(
       store.readProjectSnapshot("project-1/one.json"),
     ).resolves.toEqual({
-      version: 1,
+      version: 2,
       documents: {
         "document-1": {
           path: "/main.tex",
           kind: "text",
           mime: null,
-          content: "\\section{Stored}",
+          textContent: "\\section{Stored}",
         },
       },
     });
@@ -85,7 +85,7 @@ describe("local filesystem snapshot store", () => {
 
     await expect(
       store.writeProjectSnapshot("../escape.json", {
-        version: 1,
+        version: 2,
         documents: {},
       }),
     ).rejects.toThrow(

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { DocumentKind } from "@collab-tex/shared";
+import type { CollaborationService } from "./collaboration.js";
 import type { StoredDocument } from "./document.js";
+import type { DocumentTextStateRepository } from "./currentTextState.js";
+import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
 
 export type StoredSnapshot = {
   id: string;
@@ -11,15 +13,26 @@ export type StoredSnapshot = {
   createdAt: Date;
 };
 
-export type SnapshotDocumentState = {
+export type SnapshotTextDocumentState = {
   path: string;
-  kind: DocumentKind;
+  kind: "text";
   mime: string | null;
-  content: string | null;
+  textContent: string;
 };
 
+export type SnapshotBinaryDocumentState = {
+  path: string;
+  kind: "binary";
+  mime: string | null;
+  binaryContentBase64: string;
+};
+
+export type SnapshotDocumentState =
+  | SnapshotTextDocumentState
+  | SnapshotBinaryDocumentState;
+
 export type ProjectSnapshotState = {
-  version: 1;
+  version: 2;
   documents: Record<string, SnapshotDocumentState>;
 };
 
@@ -33,6 +46,10 @@ export type SnapshotStore = {
 
 export type SnapshotRepository = {
   listForProject: (projectId: string) => Promise<StoredSnapshot[]>;
+  findById: (
+    projectId: string,
+    snapshotId: string,
+  ) => Promise<StoredSnapshot | null>;
   createSnapshot: (input: {
     projectId: string;
     storagePath: string;
@@ -43,14 +60,33 @@ export type SnapshotRepository = {
 
 export type CaptureProjectSnapshotInput = {
   projectId: string;
-  authorId: string;
+  authorId: string | null;
   documents: StoredDocument[];
+  message?: string | null;
+};
+
+export type RestoreProjectSnapshotInput = {
+  projectId: string;
+  snapshotId: string;
+  actorUserId: string;
+};
+
+export type SnapshotResetPublisher = {
+  emitDocumentReset: (input: {
+    projectId: string;
+    documentId: string;
+    reason: string;
+  }) => Promise<void> | void;
 };
 
 export type SnapshotService = {
   loadDocumentContent: (document: StoredDocument) => Promise<string | null>;
   captureProjectSnapshot: (
     input: CaptureProjectSnapshotInput,
+  ) => Promise<StoredSnapshot>;
+  listProjectSnapshots: (projectId: string) => Promise<StoredSnapshot[]>;
+  restoreProjectSnapshot: (
+    input: RestoreProjectSnapshotInput,
   ) => Promise<StoredSnapshot>;
 };
 
@@ -66,41 +102,72 @@ export class SnapshotDataNotFoundError extends Error {
   }
 }
 
+export class SnapshotNotFoundError extends Error {
+  constructor() {
+    super("Snapshot not found");
+  }
+}
+
 export function createSnapshotService({
   snapshotRepository,
   snapshotStore,
+  documentTextStateRepository,
+  collaborationService,
+  projectStateRepository,
+  resetPublisher = {
+    emitDocumentReset: async () => {},
+  },
 }: {
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;
+  documentTextStateRepository: DocumentTextStateRepository;
+  collaborationService: CollaborationService;
+  projectStateRepository: ProjectStateRepository;
+  resetPublisher?: SnapshotResetPublisher;
 }): SnapshotService {
   return {
     loadDocumentContent: async (document) => {
-      const snapshotState = await loadLatestUsableProjectSnapshotState(
+      if (document.kind === "binary") {
+        return null;
+      }
+
+      const currentState = await documentTextStateRepository.findByDocumentId(
+        document.id,
+      );
+
+      if (currentState) {
+        return currentState.textContent;
+      }
+
+      const snapshotState = await loadLatestProjectSnapshotState(
         snapshotRepository,
         snapshotStore,
         document.projectId,
       );
       const snapshotDocument = snapshotState.documents[document.id];
 
-      if (!snapshotDocument) {
-        return getDefaultDocumentContent(document.kind);
+      if (!snapshotDocument || snapshotDocument.kind !== "text") {
+        return "";
       }
 
-      if (document.kind === "binary") {
-        return null;
-      }
-
-      return typeof snapshotDocument.content === "string"
-        ? snapshotDocument.content
-        : "";
+      return snapshotDocument.textContent;
     },
-    captureProjectSnapshot: async ({ projectId, authorId, documents }) => {
-      const previousState = await loadLatestUsableProjectSnapshotState(
+    captureProjectSnapshot: async ({
+      projectId,
+      authorId,
+      documents,
+      message = null,
+    }) => {
+      const previousState = await loadLatestProjectSnapshotState(
         snapshotRepository,
         snapshotStore,
         projectId,
       );
-      const nextState = buildProjectSnapshotState(documents, previousState);
+      const nextState = await buildProjectSnapshotState({
+        documents,
+        previousState,
+        documentTextStateRepository,
+      });
       const storagePath = createSnapshotStoragePath(projectId);
 
       await snapshotStore.writeProjectSnapshot(storagePath, nextState);
@@ -108,71 +175,133 @@ export function createSnapshotService({
       return snapshotRepository.createSnapshot({
         projectId,
         storagePath,
-        message: null,
+        message,
         authorId,
       });
+    },
+    listProjectSnapshots: async (projectId) =>
+      snapshotRepository.listForProject(projectId),
+    restoreProjectSnapshot: async ({ projectId, snapshotId, actorUserId }) => {
+      const targetSnapshot = await snapshotRepository.findById(
+        projectId,
+        snapshotId,
+      );
+
+      if (!targetSnapshot) {
+        throw new SnapshotNotFoundError();
+      }
+
+      const targetState = await snapshotStore.readProjectSnapshot(
+        targetSnapshot.storagePath,
+      );
+      const restoredDocuments = buildRestoredProjectDocumentStates({
+        snapshotState: targetState,
+        collaborationService,
+      });
+      const checkpointStoragePath = createSnapshotStoragePath(projectId);
+
+      await snapshotStore.writeProjectSnapshot(
+        checkpointStoragePath,
+        targetState,
+      );
+
+      const restoreResult = await projectStateRepository.restoreProjectState({
+        projectId,
+        actorUserId,
+        restoredDocuments,
+        checkpointSnapshot: {
+          storagePath: checkpointStoragePath,
+          message: `Restored from snapshot ${targetSnapshot.id}`,
+          authorId: actorUserId,
+        },
+      });
+
+      await Promise.all(
+        restoreResult.affectedTextDocumentIds.map((documentId) =>
+          resetPublisher.emitDocumentReset({
+            projectId,
+            documentId,
+            reason: "snapshot_restore",
+          }),
+        ),
+      );
+
+      return restoreResult.snapshot;
     },
   };
 }
 
-export async function loadLatestUsableProjectSnapshotState(
+export async function loadLatestProjectSnapshotState(
   snapshotRepository: SnapshotRepository,
   snapshotStore: SnapshotStore,
   projectId: string,
 ): Promise<ProjectSnapshotState> {
   const snapshots = await snapshotRepository.listForProject(projectId);
+  const latestSnapshot = snapshots[0];
 
-  if (snapshots.length === 0) {
+  if (!latestSnapshot) {
     return createEmptyProjectSnapshotState();
   }
 
-  for (const snapshot of snapshots) {
-    try {
-      return await snapshotStore.readProjectSnapshot(snapshot.storagePath);
-    } catch (error) {
-      if (isRecoverableSnapshotReadError(error)) {
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  return createEmptyProjectSnapshotState();
+  return snapshotStore.readProjectSnapshot(latestSnapshot.storagePath);
 }
 
-export function buildProjectSnapshotState(
-  documents: StoredDocument[],
-  previousState: ProjectSnapshotState,
-): ProjectSnapshotState {
-  const nextDocuments: Record<string, SnapshotDocumentState> = {};
+export async function buildProjectSnapshotState({
+  documents,
+  previousState,
+  documentTextStateRepository,
+}: {
+  documents: StoredDocument[];
+  previousState: ProjectSnapshotState;
+  documentTextStateRepository: Pick<
+    DocumentTextStateRepository,
+    "findByDocumentId"
+  >;
+}): Promise<ProjectSnapshotState> {
+  const nextDocuments = Object.fromEntries(
+    await Promise.all(
+      documents.map(async (document) => {
+        if (document.kind === "text") {
+          return [
+            document.id,
+            {
+              path: document.path,
+              kind: "text",
+              mime: document.mime,
+              textContent: await loadTextDocumentContent({
+                document,
+                previousState,
+                documentTextStateRepository,
+              }),
+            } satisfies SnapshotTextDocumentState,
+          ] as const;
+        }
 
-  for (const document of documents) {
-    const previousDocument = previousState.documents[document.id];
-    const content =
-      document.kind === "text"
-        ? typeof previousDocument?.content === "string"
-          ? previousDocument.content
-          : ""
-        : null;
-
-    nextDocuments[document.id] = {
-      path: document.path,
-      kind: document.kind,
-      mime: document.mime,
-      content,
-    };
-  }
+        return [
+          document.id,
+          {
+            path: document.path,
+            kind: "binary",
+            mime: document.mime,
+            binaryContentBase64: loadBinaryDocumentContent(
+              previousState,
+              document.id,
+            ),
+          } satisfies SnapshotBinaryDocumentState,
+        ] as const;
+      }),
+    ),
+  );
 
   return {
-    version: 1,
+    version: 2,
     documents: nextDocuments,
   };
 }
 
 export function createEmptyProjectSnapshotState(): ProjectSnapshotState {
   return {
-    version: 1,
+    version: 2,
     documents: {},
   };
 }
@@ -184,8 +313,8 @@ export function parseProjectSnapshotState(
     throw new InvalidSnapshotDataError("snapshot payload must be an object");
   }
 
-  if (value.version !== 1) {
-    throw new InvalidSnapshotDataError("snapshot version must be 1");
+  if (value.version !== 2) {
+    throw new InvalidSnapshotDataError("snapshot version must be 2");
   }
 
   if (!isObject(value.documents)) {
@@ -193,6 +322,7 @@ export function parseProjectSnapshotState(
   }
 
   const documents: Record<string, SnapshotDocumentState> = {};
+  const seenPaths = new Set<string>();
 
   for (const [documentId, document] of Object.entries(value.documents)) {
     if (!isObject(document)) {
@@ -201,38 +331,57 @@ export function parseProjectSnapshotState(
       );
     }
 
-    if (typeof document.path !== "string" || !document.path.trim()) {
-      throw new InvalidSnapshotDataError("snapshot document path is required");
-    }
+    const path = parseSnapshotDocumentPath(document.path);
 
-    if (document.kind !== "text" && document.kind !== "binary") {
+    if (seenPaths.has(path)) {
       throw new InvalidSnapshotDataError(
-        "snapshot document kind must be text or binary",
+        "snapshot document paths must be unique",
       );
     }
 
-    if (document.mime !== null && typeof document.mime !== "string") {
-      throw new InvalidSnapshotDataError(
-        "snapshot document mime must be a string or null",
-      );
+    seenPaths.add(path);
+
+    const mime = parseSnapshotDocumentMime(document.mime);
+
+    if (document.kind === "text") {
+      if (typeof document.textContent !== "string") {
+        throw new InvalidSnapshotDataError(
+          "text snapshot documents must include textContent",
+        );
+      }
+
+      documents[documentId] = {
+        path,
+        kind: "text",
+        mime,
+        textContent: document.textContent,
+      };
+      continue;
     }
 
-    if (document.content !== null && typeof document.content !== "string") {
-      throw new InvalidSnapshotDataError(
-        "snapshot document content must be a string or null",
-      );
+    if (document.kind === "binary") {
+      if (typeof document.binaryContentBase64 !== "string") {
+        throw new InvalidSnapshotDataError(
+          "binary snapshot documents must include binaryContentBase64",
+        );
+      }
+
+      documents[documentId] = {
+        path,
+        kind: "binary",
+        mime,
+        binaryContentBase64: document.binaryContentBase64,
+      };
+      continue;
     }
 
-    documents[documentId] = {
-      path: document.path,
-      kind: document.kind,
-      mime: document.mime,
-      content: document.kind === "binary" ? null : (document.content ?? ""),
-    };
+    throw new InvalidSnapshotDataError(
+      "snapshot document kind must be text or binary",
+    );
   }
 
   return {
-    version: 1,
+    version: 2,
     documents,
   };
 }
@@ -241,15 +390,111 @@ export function createSnapshotStoragePath(projectId: string): string {
   return `${projectId}/${Date.now()}-${randomUUID()}.json`;
 }
 
-function getDefaultDocumentContent(kind: DocumentKind): string | null {
-  return kind === "text" ? "" : null;
+function buildRestoredProjectDocumentStates({
+  snapshotState,
+  collaborationService,
+}: {
+  snapshotState: ProjectSnapshotState;
+  collaborationService: CollaborationService;
+}) {
+  return Object.entries(snapshotState.documents).map(
+    ([documentId, snapshotDocument]) => {
+      if (snapshotDocument.kind === "binary") {
+        return {
+          documentId,
+          path: snapshotDocument.path,
+          kind: "binary" as const,
+          mime: snapshotDocument.mime,
+          textContent: null,
+          yjsState: null,
+        };
+      }
+
+      const document = collaborationService.createDocumentFromText(
+        snapshotDocument.textContent,
+      );
+
+      try {
+        return {
+          documentId,
+          path: snapshotDocument.path,
+          kind: "text" as const,
+          mime: snapshotDocument.mime,
+          textContent: snapshotDocument.textContent,
+          yjsState: document.exportUpdate(),
+        };
+      } finally {
+        document.destroy();
+      }
+    },
+  );
 }
 
-function isRecoverableSnapshotReadError(error: unknown): boolean {
-  return (
-    error instanceof SnapshotDataNotFoundError ||
-    error instanceof InvalidSnapshotDataError
+async function loadTextDocumentContent({
+  document,
+  previousState,
+  documentTextStateRepository,
+}: {
+  document: StoredDocument;
+  previousState: ProjectSnapshotState;
+  documentTextStateRepository: Pick<
+    DocumentTextStateRepository,
+    "findByDocumentId"
+  >;
+}): Promise<string> {
+  const currentState = await documentTextStateRepository.findByDocumentId(
+    document.id,
   );
+
+  if (currentState) {
+    return currentState.textContent;
+  }
+
+  return loadTextDocumentFallback(previousState, document.id);
+}
+
+function loadTextDocumentFallback(
+  previousState: ProjectSnapshotState,
+  documentId: string,
+): string {
+  const snapshotDocument = previousState.documents[documentId];
+
+  if (!snapshotDocument || snapshotDocument.kind !== "text") {
+    return "";
+  }
+
+  return snapshotDocument.textContent;
+}
+
+function loadBinaryDocumentContent(
+  previousState: ProjectSnapshotState,
+  documentId: string,
+): string {
+  const snapshotDocument = previousState.documents[documentId];
+
+  if (!snapshotDocument || snapshotDocument.kind !== "binary") {
+    return "";
+  }
+
+  return snapshotDocument.binaryContentBase64;
+}
+
+function parseSnapshotDocumentPath(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new InvalidSnapshotDataError("snapshot document path is required");
+  }
+
+  return value;
+}
+
+function parseSnapshotDocumentMime(value: unknown): string | null {
+  if (value !== null && typeof value !== "string") {
+    throw new InvalidSnapshotDataError(
+      "snapshot document mime must be a string or null",
+    );
+  }
+
+  return value;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

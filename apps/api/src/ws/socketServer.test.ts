@@ -206,6 +206,47 @@ describe("socket server", () => {
     });
   });
 
+  it("broadcasts doc.reset to joined workspace clients", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const resetPayload = await new Promise<{
+      documentId: string;
+      reason: string;
+    }>((resolve, reject) => {
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      client.once("workspace:opened", async () => {
+        await socketServer?.emitDocumentReset({
+          projectId: "project-123",
+          documentId: "doc-456",
+          reason: "snapshot_restore",
+        });
+      });
+
+      client.once("doc.reset", (payload) => {
+        client.close();
+        resolve(payload);
+      });
+
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(resetPayload).toEqual({
+      documentId: "doc-456",
+      reason: "snapshot_restore",
+    });
+  });
+
   it("emits a generic unavailable error for unexpected workspace failures", async () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -216,6 +257,10 @@ describe("socket server", () => {
           throw new Error("disk path leaked");
         },
         captureProjectSnapshot: async () => {
+          throw new Error("Not implemented for socket tests");
+        },
+        listProjectSnapshots: async () => [],
+        restoreProjectSnapshot: async () => {
           throw new Error("Not implemented for socket tests");
         },
       },

@@ -1,11 +1,5 @@
 import type { DocumentRepository } from "./document.js";
-import {
-  buildProjectSnapshotState,
-  createSnapshotStoragePath,
-  loadLatestUsableProjectSnapshotState,
-  type SnapshotRepository,
-  type SnapshotStore,
-} from "./snapshot.js";
+import type { SnapshotService } from "./snapshot.js";
 
 export type SnapshotRefreshJobStatus =
   | "queued"
@@ -49,14 +43,12 @@ export type SnapshotRefreshTrigger = {
 export function createSnapshotRefreshProcessor({
   snapshotRefreshJobRepository,
   projectLookup,
-  snapshotRepository,
-  snapshotStore,
+  snapshotService,
   documentRepository,
 }: {
   snapshotRefreshJobRepository: SnapshotRefreshJobRepository;
   projectLookup: SnapshotRefreshProjectLookup;
-  snapshotRepository: SnapshotRepository;
-  snapshotStore: SnapshotStore;
+  snapshotService: Pick<SnapshotService, "captureProjectSnapshot">;
   documentRepository: Pick<DocumentRepository, "listForProject">;
 }): SnapshotRefreshProcessor {
   return {
@@ -79,20 +71,11 @@ export function createSnapshotRefreshProcessor({
         const documents = await documentRepository.listForProject(
           job.projectId,
         );
-        const previousState = await loadLatestUsableProjectSnapshotState(
-          snapshotRepository,
-          snapshotStore,
-          job.projectId,
-        );
-        const nextState = buildProjectSnapshotState(documents, previousState);
-        const storagePath = createSnapshotStoragePath(job.projectId);
-
-        await snapshotStore.writeProjectSnapshot(storagePath, nextState);
-        await snapshotRepository.createSnapshot({
+        await snapshotService.captureProjectSnapshot({
           projectId: job.projectId,
-          storagePath,
-          message: null,
           authorId: job.requestedByUserId,
+          message: null,
+          documents,
         });
         await snapshotRefreshJobRepository.markJobSucceeded(job.id);
 

@@ -15,6 +15,7 @@ import {
   type ProjectService,
 } from "../../services/project.js";
 import type { MembershipService } from "../../services/membership.js";
+import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 
 const testConfig: AppConfig = {
   nodeEnv: "test",
@@ -299,6 +300,7 @@ function createDocumentTestApp(documentService: DocumentService) {
     documentService,
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 }
 
@@ -341,6 +343,15 @@ function createStubMembershipService(): MembershipService {
       throw new Error("Not implemented for document route tests");
     },
     deleteMember: async () => {
+      throw new Error("Not implemented for document route tests");
+    },
+  };
+}
+
+function createStubSnapshotManagementService(): SnapshotManagementService {
+  return {
+    listSnapshots: async () => [],
+    restoreSnapshot: async () => {
       throw new Error("Not implemented for document route tests");
     },
   };

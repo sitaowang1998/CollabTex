@@ -16,6 +16,7 @@ import {
   ProjectNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import type { MembershipService } from "../../services/membership.js";
 import { type SnapshotService } from "../../services/snapshot.js";
 import { type SnapshotRefreshTrigger } from "../../services/snapshotRefresh.js";
@@ -81,6 +82,7 @@ export function createTestApp() {
     documentService,
     membershipService,
     projectService,
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 }
 
@@ -382,6 +384,17 @@ function createInMemoryDocumentRepository(): DocumentRepository {
 
 function createInMemorySnapshotService(): SnapshotService {
   const contentsByDocumentId = new Map<string, string | null>();
+  const snapshots = new Map<
+    string,
+    Array<{
+      id: string;
+      projectId: string;
+      storagePath: string;
+      message: string | null;
+      authorId: string | null;
+      createdAt: Date;
+    }>
+  >();
 
   return {
     loadDocumentContent: async (document) => {
@@ -411,7 +424,7 @@ function createInMemorySnapshotService(): SnapshotService {
         }
       }
 
-      return {
+      const snapshot = {
         id: `snapshot-${projectId}`,
         projectId,
         storagePath: `${projectId}/snapshot.json`,
@@ -419,6 +432,29 @@ function createInMemorySnapshotService(): SnapshotService {
         authorId,
         createdAt: new Date(),
       };
+
+      snapshots.set(projectId, [snapshot]);
+
+      return snapshot;
+    },
+    listProjectSnapshots: async (projectId) => snapshots.get(projectId) ?? [],
+    restoreProjectSnapshot: async ({ projectId }) => {
+      const snapshot = snapshots.get(projectId)?.[0];
+
+      if (!snapshot) {
+        throw new Error("Not implemented for createTestApp");
+      }
+
+      return snapshot;
+    },
+  };
+}
+
+function createStubSnapshotManagementService(): SnapshotManagementService {
+  return {
+    listSnapshots: async () => [],
+    restoreSnapshot: async () => {
+      throw new Error("Not implemented for createTestApp");
     },
   };
 }

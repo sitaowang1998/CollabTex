@@ -10,6 +10,7 @@ tags:
   - name: Auth
   - name: Projects
   - name: Members
+  - name: Snapshots
   - name: Documents
 paths:
   /api/health:
@@ -292,6 +293,55 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/projects/{projectId}/snapshots:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Snapshots
+      summary: List immutable snapshot checkpoints for a project
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Project snapshots ordered newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSnapshotListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/snapshots/{snapshotId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/SnapshotId"
+    post:
+      tags:
+        - Snapshots
+      summary: Restore a snapshot as the live project state and checkpoint it again
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Snapshot restored and checkpointed as the newest snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSnapshotRestoreResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
   /api/projects/{projectId}/tree:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -481,6 +531,14 @@ components:
         type: string
         format: uuid
       description: User identifier
+    SnapshotId:
+      name: snapshotId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Snapshot identifier
   responses:
     BadRequest:
       description: Invalid request
@@ -508,6 +566,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     Conflict:
       description: The request conflicts with current state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: The request is syntactically valid but cannot be applied
       content:
         application/json:
           schema:
@@ -654,6 +718,52 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ProjectSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - projectId
+        - message
+        - authorId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        message:
+          type:
+            - string
+            - "null"
+        authorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    ProjectSnapshotListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshots
+      properties:
+        snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectSnapshot"
+    ProjectSnapshotRestoreResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshot
+      properties:
+        snapshot:
+          $ref: "#/components/schemas/ProjectSnapshot"
     ProjectListResponse:
       type: object
       additionalProperties: false

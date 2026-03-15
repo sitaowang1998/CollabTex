@@ -20,6 +20,7 @@ import {
 import type { AuthService } from "../../services/auth.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
+import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -363,6 +364,7 @@ function createProjectTestApp() {
     projectService: createProjectService({
       projectRepository,
     }),
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 
   return {
@@ -391,6 +393,7 @@ function createRoleRequiredProjectApp() {
         throw new Error("Not implemented for role-required route test");
       },
     },
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 }
 
@@ -425,6 +428,15 @@ function createStubDocumentService(): DocumentService {
       throw new Error("Not implemented for project route tests");
     },
     getFileContent: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubSnapshotManagementService(): SnapshotManagementService {
+  return {
+    listSnapshots: async () => [],
+    restoreSnapshot: async () => {
       throw new Error("Not implemented for project route tests");
     },
   };

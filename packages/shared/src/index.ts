@@ -110,6 +110,22 @@ export type ProjectSummary = {
   updatedAt: string;
 };
 
+export type ProjectSnapshot = {
+  id: string;
+  projectId: string;
+  message: string | null;
+  authorId: string | null;
+  createdAt: string;
+};
+
+export type ProjectSnapshotListResponse = {
+  snapshots: ProjectSnapshot[];
+};
+
+export type ProjectSnapshotRestoreResponse = {
+  snapshot: ProjectSnapshot;
+};
+
 export type ProjectDetailsResponse = {
   project: Project;
   myRole: ProjectRole;
