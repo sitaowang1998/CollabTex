@@ -33,6 +33,16 @@ describe("collaboration service", () => {
     expect(document.getText()).toBe("");
   });
 
+  it("creates authoritative text documents from plain text", () => {
+    const service = createCollaborationService();
+    const document = track(
+      openedDocuments,
+      service.createDocumentFromText("\\section{Hydrated}"),
+    );
+
+    expect(document.getText()).toBe("\\section{Hydrated}");
+  });
+
   it("does not change an empty document update when getText is called", () => {
     const service = createCollaborationService();
     const document = track(openedDocuments, service.createEmptyTextDocument());
