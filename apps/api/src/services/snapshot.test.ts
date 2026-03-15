@@ -388,13 +388,17 @@ describe("snapshot service", () => {
     expect(restored.id).toBe("snapshot-2");
   });
 
-  it("rejects malformed snapshot payloads", () => {
+  it("rejects malformed or unsupported snapshot payloads", () => {
     expect(() =>
       parseProjectSnapshotState({
         version: 1,
         documents: {},
       }),
-    ).toThrow(new InvalidSnapshotDataError("snapshot version must be 2"));
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot payload uses an unsupported format",
+      ),
+    );
 
     expect(() =>
       parseProjectSnapshotState({

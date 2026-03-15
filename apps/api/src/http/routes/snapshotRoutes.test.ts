@@ -100,7 +100,9 @@ describe("snapshot routes", () => {
       .mockRejectedValueOnce(new SnapshotNotFoundError())
       .mockRejectedValueOnce(new SnapshotDataNotFoundError())
       .mockRejectedValueOnce(
-        new InvalidSnapshotDataError("snapshot version must be 2"),
+        new InvalidSnapshotDataError(
+          "snapshot payload uses an unsupported format",
+        ),
       );
     const app = createSnapshotTestApp(snapshotManagementService);
     const projectId = "6f35c2aa-fd34-4905-a370-7d9642244166";
@@ -134,7 +136,7 @@ describe("snapshot routes", () => {
       .post(`/api/projects/${projectId}/snapshots/${snapshotId}/restore`)
       .set("authorization", `Bearer ${createToken()}`)
       .expect(422)
-      .expect({ error: "snapshot version must be 2" });
+      .expect({ error: "snapshot payload uses an unsupported format" });
   });
 });
 

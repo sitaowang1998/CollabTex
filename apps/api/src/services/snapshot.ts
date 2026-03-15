@@ -325,7 +325,9 @@ export function parseProjectSnapshotState(
   }
 
   if (value.version !== 2) {
-    throw new InvalidSnapshotDataError("snapshot version must be 2");
+    throw new InvalidSnapshotDataError(
+      "snapshot payload uses an unsupported format",
+    );
   }
 
   if (!isObject(value.documents)) {

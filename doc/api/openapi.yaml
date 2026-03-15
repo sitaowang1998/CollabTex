@@ -341,7 +341,11 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/UnprocessableEntity"
+          description: The selected snapshot blob is unreadable, invalid, or stored in an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{projectId}/tree:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
