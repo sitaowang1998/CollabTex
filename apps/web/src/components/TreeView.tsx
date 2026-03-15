@@ -25,7 +25,9 @@ export function TreeView({
           ) : (
             <button
               className={
-                selectedPath === node.path ? "tree-file tree-file--active" : "tree-file"
+                selectedPath === node.path
+                  ? "tree-file tree-file--active"
+                  : "tree-file"
               }
               onClick={() => onSelectFile(node.path)}
               type="button"

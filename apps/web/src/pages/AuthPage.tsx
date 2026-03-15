@@ -17,8 +17,6 @@ export function AuthPage({
 }) {
   return (
     <section className="auth-layout">
-
-
       <section className="panel auth-panel">
         <div className="tab-row">
           <button

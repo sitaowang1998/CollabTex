@@ -5,5 +5,9 @@ export function Banner({
   message: string;
   tone: "error" | "success";
 }) {
-  return <p className={tone === "error" ? "banner banner--error" : "banner"}>{message}</p>;
+  return (
+    <p className={tone === "error" ? "banner banner--error" : "banner"}>
+      {message}
+    </p>
+  );
 }

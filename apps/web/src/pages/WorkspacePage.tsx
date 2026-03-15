@@ -53,7 +53,11 @@ export function WorkspacePage({
           <button className="ghost-button" onClick={onRefresh} type="button">
             Refresh
           </button>
-          <button className="ghost-button" onClick={onBackToProjects} type="button">
+          <button
+            className="ghost-button"
+            onClick={onBackToProjects}
+            type="button"
+          >
             Back to projects
           </button>
         </div>
@@ -71,7 +75,6 @@ export function WorkspacePage({
               {canEditFiles ? "Editable" : "Read only"}
             </span>
           </div>
-
 
           <div className="tree-scroll tree-scroll--wireframe">
             {workspace.tree.length === 0 ? (
@@ -93,7 +96,9 @@ export function WorkspacePage({
             <p>
               Role: <strong>{workspace.role ?? "unknown"}</strong>
             </p>
-            {workspaceBusy ? <span className="loading-chip">Loading...</span> : null}
+            {workspaceBusy ? (
+              <span className="loading-chip">Loading...</span>
+            ) : null}
           </div>
 
           <div className="info-card info-card--wireframe">
@@ -135,7 +140,9 @@ export function WorkspacePage({
           </div>
 
           <div className="pdf-preview">
-            {workspace.selectedPath ? "Preview unavailable in this starter." : "Select a file to preview."}
+            {workspace.selectedPath
+              ? "Preview unavailable in this starter."
+              : "Select a file to preview."}
           </div>
         </section>
 
@@ -165,7 +172,11 @@ export function WorkspacePage({
                 <p className="eyebrow">Create file</p>
                 <h3>Add a new file to the tree</h3>
               </div>
-              <button className="ghost-button" onClick={onCloseCreateFile} type="button">
+              <button
+                className="ghost-button"
+                onClick={onCloseCreateFile}
+                type="button"
+              >
                 Close
               </button>
             </div>

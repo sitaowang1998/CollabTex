@@ -37,8 +37,13 @@ export async function apiFetch<ResponseType>(
 
 async function readErrorMessage(response: Response) {
   try {
-    const body = (await response.json()) as { error?: string; message?: string };
-    return body.error ?? body.message ?? `Request failed with ${response.status}`;
+    const body = (await response.json()) as {
+      error?: string;
+      message?: string;
+    };
+    return (
+      body.error ?? body.message ?? `Request failed with ${response.status}`
+    );
   } catch {
     return `Request failed with ${response.status}`;
   }

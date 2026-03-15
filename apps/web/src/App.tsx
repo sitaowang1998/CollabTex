@@ -8,7 +8,15 @@ import type {
   ProjectMemberListResponse,
   ProjectSummary,
 } from "../../../packages/shared/src/index";
-import { TOKEN_STORAGE_KEY, type AppScreen, type AuthFormState, type AuthMode, type CreateFileState, type CreateProjectState, type WorkspaceState } from "./app/types";
+import {
+  TOKEN_STORAGE_KEY,
+  type AppScreen,
+  type AuthFormState,
+  type AuthMode,
+  type CreateFileState,
+  type CreateProjectState,
+  type WorkspaceState,
+} from "./app/types";
 import { Banner } from "./components/Banner";
 import { apiFetch, getErrorMessage } from "./lib/api";
 import { AuthPage } from "./pages/AuthPage";
@@ -219,11 +227,12 @@ function App() {
         }),
       ]);
 
-      const matchedProject =
-        knownProjects.find((project) => project.id === projectId) ?? {
-          ...details.project,
-          myRole: details.myRole,
-        };
+      const matchedProject = knownProjects.find(
+        (project) => project.id === projectId,
+      ) ?? {
+        ...details.project,
+        myRole: details.myRole,
+      };
 
       setWorkspace({
         project: matchedProject,
@@ -263,7 +272,7 @@ function App() {
         selectedPath: path,
         selectedContent:
           response.document.kind === "text"
-            ? response.content ?? ""
+            ? (response.content ?? "")
             : "Binary file selected. Text preview is not available.",
         selectedKind: response.document.kind,
       }));
