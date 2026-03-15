@@ -297,7 +297,7 @@ describe("snapshot service", () => {
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository,
-      resetPublisher,
+      getResetPublisher: () => resetPublisher,
     });
     const targetSnapshot = createStoredSnapshot();
 

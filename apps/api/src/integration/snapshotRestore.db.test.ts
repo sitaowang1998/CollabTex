@@ -123,9 +123,9 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
-      resetPublisher: {
+      getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
-      },
+      }),
     });
 
     const restoredSnapshot = await service.restoreProjectSnapshot({
@@ -265,9 +265,9 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
-      resetPublisher: {
+      getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
-      },
+      }),
     });
 
     await expect(
@@ -353,9 +353,9 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
-      resetPublisher: {
+      getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
-      },
+      }),
     });
 
     await expect(
@@ -443,9 +443,9 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
-      resetPublisher: {
+      getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
-      },
+      }),
     });
 
     await expect(
@@ -534,9 +534,9 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
-      resetPublisher: {
+      getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
-      },
+      }),
     });
 
     await expect(

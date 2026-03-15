@@ -20,7 +20,10 @@ import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
-import { createSnapshotService } from "./services/snapshot.js";
+import {
+  createSnapshotService,
+  type SnapshotResetPublisher,
+} from "./services/snapshot.js";
 import { createSnapshotManagementService } from "./services/snapshotManagement.js";
 import {
   createSnapshotRefreshProcessor,
@@ -65,7 +68,7 @@ async function main() {
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
-    const resetPublisher = {
+    let resetPublisher: SnapshotResetPublisher = {
       emitDocumentReset: async () => {},
     };
     const snapshotService = createSnapshotService({
@@ -74,7 +77,7 @@ async function main() {
       documentTextStateRepository,
       collaborationService,
       projectStateRepository,
-      resetPublisher,
+      getResetPublisher: () => resetPublisher,
     });
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
@@ -126,7 +129,7 @@ async function main() {
         snapshotService,
       }),
     });
-    Object.assign(resetPublisher, createSocketDocumentResetPublisher(io));
+    resetPublisher = createSocketDocumentResetPublisher(io);
 
     installShutdownHandlers({
       server,

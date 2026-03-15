@@ -112,22 +112,24 @@ export class SnapshotNotFoundError extends Error {
   }
 }
 
+const noopResetPublisher: SnapshotResetPublisher = {
+  emitDocumentReset: async () => {},
+};
+
 export function createSnapshotService({
   snapshotRepository,
   snapshotStore,
   documentTextStateRepository,
   collaborationService,
   projectStateRepository,
-  resetPublisher = {
-    emitDocumentReset: async () => {},
-  },
+  getResetPublisher = () => noopResetPublisher,
 }: {
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;
   documentTextStateRepository: DocumentTextStateRepository;
   collaborationService: CollaborationService;
   projectStateRepository: ProjectStateRepository;
-  resetPublisher?: SnapshotResetPublisher;
+  getResetPublisher?: () => SnapshotResetPublisher;
 }): SnapshotService {
   return {
     loadDocumentContent: async (document) => {
@@ -219,6 +221,7 @@ export function createSnapshotService({
           authorId: actorUserId,
         },
       });
+      const resetPublisher = getResetPublisher();
 
       await Promise.all(
         restoreResult.affectedTextDocumentIds.map((documentId) =>
