@@ -1,11 +1,11 @@
 import type { ProjectDocument } from "@collab-tex/shared";
+import type { CurrentTextStateService } from "./currentTextState.js";
 import type { DocumentRepository } from "./document.js";
 import { serializeDocument } from "./document.js";
 import {
   ProjectNotFoundError,
   type ProjectAccessService,
 } from "./projectAccess.js";
-import type { SnapshotService } from "./snapshot.js";
 
 export type WorkspaceOpenInput = {
   projectId: string;
@@ -40,11 +40,11 @@ export class WorkspaceDocumentNotFoundError extends Error {
 export function createWorkspaceService({
   projectAccessService,
   documentRepository,
-  snapshotService,
+  currentTextStateService,
 }: {
   projectAccessService: ProjectAccessService;
   documentRepository: WorkspaceDocumentLookup;
-  snapshotService: SnapshotService;
+  currentTextStateService: Pick<CurrentTextStateService, "loadOrHydrate">;
 }): WorkspaceService {
   return {
     openDocument: async ({ projectId, documentId, userId }) => {
@@ -67,7 +67,11 @@ export function createWorkspaceService({
       return {
         projectId,
         document: serializeDocument(document),
-        content: await snapshotService.loadDocumentContent(document),
+        content:
+          document.kind === "binary"
+            ? null
+            : (await currentTextStateService.loadOrHydrate(document))
+                .textContent,
       };
     },
   };

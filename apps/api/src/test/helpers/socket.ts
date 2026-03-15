@@ -6,6 +6,7 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
+import type { CurrentTextStateService } from "../../services/currentTextState.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
@@ -88,7 +89,8 @@ export async function createTestSocketServer(options?: {
         },
       },
       documentRepository,
-      snapshotService,
+      currentTextStateService:
+        createStubCurrentTextStateService(snapshotService),
     });
   const io = createSocketServer(server, testConfig, {
     workspaceService,
@@ -169,6 +171,21 @@ function createStubSnapshotService(): SnapshotService {
     restoreProjectSnapshot: async () => {
       throw new Error("Not implemented for socket tests");
     },
+  };
+}
+
+function createStubCurrentTextStateService(
+  snapshotService: SnapshotService,
+): Pick<CurrentTextStateService, "loadOrHydrate"> {
+  return {
+    loadOrHydrate: async (document) => ({
+      documentId: document.id,
+      yjsState: Uint8Array.from([]),
+      textContent: (await snapshotService.loadDocumentContent(document)) ?? "",
+      version: 1,
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+    }),
   };
 }
 
