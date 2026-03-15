@@ -299,6 +299,89 @@ describe("snapshot restore integration", () => {
     expect(textState?.textContent).toBe("\\section{Live}");
     expect(snapshots).toHaveLength(1);
   });
+
+  it("restores renamed documents whose legal paths are already at the length limit", async () => {
+    const suffix = randomUUID();
+    const snapshotRoot = await mkdtemp(
+      path.join(os.tmpdir(), "collabtex-snapshot-long-path-"),
+    );
+    const owner = await createUser(`snapshot-long-path-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `Snapshot Long Path ${suffix}`,
+    );
+    const documentRepository = createDocumentRepository(getDb());
+    const textStateRepository = createDocumentTextStateRepository(getDb());
+    const collaborationService = createCollaborationService();
+    const currentPath = createPathOfLength(1024, "a");
+    const restoredPath = createPathOfLength(1024, "b");
+    const document = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: currentPath,
+      kind: "text",
+      mime: "text/x-tex",
+    });
+
+    await textStateRepository.create({
+      documentId: document.id,
+      ...createStoredTextState(collaborationService, "\\section{Live}"),
+    });
+
+    const snapshotState = {
+      version: 2 as const,
+      documents: {
+        [document.id]: {
+          path: restoredPath,
+          kind: "text" as const,
+          mime: "text/x-tex",
+          textContent: "\\section{Restored}",
+        },
+      },
+    };
+    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+    const snapshotStoragePath = `${project.id}/target.json`;
+
+    await snapshotStore.writeProjectSnapshot(
+      snapshotStoragePath,
+      snapshotState,
+    );
+    const targetSnapshot = await getDb().snapshot.create({
+      data: {
+        projectId: project.id,
+        storagePath: snapshotStoragePath,
+        message: "Long path restore",
+        authorId: owner.id,
+      },
+    });
+    const service = createSnapshotService({
+      snapshotRepository: createSnapshotRepository(getDb()),
+      snapshotStore,
+      documentTextStateRepository: textStateRepository,
+      collaborationService,
+      projectStateRepository: createProjectStateRepository(getDb()),
+      resetPublisher: {
+        emitDocumentReset: vi.fn(),
+      },
+    });
+
+    await expect(
+      service.restoreProjectSnapshot({
+        projectId: project.id,
+        snapshotId: targetSnapshot.id,
+        actorUserId: owner.id,
+      }),
+    ).resolves.toBeDefined();
+
+    const restoredDocument = await getDb().document.findUnique({
+      where: {
+        id: document.id,
+      },
+    });
+
+    expect(restoredDocument?.path).toBe(restoredPath);
+    expect(restoredDocument?.path.length).toBe(1024);
+  });
 });
 
 async function createUser(email: string) {
@@ -343,4 +426,8 @@ function createStoredTextState(
   } finally {
     document.destroy();
   }
+}
+
+function createPathOfLength(totalLength: number, character: string) {
+  return `/${character.repeat(totalLength - 1)}`;
 }

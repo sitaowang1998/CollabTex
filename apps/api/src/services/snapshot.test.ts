@@ -5,6 +5,7 @@ import type { DocumentTextStateRepository } from "./currentTextState.js";
 import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
 import {
   InvalidSnapshotDataError,
+  SnapshotDataNotFoundError,
   createSnapshotService,
   parseProjectSnapshotState,
   type SnapshotRepository,
@@ -69,6 +70,55 @@ describe("snapshot service", () => {
     await expect(
       service.loadDocumentContent(createStoredDocument()),
     ).resolves.toBe("\\section{Snapshot}");
+  });
+
+  it("falls back to an older readable snapshot when the newest blob is missing", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+    });
+
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
+    store.readProjectSnapshot
+      .mockRejectedValueOnce(new SnapshotDataNotFoundError())
+      .mockResolvedValueOnce({
+        version: 2,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "\\section{Recovered}",
+          },
+        },
+      });
+
+    await expect(
+      service.loadDocumentContent(createStoredDocument()),
+    ).resolves.toBe("\\section{Recovered}");
+    expect(store.readProjectSnapshot).toHaveBeenNthCalledWith(
+      1,
+      "project-1/latest.json",
+    );
+    expect(store.readProjectSnapshot).toHaveBeenNthCalledWith(
+      2,
+      "project-1/older.json",
+    );
   });
 
   it("captures snapshots from current text state and carries forward binary bytes", async () => {
@@ -151,6 +201,79 @@ describe("snapshot service", () => {
             mime: null,
             textContent: "\\section{Live}",
           },
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
+          },
+        },
+      },
+    );
+  });
+
+  it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+    });
+
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
+    repository.createSnapshot.mockImplementation(async (input) => ({
+      id: "snapshot-3",
+      projectId: input.projectId,
+      storagePath: input.storagePath,
+      message: input.message,
+      authorId: input.authorId,
+      createdAt: new Date("2026-03-03T00:00:00.000Z"),
+    }));
+    store.readProjectSnapshot
+      .mockRejectedValueOnce(new InvalidSnapshotDataError("invalid snapshot"))
+      .mockResolvedValueOnce({
+        version: 2,
+        documents: {
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
+          },
+        },
+      });
+
+    await service.captureProjectSnapshot({
+      projectId: "project-1",
+      authorId: "user-1",
+      documents: [
+        createStoredDocument({
+          id: "document-2",
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+        }),
+      ],
+    });
+
+    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.stringMatching(/^project-1\/.+\.json$/),
+      {
+        version: 2,
+        documents: {
           "document-2": {
             path: "/figure.png",
             kind: "binary",

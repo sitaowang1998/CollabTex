@@ -237,13 +237,20 @@ export async function loadLatestProjectSnapshotState(
   projectId: string,
 ): Promise<ProjectSnapshotState> {
   const snapshots = await snapshotRepository.listForProject(projectId);
-  const latestSnapshot = snapshots[0];
 
-  if (!latestSnapshot) {
-    return createEmptyProjectSnapshotState();
+  for (const snapshot of snapshots) {
+    try {
+      return await snapshotStore.readProjectSnapshot(snapshot.storagePath);
+    } catch (error) {
+      if (isRecoverableSnapshotReadError(error)) {
+        continue;
+      }
+
+      throw error;
+    }
   }
 
-  return snapshotStore.readProjectSnapshot(latestSnapshot.storagePath);
+  return createEmptyProjectSnapshotState();
 }
 
 export async function buildProjectSnapshotState({
@@ -499,4 +506,11 @@ function parseSnapshotDocumentMime(value: unknown): string | null {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecoverableSnapshotReadError(error: unknown): boolean {
+  return (
+    error instanceof SnapshotDataNotFoundError ||
+    error instanceof InvalidSnapshotDataError
+  );
 }

@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { DocumentKind } from "@collab-tex/shared";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
@@ -266,7 +265,15 @@ async function assertActorCanWriteDocuments(
 }
 
 function createRestoreStagingPath(path: string): string {
-  const compactPath = path.replace(/\//g, "_").replace(/\./g, "_");
+  if (!path.startsWith("/")) {
+    throw new Error("Expected restore staging path source to be absolute");
+  }
 
-  return `/__restore_staging__/${compactPath}_${randomUUID()}`;
+  const stagingPath = path.slice(1);
+
+  if (!stagingPath || stagingPath.startsWith("/")) {
+    throw new Error("Expected restore staging path without leading slash");
+  }
+
+  return stagingPath;
 }
