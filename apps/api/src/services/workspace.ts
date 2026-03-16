@@ -16,7 +16,7 @@ export type WorkspaceOpenInput = {
 export type WorkspaceOpenedDocument = {
   projectId: string;
   document: ProjectDocument;
-  content: string | null;
+  content: null;
 };
 
 export type WorkspaceInitialSync = {

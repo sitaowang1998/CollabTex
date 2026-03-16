@@ -163,7 +163,7 @@ export type WorkspaceJoinRequest = {
 export type WorkspaceOpenedEvent = {
   projectId: string;
   document: ProjectDocument;
-  content: string | null;
+  content: null;
 };
 
 export type DocumentSyncRequest = {
