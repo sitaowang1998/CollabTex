@@ -16,6 +16,7 @@ import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefre
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createCollaborationService } from "./services/collaboration.js";
+import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
@@ -79,6 +80,11 @@ async function main() {
       projectStateRepository,
       getResetPublisher: () => resetPublisher,
     });
+    const currentTextStateService = createCurrentTextStateService({
+      documentTextStateRepository,
+      snapshotService,
+      collaborationService,
+    });
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
       projectLookup: projectRepository,
@@ -126,7 +132,7 @@ async function main() {
       workspaceService: createWorkspaceService({
         projectAccessService,
         documentRepository,
-        snapshotService,
+        currentTextStateService,
       }),
     });
     resetPublisher = createSocketDocumentResetPublisher(io);

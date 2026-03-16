@@ -71,6 +71,60 @@ describe("socket server", () => {
     });
   });
 
+  it("opens binary documents with null content", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const opened = await new Promise<{
+      projectId: string;
+      document: {
+        id: string;
+        path: string;
+        kind: string;
+        mime: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      content: string | null;
+    }>((resolve, reject) => {
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-binary",
+        });
+      });
+
+      client.once("workspace:opened", (payload) => {
+        client.close();
+        resolve(payload);
+      });
+
+      client.once("realtime:error", (payload) => {
+        client.close();
+        reject(new Error(`Unexpected realtime error: ${payload.code}`));
+      });
+
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(opened).toEqual({
+      projectId: "project-123",
+      document: {
+        id: "doc-binary",
+        path: "/figure.png",
+        kind: "binary",
+        mime: "image/png",
+        createdAt: "2026-03-01T12:00:00.000Z",
+        updatedAt: "2026-03-01T12:00:00.000Z",
+      },
+      content: null,
+    });
+  });
+
   it("emits realtime:error when the user is not a project member", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("bob", testConfig.jwtSecret);
