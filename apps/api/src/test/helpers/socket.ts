@@ -37,6 +37,7 @@ export type TestSocketServer = {
     projectId: string;
     documentId: string;
     reason: string;
+    serverVersion: number;
   }) => Promise<void>;
   close: () => Promise<void>;
 };

@@ -173,16 +173,32 @@ export type DocumentSyncRequest = {
 export type DocumentSyncResponseEvent = {
   documentId: string;
   stateB64: string;
+  serverVersion: number;
 };
 
-export type DocumentUpdateEvent = {
+export type ClientDocumentUpdateEvent = {
   documentId: string;
   updateB64: string;
+  clientUpdateId: string;
+};
+
+export type ServerDocumentUpdateEvent = {
+  documentId: string;
+  updateB64: string;
+  clientUpdateId: string;
+  serverVersion: number;
+};
+
+export type DocumentUpdateAckEvent = {
+  documentId: string;
+  clientUpdateId: string;
+  serverVersion: number;
 };
 
 export type DocumentResetEvent = {
   documentId: string;
   reason: string;
+  serverVersion: number;
 };
 
 export type WorkspaceErrorCode =
@@ -201,12 +217,13 @@ export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
   "doc.sync.response": (data: DocumentSyncResponseEvent) => void;
-  "doc.update": (data: DocumentUpdateEvent) => void;
+  "doc.update": (data: ServerDocumentUpdateEvent) => void;
+  "doc.update.ack": (data: DocumentUpdateAckEvent) => void;
   "doc.reset": (data: DocumentResetEvent) => void;
 };
 
 export type ClientToServerEvents = {
   "workspace:join": (data: WorkspaceJoinRequest) => void;
   "doc.sync.request": (data: DocumentSyncRequest) => void;
-  "doc.update": (data: DocumentUpdateEvent) => void;
+  "doc.update": (data: ClientDocumentUpdateEvent) => void;
 };

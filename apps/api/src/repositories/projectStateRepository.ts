@@ -30,7 +30,10 @@ export type ProjectStateRepository = {
     };
   }) => Promise<{
     snapshot: StoredSnapshot;
-    affectedTextDocumentIds: string[];
+    affectedTextDocuments: Array<{
+      documentId: string;
+      serverVersion: number;
+    }>;
   }>;
 };
 
@@ -79,17 +82,17 @@ export function createProjectStateRepository(
         const deletedDocuments = currentDocuments.filter(
           (document) => !restoredDocumentIds.has(document.id),
         );
-        const affectedTextDocumentIds = new Set<string>();
+        const affectedTextDocuments = new Map<string, number>();
 
         for (const document of currentDocuments) {
           if (document.kind === "text") {
-            affectedTextDocumentIds.add(document.id);
+            affectedTextDocuments.set(document.id, 0);
           }
         }
 
         for (const document of restoredDocuments) {
           if (document.kind === "text") {
-            affectedTextDocumentIds.add(document.documentId);
+            affectedTextDocuments.set(document.documentId, 0);
           }
         }
 
@@ -193,28 +196,32 @@ export function createProjectStateRepository(
             continue;
           }
 
-          const updated = await tx.documentTextState.updateMany({
+          const persistedState = await tx.documentTextState.upsert({
             where: {
               documentId: document.documentId,
             },
-            data: {
+            update: {
               yjsState: Buffer.from(document.yjsState),
               textContent: document.textContent,
               version: {
                 increment: 1,
               },
             },
+            create: {
+              documentId: document.documentId,
+              yjsState: Buffer.from(document.yjsState),
+              textContent: document.textContent,
+            },
+            select: {
+              documentId: true,
+              version: true,
+            },
           });
 
-          if (updated.count === 0) {
-            await tx.documentTextState.create({
-              data: {
-                documentId: document.documentId,
-                yjsState: Buffer.from(document.yjsState),
-                textContent: document.textContent,
-              },
-            });
-          }
+          affectedTextDocuments.set(
+            persistedState.documentId,
+            persistedState.version,
+          );
         }
 
         const snapshot = await tx.snapshot.create({
@@ -228,7 +235,12 @@ export function createProjectStateRepository(
 
         return {
           snapshot,
-          affectedTextDocumentIds: [...affectedTextDocumentIds],
+          affectedTextDocuments: [...affectedTextDocuments].map(
+            ([documentId, serverVersion]) => ({
+              documentId,
+              serverVersion,
+            }),
+          ),
         };
       }),
   };

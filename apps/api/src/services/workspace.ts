@@ -19,10 +19,21 @@ export type WorkspaceOpenedDocument = {
   content: string | null;
 };
 
+export type WorkspaceInitialSync = {
+  documentId: string;
+  yjsState: Uint8Array;
+  serverVersion: number;
+};
+
+export type WorkspaceOpenResult = {
+  workspace: WorkspaceOpenedDocument;
+  initialSync: WorkspaceInitialSync | null;
+};
+
 export type WorkspaceDocumentLookup = Pick<DocumentRepository, "findById">;
 
 export type WorkspaceService = {
-  openDocument: (input: WorkspaceOpenInput) => Promise<WorkspaceOpenedDocument>;
+  openDocument: (input: WorkspaceOpenInput) => Promise<WorkspaceOpenResult>;
 };
 
 export class WorkspaceAccessDeniedError extends Error {
@@ -64,14 +75,31 @@ export function createWorkspaceService({
         throw new WorkspaceDocumentNotFoundError();
       }
 
+      if (document.kind === "binary") {
+        return {
+          workspace: {
+            projectId,
+            document: serializeDocument(document),
+            content: null,
+          },
+          initialSync: null,
+        };
+      }
+
+      const currentState =
+        await currentTextStateService.loadOrHydrate(document);
+
       return {
-        projectId,
-        document: serializeDocument(document),
-        content:
-          document.kind === "binary"
-            ? null
-            : (await currentTextStateService.loadOrHydrate(document))
-                .textContent,
+        workspace: {
+          projectId,
+          document: serializeDocument(document),
+          content: null,
+        },
+        initialSync: {
+          documentId: document.id,
+          yjsState: currentState.yjsState,
+          serverVersion: currentState.version,
+        },
       };
     },
   };

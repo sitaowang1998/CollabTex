@@ -80,6 +80,7 @@ export type SnapshotResetPublisher = {
     projectId: string;
     documentId: string;
     reason: string;
+    serverVersion: number;
   }) => Promise<void> | void;
 };
 
@@ -224,12 +225,14 @@ export function createSnapshotService({
       const resetPublisher = getResetPublisher();
 
       await Promise.all(
-        restoreResult.affectedTextDocumentIds.map((documentId) =>
-          resetPublisher.emitDocumentReset({
-            projectId,
-            documentId,
-            reason: "snapshot_restore",
-          }),
+        restoreResult.affectedTextDocuments.map(
+          ({ documentId, serverVersion }) =>
+            resetPublisher.emitDocumentReset({
+              projectId,
+              documentId,
+              reason: "snapshot_restore",
+              serverVersion,
+            }),
         ),
       );
 
