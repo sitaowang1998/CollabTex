@@ -201,16 +201,18 @@ describe("snapshot restore integration", () => {
         documentId: row.documentId,
         textContent: row.textContent,
       })),
-    ).toEqual([
-      {
-        documentId: "11111111-1111-1111-1111-111111111111",
-        textContent: "\\section{Historical}",
-      },
-      {
-        documentId: liveMain.id,
-        textContent: "\\section{Restored main}",
-      },
-    ]);
+    ).toEqual(
+      [
+        {
+          documentId: "11111111-1111-1111-1111-111111111111",
+          textContent: "\\section{Historical}",
+        },
+        {
+          documentId: liveMain.id,
+          textContent: "\\section{Restored main}",
+        },
+      ].sort((left, right) => left.documentId.localeCompare(right.documentId)),
+    );
     expect(
       restoredTextStates.some((row) => row.documentId === newerText.id),
     ).toBe(false);
