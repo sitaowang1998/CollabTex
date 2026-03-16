@@ -94,6 +94,30 @@ export function createSocketServer(
   return io;
 }
 
+export function createSocketDocumentResetPublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitDocumentReset: async ({
+      projectId,
+      documentId,
+      reason,
+      serverVersion,
+    }: {
+      projectId: string;
+      documentId: string;
+      reason: string;
+      serverVersion: number;
+    }) => {
+      io.to(createWorkspaceRoomName(projectId, documentId)).emit("doc.reset", {
+        documentId,
+        reason,
+        serverVersion,
+      });
+    },
+  };
+}
+
 async function openWorkspace(
   socket: WorkspaceSocket,
   workspaceService: WorkspaceService,
@@ -132,7 +156,15 @@ async function openWorkspace(
 
     void socket.join(nextWorkspaceRoomName);
     input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-    socket.emit("workspace:opened", openedWorkspace);
+    socket.emit("workspace:opened", openedWorkspace.workspace);
+
+    if (openedWorkspace.initialSync) {
+      socket.emit("doc.sync.response", {
+        documentId: openedWorkspace.initialSync.documentId,
+        stateB64: encodeBase64(openedWorkspace.initialSync.yjsState),
+        serverVersion: openedWorkspace.initialSync.serverVersion,
+      });
+    }
   } catch (error) {
     if (!input.isLatestJoin()) {
       return;
@@ -144,6 +176,10 @@ async function openWorkspace(
 
     socket.emit("realtime:error", mapWorkspaceError(error));
   }
+}
+
+function encodeBase64(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64");
 }
 
 function parseWorkspaceJoinRequest(
@@ -182,7 +218,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function createWorkspaceRoomName(
+export function createWorkspaceRoomName(
   projectId: string,
   documentId: string,
 ): string {

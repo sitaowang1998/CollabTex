@@ -259,6 +259,8 @@ function createDocumentTextStateRepositoryDouble(
 } {
   return {
     findByDocumentId: vi.fn<DocumentTextStateRepository["findByDocumentId"]>(),
+    findByDocumentIds:
+      vi.fn<DocumentTextStateRepository["findByDocumentIds"]>(),
     create: vi.fn<DocumentTextStateRepository["create"]>(),
     update: vi.fn<DocumentTextStateRepository["update"]>(),
     ...overrides,
@@ -271,6 +273,8 @@ function createSnapshotServiceDouble(
   return {
     loadDocumentContent: vi.fn<SnapshotService["loadDocumentContent"]>(),
     captureProjectSnapshot: vi.fn<SnapshotService["captureProjectSnapshot"]>(),
+    listProjectSnapshots: vi.fn<SnapshotService["listProjectSnapshots"]>(),
+    restoreProjectSnapshot: vi.fn<SnapshotService["restoreProjectSnapshot"]>(),
     ...overrides,
   };
 }

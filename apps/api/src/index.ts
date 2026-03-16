@@ -7,23 +7,34 @@ import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2Password
 import { createDatabaseClient } from "./infrastructure/db/client.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
+import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
 import { createMembershipRepository } from "./repositories/membershipRepository.js";
+import { createProjectStateRepository } from "./repositories/projectStateRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
 import { createSnapshotRepository } from "./repositories/snapshotRepository.js";
 import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefreshJobRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createCollaborationService } from "./services/collaboration.js";
+import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
-import { createSnapshotService } from "./services/snapshot.js";
+import {
+  createSnapshotService,
+  type SnapshotResetPublisher,
+} from "./services/snapshot.js";
+import { createSnapshotManagementService } from "./services/snapshotManagement.js";
 import {
   createSnapshotRefreshProcessor,
   createSnapshotRefreshTrigger,
 } from "./services/snapshotRefresh.js";
 import { createWorkspaceService } from "./services/workspace.js";
-import { createSocketServer } from "./ws/socketServer.js";
+import {
+  createSocketDocumentResetPublisher,
+  createSocketServer,
+} from "./ws/socketServer.js";
 
 dotenv.config({
   path: fileURLToPath(new URL("../../../.env", import.meta.url)),
@@ -48,21 +59,36 @@ async function main() {
     const userRepository = createUserRepository(databaseClient);
     const projectRepository = createProjectRepository(databaseClient);
     const documentRepository = createDocumentRepository(databaseClient);
+    const documentTextStateRepository =
+      createDocumentTextStateRepository(databaseClient);
+    const projectStateRepository = createProjectStateRepository(databaseClient);
     const snapshotRepository = createSnapshotRepository(databaseClient);
     const snapshotRefreshJobRepository =
       createSnapshotRefreshJobRepository(databaseClient);
+    const collaborationService = createCollaborationService();
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
+    let resetPublisher: SnapshotResetPublisher = {
+      emitDocumentReset: async () => {},
+    };
     const snapshotService = createSnapshotService({
       snapshotRepository,
       snapshotStore,
+      documentTextStateRepository,
+      collaborationService,
+      projectStateRepository,
+      getResetPublisher: () => resetPublisher,
+    });
+    const currentTextStateService = createCurrentTextStateService({
+      documentTextStateRepository,
+      snapshotService,
+      collaborationService,
     });
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
       projectLookup: projectRepository,
-      snapshotRepository,
-      snapshotStore,
+      snapshotService,
       documentRepository,
     });
     await snapshotRefreshJobRepository.recoverInterruptedJobs();
@@ -90,20 +116,26 @@ async function main() {
       userLookup: userRepository,
       projectAccessService,
     });
+    const snapshotManagementService = createSnapshotManagementService({
+      projectAccessService,
+      snapshotService,
+    });
     const app = createHttpApp(config, {
       authService,
       documentService,
       membershipService,
       projectService,
+      snapshotManagementService,
     });
     const server = http.createServer(app);
     const io = createSocketServer(server, config, {
       workspaceService: createWorkspaceService({
         projectAccessService,
         documentRepository,
-        snapshotService,
+        currentTextStateService,
       }),
     });
+    resetPublisher = createSocketDocumentResetPublisher(io);
 
     installShutdownHandlers({
       server,

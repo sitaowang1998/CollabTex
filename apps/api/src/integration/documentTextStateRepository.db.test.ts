@@ -66,6 +66,56 @@ describe("document text state repository integration", () => {
     });
   });
 
+  it("reads multiple current text states in one batch", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`doc-state-batch-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Document State ${suffix}`);
+    const documentRepository = createDocumentRepository(getDb());
+    const repository = createDocumentTextStateRepository(getDb());
+    const mainDocument = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+    const appendixDocument = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/appendix.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+
+    await repository.create({
+      documentId: mainDocument.id,
+      ...createStoredTextState("\\section{Main}"),
+    });
+    await repository.create({
+      documentId: appendixDocument.id,
+      ...createStoredTextState("\\section{Appendix}"),
+    });
+
+    await expect(
+      repository.findByDocumentIds([
+        mainDocument.id,
+        appendixDocument.id,
+        "00000000-0000-0000-0000-000000000000",
+      ]),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          documentId: mainDocument.id,
+          textContent: "\\section{Main}",
+        }),
+        expect.objectContaining({
+          documentId: appendixDocument.id,
+          textContent: "\\section{Appendix}",
+        }),
+      ]),
+    );
+  });
+
   it("updates current text state with optimistic versioning", async () => {
     const suffix = randomUUID();
     const owner = await createUser(`doc-state-update-${suffix}@example.com`);

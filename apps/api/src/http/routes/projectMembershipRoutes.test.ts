@@ -27,6 +27,7 @@ import {
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import { signToken, type AuthService } from "../../services/auth.js";
 import {
   createTestPasswordHasher,
@@ -673,6 +674,7 @@ function createMembershipTestApp() {
       projectRepository,
       projectAccessService,
     }),
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 
   return {
@@ -706,6 +708,7 @@ function createRoleRequiredMembershipApp() {
       },
     },
     projectService: createStubProjectService(),
+    snapshotManagementService: createStubSnapshotManagementService(),
   });
 }
 
@@ -725,6 +728,15 @@ function createStubDocumentService(): DocumentService {
       throw new Error("Not implemented for membership route tests");
     },
     getFileContent: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+  };
+}
+
+function createStubSnapshotManagementService(): SnapshotManagementService {
+  return {
+    listSnapshots: async () => [],
+    restoreSnapshot: async () => {
       throw new Error("Not implemented for membership route tests");
     },
   };

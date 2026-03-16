@@ -1,73 +1,93 @@
 import { describe, expect, it, vi } from "vitest";
+import { createCollaborationService } from "./collaboration.js";
+import type { StoredDocument } from "./document.js";
+import type { DocumentTextStateRepository } from "./currentTextState.js";
+import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
 import {
   InvalidSnapshotDataError,
   SnapshotDataNotFoundError,
-  buildProjectSnapshotState,
   createSnapshotService,
+  parseProjectSnapshotState,
   type SnapshotRepository,
+  type SnapshotResetPublisher,
   type SnapshotStore,
   type StoredSnapshot,
 } from "./snapshot.js";
-import type { StoredDocument } from "./document.js";
 
 describe("snapshot service", () => {
-  it("loads text content from the latest persisted snapshot", async () => {
+  it("loads text content from current text state before checking snapshots", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    documentTextStateRepository.findByDocumentId.mockResolvedValue({
+      documentId: "document-1",
+      yjsState: Uint8Array.from([]),
+      textContent: "\\section{Current}",
+      version: 3,
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+    });
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
     });
+
+    await expect(
+      service.loadDocumentContent(createStoredDocument()),
+    ).resolves.toBe("\\section{Current}");
+    expect(repository.listForProject).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the latest snapshot when current text state is missing", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
     const snapshot = createStoredSnapshot();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+    });
 
     repository.listForProject.mockResolvedValue([snapshot]);
     store.readProjectSnapshot.mockResolvedValue({
-      version: 1,
+      version: 2,
       documents: {
         "document-1": {
           path: "/main.tex",
           kind: "text",
           mime: "text/x-tex",
-          content: "\\section{Intro}",
+          textContent: "\\section{Snapshot}",
         },
       },
     });
 
     await expect(
       service.loadDocumentContent(createStoredDocument()),
-    ).resolves.toBe("\\section{Intro}");
-    expect(store.readProjectSnapshot).toHaveBeenCalledWith(
-      snapshot.storagePath,
-    );
+    ).resolves.toBe("\\section{Snapshot}");
   });
 
-  it("returns default content when no snapshot exists for a text document", async () => {
-    const repository = createSnapshotRepository();
-    const service = createSnapshotService({
-      snapshotRepository: repository,
-      snapshotStore: createSnapshotStore(),
-    });
-
-    repository.listForProject.mockResolvedValue([]);
-
-    await expect(
-      service.loadDocumentContent(createStoredDocument()),
-    ).resolves.toBe("");
-  });
-
-  it("falls back to an older readable snapshot when the latest blob is missing", async () => {
+  it("falls back to an older readable snapshot when the newest blob is missing", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
     });
 
     repository.listForProject.mockResolvedValue([
       createStoredSnapshot({
         id: "snapshot-2",
         storagePath: "project-1/latest.json",
-        createdAt: new Date("2026-03-02T00:00:00.000Z"),
       }),
       createStoredSnapshot({
         id: "snapshot-1",
@@ -77,13 +97,13 @@ describe("snapshot service", () => {
     store.readProjectSnapshot
       .mockRejectedValueOnce(new SnapshotDataNotFoundError())
       .mockResolvedValueOnce({
-        version: 1,
+        version: 2,
         documents: {
           "document-1": {
             path: "/main.tex",
             kind: "text",
             mime: null,
-            content: "\\section{Recovered}",
+            textContent: "\\section{Recovered}",
           },
         },
       });
@@ -101,92 +121,16 @@ describe("snapshot service", () => {
     );
   });
 
-  it("falls back to an older readable snapshot when the latest blob is invalid", async () => {
+  it("captures snapshots from current text state and carries forward binary bytes", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
-    });
-
-    repository.listForProject.mockResolvedValue([
-      createStoredSnapshot({
-        id: "snapshot-2",
-        storagePath: "project-1/latest.json",
-        createdAt: new Date("2026-03-02T00:00:00.000Z"),
-      }),
-      createStoredSnapshot({
-        id: "snapshot-1",
-        storagePath: "project-1/older.json",
-      }),
-    ]);
-    store.readProjectSnapshot
-      .mockRejectedValueOnce(
-        new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
-      )
-      .mockResolvedValueOnce({
-        version: 1,
-        documents: {
-          "document-1": {
-            path: "/main.tex",
-            kind: "text",
-            mime: null,
-            content: "\\section{Recovered}",
-          },
-        },
-      });
-
-    await expect(
-      service.loadDocumentContent(createStoredDocument()),
-    ).resolves.toBe("\\section{Recovered}");
-  });
-
-  it("returns default content when every snapshot blob is unreadable", async () => {
-    const repository = createSnapshotRepository();
-    const store = createSnapshotStore();
-    const service = createSnapshotService({
-      snapshotRepository: repository,
-      snapshotStore: store,
-    });
-
-    repository.listForProject.mockResolvedValue([
-      createStoredSnapshot({
-        id: "snapshot-2",
-        storagePath: "project-1/latest.json",
-        createdAt: new Date("2026-03-02T00:00:00.000Z"),
-      }),
-      createStoredSnapshot({
-        id: "snapshot-1",
-        storagePath: "project-1/older.json",
-      }),
-    ]);
-    store.readProjectSnapshot.mockImplementation(async (storagePath) => {
-      if (storagePath === "project-1/latest.json") {
-        throw new SnapshotDataNotFoundError();
-      }
-
-      throw new InvalidSnapshotDataError("snapshot payload must be valid JSON");
-    });
-
-    await expect(
-      service.loadDocumentContent(createStoredDocument()),
-    ).resolves.toBe("");
-    await expect(
-      service.loadDocumentContent(
-        createStoredDocument({
-          kind: "binary",
-          mime: "image/png",
-        }),
-      ),
-    ).resolves.toBeNull();
-  });
-
-  it("captures a new project snapshot with carried-forward text content", async () => {
-    const repository = createSnapshotRepository();
-    const store = createSnapshotStore();
-    const service = createSnapshotService({
-      snapshotRepository: repository,
-      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
     });
 
     repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
@@ -199,24 +143,41 @@ describe("snapshot service", () => {
       createdAt: new Date("2026-03-02T00:00:00.000Z"),
     }));
     store.readProjectSnapshot.mockResolvedValue({
-      version: 1,
+      version: 2,
       documents: {
         "document-1": {
-          path: "/old-name.tex",
+          path: "/main.tex",
           kind: "text",
-          mime: "text/x-tex",
-          content: "\\section{Carried}",
+          mime: null,
+          textContent: "\\section{Old}",
+        },
+        "document-2": {
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: "AQID",
         },
       },
     });
+    documentTextStateRepository.findByDocumentId.mockImplementation(
+      async () => null,
+    );
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([
+      {
+        documentId: "document-1",
+        yjsState: Uint8Array.from([]),
+        textContent: "\\section{Live}",
+        version: 5,
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+        updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+      },
+    ]);
 
-    const created = await service.captureProjectSnapshot({
+    await service.captureProjectSnapshot({
       projectId: "project-1",
       authorId: "user-1",
       documents: [
-        createStoredDocument({
-          path: "/renamed.tex",
-        }),
+        createStoredDocument(),
         createStoredDocument({
           id: "document-2",
           path: "/figure.png",
@@ -229,128 +190,318 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 1,
+        version: 2,
         documents: {
           "document-1": {
-            path: "/renamed.tex",
+            path: "/main.tex",
             kind: "text",
             mime: null,
-            content: "\\section{Carried}",
+            textContent: "\\section{Live}",
           },
           "document-2": {
             path: "/figure.png",
             kind: "binary",
             mime: "image/png",
-            content: null,
+            binaryContentBase64: "AQID",
           },
         },
       },
     );
-    expect(created.authorId).toBe("user-1");
+    expect(documentTextStateRepository.findByDocumentIds).toHaveBeenCalledWith([
+      "document-1",
+    ]);
+    expect(documentTextStateRepository.findByDocumentId).not.toHaveBeenCalled();
   });
 
-  it("rebuilds from an empty prior state when the latest snapshot blob is missing", async () => {
+  it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
     });
 
-    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
+    repository.listForProject.mockResolvedValue([
+      createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/latest.json",
+      }),
+      createStoredSnapshot({
+        id: "snapshot-1",
+        storagePath: "project-1/older.json",
+      }),
+    ]);
     repository.createSnapshot.mockImplementation(async (input) => ({
       id: "snapshot-3",
       projectId: input.projectId,
       storagePath: input.storagePath,
       message: input.message,
       authorId: input.authorId,
-      createdAt: new Date("2026-03-02T00:00:00.000Z"),
+      createdAt: new Date("2026-03-03T00:00:00.000Z"),
     }));
-    store.readProjectSnapshot.mockRejectedValue(
-      new InvalidSnapshotDataError("snapshot payload must be valid JSON"),
-    );
-
-    await expect(
-      service.captureProjectSnapshot({
-        projectId: "project-1",
-        authorId: "user-1",
-        documents: [createStoredDocument()],
-      }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        id: "snapshot-3",
-      }),
-    );
-    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
-      expect.any(String),
-      {
-        version: 1,
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
+    store.readProjectSnapshot
+      .mockRejectedValueOnce(new InvalidSnapshotDataError("invalid snapshot"))
+      .mockResolvedValueOnce({
+        version: 2,
         documents: {
-          "document-1": {
-            path: "/main.tex",
-            kind: "text",
-            mime: null,
-            content: "",
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
+          },
+        },
+      });
+
+    await service.captureProjectSnapshot({
+      projectId: "project-1",
+      authorId: "user-1",
+      documents: [
+        createStoredDocument({
+          id: "document-2",
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+        }),
+      ],
+    });
+
+    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.stringMatching(/^project-1\/.+\.json$/),
+      {
+        version: 2,
+        documents: {
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
           },
         },
       },
     );
+    expect(documentTextStateRepository.findByDocumentIds).toHaveBeenCalledWith(
+      [],
+    );
   });
 
-  it("rebuilds project snapshot state from the active document list", () => {
-    expect(
-      buildProjectSnapshotState(
-        [
-          createStoredDocument({
-            id: "document-1",
-            path: "/main.tex",
-          }),
-          createStoredDocument({
-            id: "document-2",
-            path: "/appendix.tex",
-          }),
-        ],
-        {
-          version: 1,
-          documents: {
-            "document-1": {
-              path: "/draft.tex",
-              kind: "text",
-              mime: null,
-              content: "kept",
-            },
-            "document-3": {
-              path: "/deleted.tex",
-              kind: "text",
-              mime: null,
-              content: "deleted",
-            },
-          },
-        },
-      ),
-    ).toEqual({
-      version: 1,
+  it("restores a snapshot, writes a checkpoint, and emits resets after commit", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const projectStateRepository = createProjectStateRepository();
+    const resetPublisher = createResetPublisher();
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository,
+      getResetPublisher: () => resetPublisher,
+    });
+    const targetSnapshot = createStoredSnapshot();
+
+    repository.findById.mockResolvedValue(targetSnapshot);
+    store.readProjectSnapshot.mockResolvedValue({
+      version: 2,
       documents: {
         "document-1": {
           path: "/main.tex",
           kind: "text",
           mime: null,
-          content: "kept",
+          textContent: "\\section{Restored}",
         },
         "document-2": {
-          path: "/appendix.tex",
-          kind: "text",
-          mime: null,
-          content: "",
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: "AQID",
         },
       },
     });
+    projectStateRepository.restoreProjectState.mockResolvedValue({
+      snapshot: createStoredSnapshot({
+        id: "snapshot-2",
+        storagePath: "project-1/restored.json",
+      }),
+      affectedTextDocuments: [
+        {
+          documentId: "document-1",
+          serverVersion: 3,
+        },
+        {
+          documentId: "deleted-text-doc",
+          serverVersion: 0,
+        },
+      ],
+    });
+
+    const restored = await service.restoreProjectSnapshot({
+      projectId: "project-1",
+      snapshotId: "snapshot-1",
+      actorUserId: "user-1",
+    });
+
+    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.stringMatching(/^project-1\/.+\.json$/),
+      {
+        version: 2,
+        documents: {
+          "document-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "\\section{Restored}",
+          },
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
+          },
+        },
+      },
+    );
+    expect(projectStateRepository.restoreProjectState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        restoredDocuments: [
+          expect.objectContaining({
+            documentId: "document-1",
+            path: "/main.tex",
+            kind: "text",
+            textContent: "\\section{Restored}",
+            yjsState: expect.any(Uint8Array),
+          }),
+          expect.objectContaining({
+            documentId: "document-2",
+            path: "/figure.png",
+            kind: "binary",
+            textContent: null,
+            yjsState: null,
+          }),
+        ],
+      }),
+    );
+    expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(1, {
+      projectId: "project-1",
+      documentId: "document-1",
+      reason: "snapshot_restore",
+      serverVersion: 3,
+    });
+    expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(2, {
+      projectId: "project-1",
+      documentId: "deleted-text-doc",
+      reason: "snapshot_restore",
+      serverVersion: 0,
+    });
+    expect(restored.id).toBe("snapshot-2");
+  });
+
+  it("rejects malformed or unsupported snapshot payloads", () => {
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 1,
+        documents: {},
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot payload uses an unsupported format",
+      ),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "11111111-1111-1111-1111-111111111111": {
+            path: "/same.tex",
+            kind: "text",
+            mime: null,
+            textContent: "one",
+          },
+          "22222222-2222-2222-2222-222222222222": {
+            path: "/same.tex",
+            kind: "text",
+            mime: null,
+            textContent: "two",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError("snapshot document paths must be unique"),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "not-a-uuid": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "body",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError("snapshot document id must be a valid UUID"),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "11111111-1111-1111-1111-111111111111": {
+            path: "docs/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "body",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot document path must be a canonical absolute path",
+      ),
+    );
+
+    expect(() =>
+      parseProjectSnapshotState({
+        version: 2,
+        documents: {
+          "11111111-1111-1111-1111-111111111111": {
+            path: "/docs",
+            kind: "text",
+            mime: null,
+            textContent: "folder-file-conflict",
+          },
+          "22222222-2222-2222-2222-222222222222": {
+            path: "/docs/a.tex",
+            kind: "text",
+            mime: null,
+            textContent: "descendant",
+          },
+        },
+      }),
+    ).toThrow(
+      new InvalidSnapshotDataError(
+        "snapshot document paths must not contain file/descendant conflicts",
+      ),
+    );
   });
 });
 
 function createSnapshotRepository() {
   return {
     listForProject: vi.fn<SnapshotRepository["listForProject"]>(),
+    findById: vi.fn<SnapshotRepository["findById"]>(),
     createSnapshot: vi.fn<SnapshotRepository["createSnapshot"]>(),
   };
 }
@@ -359,6 +510,31 @@ function createSnapshotStore() {
   return {
     readProjectSnapshot: vi.fn<SnapshotStore["readProjectSnapshot"]>(),
     writeProjectSnapshot: vi.fn<SnapshotStore["writeProjectSnapshot"]>(),
+  };
+}
+
+function createDocumentTextStateRepository() {
+  const findByDocumentIds =
+    vi.fn<DocumentTextStateRepository["findByDocumentIds"]>();
+  findByDocumentIds.mockResolvedValue([]);
+
+  return {
+    findByDocumentId: vi.fn<DocumentTextStateRepository["findByDocumentId"]>(),
+    findByDocumentIds,
+    create: vi.fn<DocumentTextStateRepository["create"]>(),
+    update: vi.fn<DocumentTextStateRepository["update"]>(),
+  };
+}
+
+function createProjectStateRepository() {
+  return {
+    restoreProjectState: vi.fn<ProjectStateRepository["restoreProjectState"]>(),
+  };
+}
+
+function createResetPublisher() {
+  return {
+    emitDocumentReset: vi.fn<SnapshotResetPublisher["emitDocumentReset"]>(),
   };
 }
 

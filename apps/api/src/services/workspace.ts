@@ -1,11 +1,11 @@
 import type { ProjectDocument } from "@collab-tex/shared";
+import type { CurrentTextStateService } from "./currentTextState.js";
 import type { DocumentRepository } from "./document.js";
 import { serializeDocument } from "./document.js";
 import {
   ProjectNotFoundError,
   type ProjectAccessService,
 } from "./projectAccess.js";
-import type { SnapshotService } from "./snapshot.js";
 
 export type WorkspaceOpenInput = {
   projectId: string;
@@ -16,13 +16,24 @@ export type WorkspaceOpenInput = {
 export type WorkspaceOpenedDocument = {
   projectId: string;
   document: ProjectDocument;
-  content: string | null;
+  content: null;
+};
+
+export type WorkspaceInitialSync = {
+  documentId: string;
+  yjsState: Uint8Array;
+  serverVersion: number;
+};
+
+export type WorkspaceOpenResult = {
+  workspace: WorkspaceOpenedDocument;
+  initialSync: WorkspaceInitialSync | null;
 };
 
 export type WorkspaceDocumentLookup = Pick<DocumentRepository, "findById">;
 
 export type WorkspaceService = {
-  openDocument: (input: WorkspaceOpenInput) => Promise<WorkspaceOpenedDocument>;
+  openDocument: (input: WorkspaceOpenInput) => Promise<WorkspaceOpenResult>;
 };
 
 export class WorkspaceAccessDeniedError extends Error {
@@ -40,11 +51,11 @@ export class WorkspaceDocumentNotFoundError extends Error {
 export function createWorkspaceService({
   projectAccessService,
   documentRepository,
-  snapshotService,
+  currentTextStateService,
 }: {
   projectAccessService: ProjectAccessService;
   documentRepository: WorkspaceDocumentLookup;
-  snapshotService: SnapshotService;
+  currentTextStateService: Pick<CurrentTextStateService, "loadOrHydrate">;
 }): WorkspaceService {
   return {
     openDocument: async ({ projectId, documentId, userId }) => {
@@ -64,10 +75,31 @@ export function createWorkspaceService({
         throw new WorkspaceDocumentNotFoundError();
       }
 
+      if (document.kind === "binary") {
+        return {
+          workspace: {
+            projectId,
+            document: serializeDocument(document),
+            content: null,
+          },
+          initialSync: null,
+        };
+      }
+
+      const currentState =
+        await currentTextStateService.loadOrHydrate(document);
+
       return {
-        projectId,
-        document: serializeDocument(document),
-        content: await snapshotService.loadDocumentContent(document),
+        workspace: {
+          projectId,
+          document: serializeDocument(document),
+          content: null,
+        },
+        initialSync: {
+          documentId: document.id,
+          yjsState: currentState.yjsState,
+          serverVersion: currentState.version,
+        },
       };
     },
   };

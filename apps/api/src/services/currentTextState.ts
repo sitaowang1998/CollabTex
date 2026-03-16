@@ -18,6 +18,9 @@ export type DocumentTextStateRepository = {
   findByDocumentId: (
     documentId: string,
   ) => Promise<StoredDocumentTextState | null>;
+  findByDocumentIds: (
+    documentIds: string[],
+  ) => Promise<StoredDocumentTextState[]>;
   create: (input: {
     documentId: string;
     yjsState: Uint8Array;

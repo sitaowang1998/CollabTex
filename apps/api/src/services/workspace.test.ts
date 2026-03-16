@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CurrentTextStateService } from "./currentTextState.js";
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import {
   ProjectNotFoundError,
@@ -9,21 +10,24 @@ import {
   WorkspaceAccessDeniedError,
   WorkspaceDocumentNotFoundError,
 } from "./workspace.js";
-import type { SnapshotService } from "./snapshot.js";
 
 describe("workspace service", () => {
-  it("opens a document for an authorized member", async () => {
+  it("opens a text document for an authorized member from current state", async () => {
     const documentRepository = createDocumentRepository();
     const projectAccessService = createProjectAccessService();
-    const snapshotService = createSnapshotService();
+    const currentTextStateService = createCurrentTextStateService();
     const service = createWorkspaceService({
       projectAccessService,
       documentRepository,
-      snapshotService,
+      currentTextStateService,
     });
 
     documentRepository.findById.mockResolvedValue(createStoredDocument());
-    snapshotService.loadDocumentContent.mockResolvedValue("\\section{Body}");
+    currentTextStateService.loadOrHydrate.mockResolvedValue(
+      createStoredDocumentTextState({
+        textContent: "\\section{Body}",
+      }),
+    );
 
     await expect(
       service.openDocument({
@@ -32,17 +36,65 @@ describe("workspace service", () => {
         userId: "user-1",
       }),
     ).resolves.toEqual({
-      projectId: "project-1",
-      document: {
-        id: "document-1",
-        path: "/main.tex",
-        kind: "text",
-        mime: null,
-        createdAt: "2026-03-01T12:00:00.000Z",
-        updatedAt: "2026-03-01T12:00:00.000Z",
+      workspace: {
+        projectId: "project-1",
+        document: {
+          id: "document-1",
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          createdAt: "2026-03-01T12:00:00.000Z",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        },
+        content: null,
       },
-      content: "\\section{Body}",
+      initialSync: {
+        documentId: "document-1",
+        yjsState: Uint8Array.from([]),
+        serverVersion: 1,
+      },
     });
+    expect(currentTextStateService.loadOrHydrate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "document-1",
+      }),
+    );
+  });
+
+  it("returns null content for binary documents without hydrating text state", async () => {
+    const documentRepository = createDocumentRepository();
+    const currentTextStateService = createCurrentTextStateService();
+    const service = createWorkspaceService({
+      projectAccessService: createProjectAccessService(),
+      documentRepository,
+      currentTextStateService,
+    });
+
+    documentRepository.findById.mockResolvedValue(
+      createStoredDocument({
+        id: "binary-1",
+        path: "/figure.png",
+        kind: "binary",
+        mime: "image/png",
+      }),
+    );
+
+    await expect(
+      service.openDocument({
+        projectId: "project-1",
+        documentId: "binary-1",
+        userId: "user-1",
+      }),
+    ).resolves.toMatchObject({
+      workspace: {
+        content: null,
+        document: {
+          kind: "binary",
+        },
+      },
+      initialSync: null,
+    });
+    expect(currentTextStateService.loadOrHydrate).not.toHaveBeenCalled();
   });
 
   it("maps missing membership to access denied", async () => {
@@ -53,7 +105,7 @@ describe("workspace service", () => {
     const service = createWorkspaceService({
       projectAccessService,
       documentRepository: createDocumentRepository(),
-      snapshotService: createSnapshotService(),
+      currentTextStateService: createCurrentTextStateService(),
     });
 
     await expect(
@@ -69,7 +121,7 @@ describe("workspace service", () => {
     const service = createWorkspaceService({
       projectAccessService: createProjectAccessService(),
       documentRepository: createDocumentRepository(),
-      snapshotService: createSnapshotService(),
+      currentTextStateService: createCurrentTextStateService(),
     });
 
     await expect(
@@ -106,10 +158,9 @@ function createProjectAccessService() {
   };
 }
 
-function createSnapshotService() {
+function createCurrentTextStateService() {
   return {
-    loadDocumentContent: vi.fn<SnapshotService["loadDocumentContent"]>(),
-    captureProjectSnapshot: vi.fn<SnapshotService["captureProjectSnapshot"]>(),
+    loadOrHydrate: vi.fn<CurrentTextStateService["loadOrHydrate"]>(),
   };
 }
 
@@ -123,6 +174,22 @@ function createStoredDocument(
     kind: "text",
     mime: null,
     contentHash: null,
+    createdAt: new Date("2026-03-01T12:00:00.000Z"),
+    updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+    ...overrides,
+  };
+}
+
+function createStoredDocumentTextState(
+  overrides: Partial<
+    Awaited<ReturnType<CurrentTextStateService["loadOrHydrate"]>>
+  > = {},
+) {
+  return {
+    documentId: "document-1",
+    yjsState: Uint8Array.from([]),
+    textContent: "\\section{Default}",
+    version: 1,
     createdAt: new Date("2026-03-01T12:00:00.000Z"),
     updatedAt: new Date("2026-03-01T12:00:00.000Z"),
     ...overrides,

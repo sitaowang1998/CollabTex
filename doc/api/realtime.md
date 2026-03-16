@@ -63,7 +63,8 @@ Validation behavior:
 ```json
 {
   "documentId": "document-456",
-  "updateB64": "AQIDBA=="
+  "updateB64": "AQIDBA==",
+  "clientUpdateId": "client-update-123"
 }
 ```
 
@@ -72,6 +73,7 @@ Validation behavior:
 - payload must be an object
 - `documentId` must be a non-empty string
 - `updateB64` must be a non-empty base64-encoded Yjs update payload
+- `clientUpdateId` must be a non-empty client-generated string
 - valid only after the socket has joined the matching workspace/document
 - write access is limited to `admin` and `editor`
 
@@ -90,7 +92,7 @@ Validation behavior:
     "createdAt": "2026-03-01T12:00:00.000Z",
     "updatedAt": "2026-03-01T12:00:00.000Z"
   },
-  "content": "\\section{Intro}"
+  "content": null
 }
 ```
 
@@ -98,22 +100,27 @@ Behavior:
 
 - emitted after a valid authenticated `workspace:join`
 - the server verifies project membership and document existence before emitting
-- text documents include the latest persisted snapshot-backed content
-- binary documents use `null` content
+- `content` is metadata-only and is always `null`
+- text clients must bootstrap from the automatic `doc.sync.response` emitted
+  immediately after a successful join
+- binary documents do not receive an automatic sync payload
 
 ### `doc.sync.response`
 
 ```json
 {
   "documentId": "document-456",
-  "stateB64": "AQIDBA=="
+  "stateB64": "AQIDBA==",
+  "serverVersion": 12
 }
 ```
 
 Behavior:
 
-- emitted in response to `doc.sync.request`
+- emitted automatically after a successful text `workspace:join`
+- may also be emitted in response to `doc.sync.request`
 - contains the full encoded CRDT state for the active document
+- includes the current durable document version on the server
 - delivered to any joined project member, including `commenter` and `reader`
 
 ### `doc.update`
@@ -121,7 +128,9 @@ Behavior:
 ```json
 {
   "documentId": "document-456",
-  "updateB64": "AQIDBA=="
+  "updateB64": "AQIDBA==",
+  "clientUpdateId": "client-update-123",
+  "serverVersion": 13
 }
 ```
 
@@ -129,14 +138,33 @@ Behavior:
 
 - emitted to other clients joined to the same active document after a valid
   update is accepted
+- echoes the sender-provided `clientUpdateId`
+- includes the authoritative post-accept server version
 - delivered to all joined project members, including `commenter` and `reader`
+
+### `doc.update.ack`
+
+```json
+{
+  "documentId": "document-456",
+  "clientUpdateId": "client-update-123",
+  "serverVersion": 13
+}
+```
+
+Behavior:
+
+- emitted only to the socket that sent the accepted `doc.update`
+- confirms which client update the server accepted
+- includes the authoritative post-accept server version
 
 ### `doc.reset`
 
 ```json
 {
   "documentId": "document-456",
-  "reason": "snapshot-restored"
+  "reason": "snapshot-restored",
+  "serverVersion": 14
 }
 ```
 
@@ -144,6 +172,10 @@ Behavior:
 
 - emitted when the server needs clients to discard local incremental state and
   re-sync the document
+- includes the server version clients should treat as authoritative after the
+  reset
+- `serverVersion: 0` is reserved for resets where the document no longer has a
+  live current-state row after the server-side change
 - the initial Week 2 use case is snapshot restore / reopen resynchronization
 
 ### `realtime:error`
