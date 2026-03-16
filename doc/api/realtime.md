@@ -18,8 +18,9 @@ contract stays stable while the later Yjs-backed implementation slices land.
 
 ## Role Behavior
 
-- `admin`, `editor`, `commenter`, and `reader` may join a workspace and send
-  `doc.sync.request`
+- `admin`, `editor`, `commenter`, and `reader` may join a workspace
+- the shared contract reserves `doc.sync.request` for joined project members,
+  but the current `apps/api` transport does not handle that event yet
 - `admin` and `editor` may send `doc.update`
 - `commenter` and `reader` may receive sync/update/reset events, but are
   read-only and must not be allowed to send `doc.update`
@@ -54,9 +55,10 @@ Validation behavior:
 
 - payload must be an object
 - `documentId` must be a non-empty string
+- reserved in shared types, but not yet processed by the current `apps/api`
+  socket transport
 - valid only after the socket has joined the matching workspace/document
-- available to any joined project member so read-only clients can bootstrap the
-  full CRDT state
+- intended for any joined project member once explicit re-sync support is wired
 
 ### `doc.update`
 
@@ -118,7 +120,8 @@ Behavior:
 Behavior:
 
 - emitted automatically after a successful text `workspace:join`
-- may also be emitted in response to `doc.sync.request`
+- the current `apps/api` implementation does not emit this in response to
+  `doc.sync.request` yet because that event is not handled
 - contains the full encoded CRDT state for the active document
 - includes the current durable document version on the server
 - delivered to any joined project member, including `commenter` and `reader`
@@ -163,7 +166,7 @@ Behavior:
 ```json
 {
   "documentId": "document-456",
-  "reason": "snapshot-restored",
+  "reason": "snapshot_restore",
   "serverVersion": 14
 }
 ```
