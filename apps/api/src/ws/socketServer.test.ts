@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as Y from "yjs";
 import type {
   DocumentSyncResponseEvent,
   WorkspaceErrorEvent,
@@ -505,6 +506,229 @@ describe("socket server", () => {
     expect(openedEvents).toEqual([createWorkspaceOpenedEvent("doc-second")]);
     expect(errorEvents).toEqual([]);
   });
+
+  it("acks accepted updates to the sender and broadcasts them to other joined sockets", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      ack: {
+        documentId: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
+      update: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
+      senderStateB64: string;
+      senderBroadcastCount: number;
+    }>((resolve, reject) => {
+      let senderReady = false;
+      let receiverReady = false;
+      let senderStateB64 = "";
+      let ack: {
+        documentId: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
+      let update: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
+      let senderBroadcastCount = 0;
+
+      const resolveIfReady = () => {
+        if (!ack || !update) {
+          return;
+        }
+
+        sender.close();
+        receiver.close();
+        resolve({ ack, update, senderStateB64, senderBroadcastCount });
+      };
+
+      const maybeSendUpdate = () => {
+        if (!senderReady || !receiverReady || !senderStateB64) {
+          return;
+        }
+
+        sender.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(senderStateB64, (document) => {
+            document.getText("content").insert(14, " Revised");
+          }),
+          clientUpdateId: "client-update-1",
+        });
+      };
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+      receiver.once("connect", () => {
+        receiver.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.once("doc.sync.response", (payload) => {
+        senderReady = true;
+        senderStateB64 = payload.stateB64;
+        maybeSendUpdate();
+      });
+      receiver.once("doc.sync.response", () => {
+        receiverReady = true;
+        maybeSendUpdate();
+      });
+
+      sender.on("doc.update", () => {
+        senderBroadcastCount += 1;
+      });
+      sender.once("doc.update.ack", (payload) => {
+        ack = payload;
+        resolveIfReady();
+      });
+      receiver.once("doc.update", (payload) => {
+        update = payload;
+        resolveIfReady();
+      });
+
+      sender.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(new Error(`Unexpected sender realtime error: ${payload.code}`));
+      });
+      receiver.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(
+          new Error(`Unexpected receiver realtime error: ${payload.code}`),
+        );
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+      receiver.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+    });
+
+    expect(result.ack).toEqual({
+      documentId: "doc-456",
+      clientUpdateId: "client-update-1",
+      serverVersion: 2,
+    });
+    expect(result.update).toEqual({
+      documentId: "doc-456",
+      updateB64: result.update.updateB64,
+      clientUpdateId: "client-update-1",
+      serverVersion: 2,
+    });
+    expect(result.senderBroadcastCount).toBe(0);
+    expect(
+      applyUpdateToStateB64(result.senderStateB64, result.update.updateB64),
+    ).toBe("\\section{Test} Revised");
+  });
+
+  it("rejects invalid doc.update payloads after join", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{ code: string; message: string }>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", () => {
+          client.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: "not-base64",
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "updateB64 must be a valid base64-encoded Yjs update",
+    });
+  });
+
+  it("rejects doc.update from read-only members", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("commenter", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{ code: string; message: string }>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", (payload) => {
+          client.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: createIncrementalUpdateB64(
+              payload.stateB64,
+              (document) => {
+                document.getText("content").insert(14, " Comment");
+              },
+            ),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "FORBIDDEN",
+      message: "required project role missing",
+    });
+  });
 });
 
 function createSequencedWorkspaceService(
@@ -566,6 +790,41 @@ function decodeStateB64(stateB64: string): string {
 
   try {
     return document.getText();
+  } finally {
+    document.destroy();
+  }
+}
+
+function createIncrementalUpdateB64(
+  stateB64: string,
+  mutate: (document: Y.Doc) => void,
+) {
+  const baseDocument = new Y.Doc();
+  const nextDocument = new Y.Doc();
+
+  try {
+    const state = Buffer.from(stateB64, "base64");
+    Y.applyUpdate(baseDocument, state);
+    Y.applyUpdate(nextDocument, state);
+    mutate(nextDocument);
+
+    return Buffer.from(
+      Y.encodeStateAsUpdate(nextDocument, Y.encodeStateVector(baseDocument)),
+    ).toString("base64");
+  } finally {
+    baseDocument.destroy();
+    nextDocument.destroy();
+  }
+}
+
+function applyUpdateToStateB64(stateB64: string, updateB64: string): string {
+  const document = new Y.Doc();
+
+  try {
+    Y.applyUpdate(document, Buffer.from(stateB64, "base64"));
+    Y.applyUpdate(document, Buffer.from(updateB64, "base64"));
+
+    return document.getText("content").toString();
   } finally {
     document.destroy();
   }

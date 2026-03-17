@@ -27,6 +27,7 @@ export function createActiveDocumentStateLoader({
     return {
       kind: "yjs-update",
       update: state.yjsState,
+      serverVersion: state.version,
     };
   };
 }

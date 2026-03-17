@@ -6,14 +6,16 @@ import type {
 export type InitialDocumentState =
   | {
       kind: "empty";
+      serverVersion: number;
     }
-  | { kind: "yjs-update"; update: Uint8Array };
+  | { kind: "yjs-update"; update: Uint8Array; serverVersion: number };
 
 export type ActiveDocumentSession = {
   projectId: string;
   documentId: string;
   clientCount: number;
   document: CollaborationDocument;
+  serverVersion: number;
 };
 
 export type ActiveDocumentSessionView = Readonly<{
@@ -21,10 +23,14 @@ export type ActiveDocumentSessionView = Readonly<{
   documentId: string;
   clientCount: number;
   document: CollaborationDocument;
+  serverVersion: number;
 }>;
 
 export type ActiveDocumentSessionHandle = {
   session: ActiveDocumentSessionView;
+  runExclusive: <Result>(
+    task: (session: ActiveDocumentSession) => Promise<Result>,
+  ) => Promise<Result>;
   leave: () => Promise<void>;
 };
 
@@ -37,6 +43,7 @@ export type ActiveDocumentIdlePersister = (input: {
   projectId: string;
   documentId: string;
   document: CollaborationDocument;
+  serverVersion: number;
 }) => Promise<void>;
 
 export type ActiveDocumentRegistry = {
@@ -51,6 +58,7 @@ type ActiveSessionRecord = {
   sessionView: ActiveDocumentSessionView;
   closePromise: Promise<void> | null;
   needsAnotherCloseCycle: boolean;
+  pendingMutation: Promise<void>;
 };
 
 export function createActiveDocumentRegistry({
@@ -134,6 +142,7 @@ export function createActiveDocumentRegistry({
       documentId: input.documentId,
       clientCount: 0,
       document,
+      serverVersion: initialState.serverVersion,
     };
 
     return {
@@ -141,6 +150,7 @@ export function createActiveDocumentRegistry({
       sessionView: createSessionView(session),
       closePromise: null,
       needsAnotherCloseCycle: false,
+      pendingMutation: Promise.resolve(),
     };
   }
 
@@ -152,6 +162,18 @@ export function createActiveDocumentRegistry({
 
     return {
       session: input.record.sessionView,
+      runExclusive: async (task) => {
+        const nextMutation = input.record.pendingMutation.then(() =>
+          task(input.record.session),
+        );
+
+        input.record.pendingMutation = nextMutation.then(
+          () => undefined,
+          () => undefined,
+        );
+
+        return nextMutation;
+      },
       leave: async () => {
         if (isLeft) {
           return;
@@ -225,10 +247,12 @@ export function createActiveDocumentRegistry({
   function runCloseCycle(record: ActiveSessionRecord, sessionKey: string) {
     return (async () => {
       try {
+        await record.pendingMutation;
         await persistOnIdle({
           projectId: record.session.projectId,
           documentId: record.session.documentId,
           document: record.session.document,
+          serverVersion: record.session.serverVersion,
         });
       } finally {
         record.closePromise = null;
@@ -267,6 +291,9 @@ function createSessionView(
     },
     get document() {
       return session.document;
+    },
+    get serverVersion() {
+      return session.serverVersion;
     },
   });
 }
