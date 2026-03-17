@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import {
+  ActiveDocumentSessionInvalidatedError,
   createActiveDocumentRegistry,
   type ActiveDocumentSessionHandle,
 } from "./activeDocumentRegistry.js";
@@ -183,6 +184,54 @@ describe("realtime document service", () => {
     await expect(pendingUpdate).rejects.toBeInstanceOf(
       RealtimeDocumentSessionMismatchError,
     );
+    expect(currentTextStateService.persist).not.toHaveBeenCalled();
+  });
+
+  it("rejects updates from an invalidated active session", async () => {
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationService(),
+      loadInitialDocumentState: async () => ({
+        kind: "yjs-update",
+        update: createStoredDocumentTextState("Hello", 1).yjsState,
+        serverVersion: 1,
+      }),
+      persistOnIdle: async () => {},
+    });
+    const sessionHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "document-1",
+    });
+    const currentTextStateService = createCurrentTextStateService();
+    const service = createRealtimeDocumentService({
+      collaborationService: createCollaborationService(),
+      projectAccessService: createProjectAccessService(),
+      documentRepository: createDocumentRepository({
+        findById: vi.fn().mockResolvedValue(createStoredDocument()),
+      }),
+      currentTextStateService,
+    });
+
+    registry.invalidate({
+      projectId: "project-1",
+      documentId: "document-1",
+    });
+
+    await expect(
+      service.applyUpdate({
+        projectId: "project-1",
+        documentId: "document-1",
+        userId: "user-1",
+        sessionHandle,
+        update: createIncrementalUpdate(
+          createStoredDocumentTextState("Hello", 1).yjsState,
+          (document) => {
+            document.getText("content").insert(5, " world");
+          },
+        ),
+        isCurrentSession: () => true,
+      }),
+    ).rejects.toBeInstanceOf(ActiveDocumentSessionInvalidatedError);
+
     expect(currentTextStateService.persist).not.toHaveBeenCalled();
   });
 

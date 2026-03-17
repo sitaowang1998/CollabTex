@@ -125,6 +125,9 @@ Behavior:
   `doc.sync.request` yet because that event is not handled
 - contains the full encoded CRDT state from the authoritative joined active
   session after any earlier queued mutations have completed
+- snapshot-restore resets invalidate cached active sessions first, so a later
+  rejoin sync reloads restored durable state instead of reusing stale
+  pre-reset in-memory state
 - includes the current durable document version on the server
 - delivered to any joined project member, including `commenter` and `reader`
 
@@ -180,6 +183,9 @@ Behavior:
 
 - emitted when the server needs clients to discard local incremental state and
   re-sync the document
+- for `reason: "snapshot_restore"`, the server invalidates the previous active
+  text session before broadcasting the reset, and clients are expected to
+  rejoin to obtain the restored authoritative state
 - includes the server version clients should treat as authoritative after the
   reset
 - `serverVersion: 0` is reserved for resets where the document no longer has a

@@ -1,4 +1,7 @@
-import type { ActiveDocumentSessionHandle } from "./activeDocumentRegistry.js";
+import {
+  ActiveDocumentSessionInvalidatedError,
+  type ActiveDocumentSessionHandle,
+} from "./activeDocumentRegistry.js";
 import type { CollaborationService } from "./collaboration.js";
 import {
   DocumentTextStateVersionConflictError,
@@ -35,6 +38,8 @@ export class RealtimeDocumentNotFoundError extends Error {
   }
 }
 
+export { ActiveDocumentSessionInvalidatedError };
+
 export function createRealtimeDocumentService({
   collaborationService,
   projectAccessService,
@@ -62,6 +67,10 @@ export function createRealtimeDocumentService({
         const baseState = session.document.exportUpdate();
 
         while (true) {
+          if (session.isInvalidated) {
+            throw new ActiveDocumentSessionInvalidatedError();
+          }
+
           if (!isCurrentSession()) {
             throw new RealtimeDocumentSessionMismatchError();
           }

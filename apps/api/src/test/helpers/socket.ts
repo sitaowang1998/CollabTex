@@ -171,7 +171,10 @@ export async function createTestSocketServer(options?: {
         forceNew: true,
       }),
     emitDocumentReset: async (input) => {
-      await createSocketDocumentResetPublisher(io).emitDocumentReset(input);
+      await createSocketDocumentResetPublisher(
+        io,
+        activeDocumentRegistry,
+      ).emitDocumentReset(input);
     },
     close: async () => {
       // Socket.IO closes the attached HTTP server as part of io.close().

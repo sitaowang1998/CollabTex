@@ -192,6 +192,51 @@ describe("active document registry", () => {
     await secondHandle.leave();
   });
 
+  it("invalidates an active session so future joins reload durable state", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const loadInitialDocumentState = vi
+      .fn<
+        (input: {
+          projectId: string;
+          documentId: string;
+        }) => Promise<InitialDocumentState>
+      >()
+      .mockResolvedValue(createEmptyState());
+    const persistOnIdle = vi.fn().mockResolvedValue(undefined);
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState,
+      persistOnIdle,
+    });
+
+    const firstHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    registry.invalidate({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const secondHandle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    expect(loadInitialDocumentState).toHaveBeenCalledTimes(2);
+    expect(secondHandle.session).not.toBe(firstHandle.session);
+
+    await firstHandle.leave();
+
+    expect(persistOnIdle).not.toHaveBeenCalled();
+    expect(firstHandle.session.document.destroy).toHaveBeenCalledTimes(1);
+
+    await secondHandle.leave();
+
+    expect(persistOnIdle).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps different documents isolated", async () => {
     const collaborationService = createCollaborationServiceDouble();
     const registry = createActiveDocumentRegistry({

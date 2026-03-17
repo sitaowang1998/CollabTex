@@ -157,7 +157,10 @@ async function main() {
         currentTextStateService,
       }),
     });
-    resetPublisher = createSocketDocumentResetPublisher(io);
+    resetPublisher = createSocketDocumentResetPublisher(
+      io,
+      activeDocumentRegistry,
+    );
 
     installShutdownHandlers({
       server,

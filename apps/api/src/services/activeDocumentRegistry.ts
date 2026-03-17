@@ -16,6 +16,7 @@ export type ActiveDocumentSession = {
   clientCount: number;
   document: CollaborationDocument;
   serverVersion: number;
+  isInvalidated: boolean;
 };
 
 export type ActiveDocumentSessionView = Readonly<{
@@ -51,7 +52,14 @@ export type ActiveDocumentRegistry = {
     projectId: string;
     documentId: string;
   }) => Promise<ActiveDocumentSessionHandle>;
+  invalidate: (input: { projectId: string; documentId: string }) => void;
 };
+
+export class ActiveDocumentSessionInvalidatedError extends Error {
+  constructor() {
+    super("Active document session is no longer current");
+  }
+}
 
 type ActiveSessionRecord = {
   session: ActiveDocumentSession;
@@ -88,6 +96,17 @@ export function createActiveDocumentRegistry({
         record,
         sessionKey,
       });
+    },
+    invalidate: ({ projectId, documentId }) => {
+      const sessionKey = createSessionKey(projectId, documentId);
+      const record = activeSessions.get(sessionKey);
+
+      if (!record) {
+        return;
+      }
+
+      activeSessions.delete(sessionKey);
+      record.session.isInvalidated = true;
     },
   };
 
@@ -143,6 +162,7 @@ export function createActiveDocumentRegistry({
       clientCount: 0,
       document,
       serverVersion: initialState.serverVersion,
+      isInvalidated: false,
     };
 
     return {
@@ -208,7 +228,8 @@ export function createActiveDocumentRegistry({
 
     while (
       record.session.clientCount === 0 &&
-      activeSessions.get(sessionKey) === record
+      (activeSessions.get(sessionKey) === record ||
+        record.session.isInvalidated)
     ) {
       if (!record.closePromise) {
         record.needsAnotherCloseCycle = false;
@@ -248,12 +269,14 @@ export function createActiveDocumentRegistry({
     return (async () => {
       try {
         await record.pendingMutation;
-        await persistOnIdle({
-          projectId: record.session.projectId,
-          documentId: record.session.documentId,
-          document: record.session.document,
-          serverVersion: record.session.serverVersion,
-        });
+        if (!record.session.isInvalidated) {
+          await persistOnIdle({
+            projectId: record.session.projectId,
+            documentId: record.session.documentId,
+            document: record.session.document,
+            serverVersion: record.session.serverVersion,
+          });
+        }
       } finally {
         record.closePromise = null;
 

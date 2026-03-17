@@ -5,6 +5,7 @@ import type {
   WorkspaceErrorEvent,
   WorkspaceOpenedEvent,
 } from "@collab-tex/shared";
+import { createActiveDocumentRegistry } from "../services/activeDocumentRegistry.js";
 import { signToken } from "../services/auth.js";
 import { createCollaborationService } from "../services/collaboration.js";
 import type {
@@ -17,6 +18,7 @@ import {
   createTestSocketServer,
   type TestSocketServer,
 } from "../test/helpers/socket.js";
+import { createWorkspaceRoomName, openWorkspace } from "./socketServer.js";
 
 describe("socket server", () => {
   let socketServer: TestSocketServer | undefined;
@@ -321,6 +323,74 @@ describe("socket server", () => {
     });
   });
 
+  it("reloads restored text state for rejoins after snapshot_restore", async () => {
+    const collaborationService = createCollaborationService();
+    let currentText = "\\section{Before}";
+    let currentVersion = 1;
+    const activeDocumentRegistry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: async () => ({
+        kind: "yjs-update",
+        update: createStateBytes(currentText),
+        serverVersion: currentVersion,
+      }),
+      persistOnIdle: async () => {},
+    });
+
+    socketServer = await createTestSocketServer({
+      workspaceService: {
+        openDocument: async ({ documentId }) => ({
+          workspace: createWorkspaceOpenedEvent(documentId),
+          initialSync: {
+            documentId,
+            yjsState: createStateBytes(currentText),
+            serverVersion: currentVersion,
+          },
+        }),
+      },
+      activeDocumentRegistry,
+    });
+
+    const firstClient = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const secondClient = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    try {
+      const firstSync = await joinAndWaitForSync(firstClient, "doc-456");
+
+      expect(firstSync.serverVersion).toBe(1);
+      expect(decodeStateB64(firstSync.stateB64)).toBe("\\section{Before}");
+
+      const resetPromise = waitForEvent<{
+        documentId: string;
+        reason: string;
+        serverVersion: number;
+      }>(firstClient, "doc.reset");
+
+      currentText = "\\section{Restored}";
+      currentVersion = 9;
+
+      await socketServer.emitDocumentReset({
+        projectId: "project-123",
+        documentId: "doc-456",
+        reason: "snapshot_restore",
+        serverVersion: currentVersion,
+      });
+      await resetPromise;
+
+      const secondSync = await joinAndWaitForSync(secondClient, "doc-456");
+
+      expect(secondSync.serverVersion).toBe(9);
+      expect(decodeStateB64(secondSync.stateB64)).toBe("\\section{Restored}");
+    } finally {
+      firstClient.close();
+      secondClient.close();
+    }
+  });
+
   it("emits a generic unavailable error for unexpected workspace failures", async () => {
     const consoleError = vi
       .spyOn(console, "error")
@@ -515,6 +585,138 @@ describe("socket server", () => {
 
     expect(openedEvents).toEqual([createWorkspaceOpenedEvent("doc-second")]);
     expect(errorEvents).toEqual([]);
+  });
+
+  it("suppresses stale workspace events after an awaited room join loses to a newer join", async () => {
+    const binaryRoomName = createWorkspaceRoomName("project-123", "doc-binary");
+    const enteredBinaryJoin = createDeferred<void>();
+    const releaseBinaryJoin = createDeferred<void>();
+    const emittedEvents: Array<{ event: string; payload: unknown }> = [];
+    const leaveCalls: string[] = [];
+    let latestJoinSequence = 2;
+    let activeWorkspaceRoomName = createWorkspaceRoomName(
+      "project-123",
+      "doc-first",
+    );
+    const firstHandle = await createStaticActiveDocumentRegistry({
+      "doc-first": {
+        text: "\\section{doc-first}",
+        serverVersion: 1,
+      },
+    }).join({
+      projectId: "project-123",
+      documentId: "doc-first",
+    });
+    let activeTextSession = {
+      projectId: "project-123",
+      documentId: "doc-first",
+      joinSequence: 1,
+      handle: firstHandle,
+    };
+    const socket = {
+      id: "socket-1",
+      data: { userId: "alice" },
+      leave: vi.fn(async (roomName: string) => {
+        leaveCalls.push(roomName);
+      }),
+      join: vi.fn(async (roomName: string) => {
+        if (roomName === binaryRoomName) {
+          enteredBinaryJoin.resolve();
+          await releaseBinaryJoin.promise;
+        }
+      }),
+      emit: vi.fn((event: string, payload: unknown) => {
+        emittedEvents.push({ event, payload });
+      }),
+    };
+    const workspaceService = createSequencedWorkspaceService({
+      "doc-binary": Promise.resolve({
+        workspace: {
+          ...createWorkspaceOpenedEvent("doc-binary"),
+          document: {
+            ...createWorkspaceOpenedEvent("doc-binary").document,
+            kind: "binary",
+            mime: "image/png",
+            path: "/figure.png",
+          },
+        },
+        initialSync: null,
+      }),
+      "doc-third": Promise.resolve(createWorkspaceOpenResult("doc-third")),
+    });
+    const activeDocumentRegistry = createStaticActiveDocumentRegistry({
+      "doc-third": {
+        text: "\\section{doc-third}",
+        serverVersion: 1,
+      },
+    });
+    const sharedOpenInput = {
+      activeDocumentRegistry,
+      getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
+      setActiveWorkspaceRoomName: (roomName: string) => {
+        activeWorkspaceRoomName = roomName;
+      },
+      getActiveTextSession: () => activeTextSession,
+      swapActiveTextSession: (nextSession: typeof activeTextSession | null) => {
+        const previousSession = activeTextSession;
+        activeTextSession = nextSession;
+
+        if (previousSession?.handle === nextSession?.handle) {
+          return null;
+        }
+
+        return previousSession;
+      },
+    };
+
+    const staleJoin = openWorkspace(socket as never, workspaceService, {
+      workspaceOpenInput: {
+        userId: "alice",
+        projectId: "project-123",
+        documentId: "doc-binary",
+      },
+      joinSequence: 2,
+      isLatestJoin: () => latestJoinSequence === 2,
+      ...sharedOpenInput,
+    });
+
+    await enteredBinaryJoin.promise;
+
+    latestJoinSequence = 3;
+
+    await openWorkspace(socket as never, workspaceService, {
+      workspaceOpenInput: {
+        userId: "alice",
+        projectId: "project-123",
+        documentId: "doc-third",
+      },
+      joinSequence: 3,
+      isLatestJoin: () => latestJoinSequence === 3,
+      ...sharedOpenInput,
+    });
+
+    releaseBinaryJoin.resolve();
+    await staleJoin;
+
+    expect(
+      emittedEvents.filter(({ event }) => event === "workspace:opened"),
+    ).toEqual([
+      {
+        event: "workspace:opened",
+        payload: createWorkspaceOpenedEvent("doc-third"),
+      },
+    ]);
+    expect(
+      emittedEvents.filter(({ event }) => event === "doc.sync.response"),
+    ).toHaveLength(1);
+    expect(
+      emittedEvents.some(
+        ({ event, payload }) =>
+          event === "workspace:opened" &&
+          (payload as WorkspaceOpenedEvent).document.id === "doc-binary",
+      ),
+    ).toBe(false);
+    expect(leaveCalls).toContain(binaryRoomName);
   });
 
   it("emits the joined active-session snapshot instead of a stale workspace-open snapshot", async () => {
@@ -962,6 +1164,41 @@ function createSequencedWorkspaceService(
   };
 }
 
+function joinAndWaitForSync(
+  client: ReturnType<TestSocketServer["connect"]>,
+  documentId: string,
+) {
+  return new Promise<DocumentSyncResponseEvent>((resolve, reject) => {
+    const joinWorkspace = () => {
+      client.emit("workspace:join", {
+        projectId: "project-123",
+        documentId,
+      });
+    };
+
+    if (client.connected) {
+      joinWorkspace();
+    } else {
+      client.once("connect", joinWorkspace);
+    }
+
+    client.once("doc.sync.response", resolve);
+    client.once("realtime:error", (payload) => {
+      reject(new Error(`Unexpected realtime error: ${payload.code}`));
+    });
+    client.once("connect_error", reject);
+  });
+}
+
+function waitForEvent<Event>(
+  client: ReturnType<TestSocketServer["connect"]>,
+  eventName: string,
+) {
+  return new Promise<Event>((resolve) => {
+    client.once(eventName, resolve);
+  });
+}
+
 function createWorkspaceOpenResult(documentId: string): WorkspaceOpenResult {
   return {
     workspace: createWorkspaceOpenedEvent(documentId),
@@ -1014,6 +1251,7 @@ function createStaticActiveDocumentRegistry(
         clientCount: 1,
         document,
         serverVersion: documentState.serverVersion,
+        isInvalidated: false,
       };
 
       return {
@@ -1026,6 +1264,7 @@ function createStaticActiveDocumentRegistry(
         },
       };
     },
+    invalidate: () => {},
   };
 }
 
