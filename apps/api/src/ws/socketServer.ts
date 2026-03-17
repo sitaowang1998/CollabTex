@@ -209,117 +209,136 @@ export async function openWorkspace(
     ) => ActiveTextSessionState | null;
   },
 ): Promise<void> {
-  let joinedSessionHandle: ActiveDocumentSessionHandle | null = null;
+  while (input.isLatestJoin()) {
+    let joinedSessionHandle: ActiveDocumentSessionHandle | null = null;
+    let joinedWorkspaceRoomName: string | null = null;
 
-  try {
-    const openedWorkspace = await workspaceService.openDocument(
-      input.workspaceOpenInput,
-    );
-    const nextActiveTextSession = openedWorkspace.initialSync
-      ? await input.activeDocumentRegistry.join({
-          projectId: input.workspaceOpenInput.projectId,
-          documentId: input.workspaceOpenInput.documentId,
-        })
-      : null;
+    try {
+      const openedWorkspace = await workspaceService.openDocument(
+        input.workspaceOpenInput,
+      );
+      const nextActiveTextSession = openedWorkspace.initialSync
+        ? await input.activeDocumentRegistry.join({
+            projectId: input.workspaceOpenInput.projectId,
+            documentId: input.workspaceOpenInput.documentId,
+          })
+        : null;
 
-    joinedSessionHandle = nextActiveTextSession;
-    const nextWorkspaceRoomName = createWorkspaceRoomName(
-      input.workspaceOpenInput.projectId,
-      input.workspaceOpenInput.documentId,
-    );
-
-    if (!input.isLatestJoin()) {
-      await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
-      return;
-    }
-
-    const previousWorkspaceRoomName = input.getActiveWorkspaceRoomName();
-
-    if (
-      previousWorkspaceRoomName &&
-      previousWorkspaceRoomName !== nextWorkspaceRoomName
-    ) {
-      await socket.leave(previousWorkspaceRoomName);
+      joinedSessionHandle = nextActiveTextSession;
+      const nextWorkspaceRoomName = createWorkspaceRoomName(
+        input.workspaceOpenInput.projectId,
+        input.workspaceOpenInput.documentId,
+      );
 
       if (!input.isLatestJoin()) {
         await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
         return;
       }
-    }
 
-    await socket.join(nextWorkspaceRoomName);
+      const previousWorkspaceRoomName = input.getActiveWorkspaceRoomName();
 
-    if (!input.isLatestJoin()) {
-      await leaveJoinedRoomIfNeeded(socket, input, nextWorkspaceRoomName);
-      await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
-      return;
-    }
+      if (
+        previousWorkspaceRoomName &&
+        previousWorkspaceRoomName !== nextWorkspaceRoomName
+      ) {
+        await socket.leave(previousWorkspaceRoomName);
 
-    if (nextActiveTextSession) {
-      const syncResponse = await nextActiveTextSession.runExclusive(
-        async (session) => {
-          if (!input.isLatestJoin() || session.isInvalidated) {
-            return null;
-          }
+        if (!input.isLatestJoin()) {
+          await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
+          return;
+        }
+      }
 
-          return {
-            documentId: session.documentId,
-            stateB64: encodeBase64(session.document.exportUpdate()),
-            serverVersion: session.serverVersion,
-          };
-        },
-      );
+      await socket.join(nextWorkspaceRoomName);
+      joinedWorkspaceRoomName = nextWorkspaceRoomName;
 
-      if (!syncResponse || !input.isLatestJoin()) {
+      if (!input.isLatestJoin()) {
         await leaveJoinedRoomIfNeeded(socket, input, nextWorkspaceRoomName);
         await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
         return;
       }
 
-      const previousSession = input.swapActiveTextSession({
-        projectId: input.workspaceOpenInput.projectId,
-        documentId: input.workspaceOpenInput.documentId,
-        joinSequence: input.joinSequence,
-        handle: nextActiveTextSession,
-      });
-      joinedSessionHandle = null;
+      if (nextActiveTextSession) {
+        const syncResponse = await nextActiveTextSession.runExclusive(
+          async (session) => {
+            if (session.isInvalidated) {
+              throw new ActiveDocumentSessionInvalidatedError();
+            }
+
+            if (!input.isLatestJoin()) {
+              return null;
+            }
+
+            return {
+              documentId: session.documentId,
+              stateB64: encodeBase64(session.document.exportUpdate()),
+              serverVersion: session.serverVersion,
+            };
+          },
+        );
+
+        if (!syncResponse || !input.isLatestJoin()) {
+          await leaveJoinedRoomIfNeeded(socket, input, nextWorkspaceRoomName);
+          await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
+          return;
+        }
+
+        const previousSession = input.swapActiveTextSession({
+          projectId: input.workspaceOpenInput.projectId,
+          documentId: input.workspaceOpenInput.documentId,
+          joinSequence: input.joinSequence,
+          handle: nextActiveTextSession,
+        });
+        joinedSessionHandle = null;
+        input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+        socket.emit("workspace:opened", openedWorkspace.workspace);
+        socket.emit("doc.sync.response", syncResponse);
+
+        if (previousSession) {
+          void leaveActiveTextSession(socket, previousSession);
+        }
+
+        return;
+      }
+
+      const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
       socket.emit("workspace:opened", openedWorkspace.workspace);
-      socket.emit("doc.sync.response", syncResponse);
 
       if (previousSession) {
         void leaveActiveTextSession(socket, previousSession);
       }
 
       return;
-    }
+    } catch (error) {
+      if (joinedWorkspaceRoomName) {
+        await leaveJoinedRoomIfNeeded(socket, input, joinedWorkspaceRoomName);
+      }
 
-    const previousSession = input.swapActiveTextSession(null);
-    input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-    socket.emit("workspace:opened", openedWorkspace.workspace);
+      if (joinedSessionHandle) {
+        await leaveActiveTextSession(socket, {
+          projectId: input.workspaceOpenInput.projectId,
+          documentId: input.workspaceOpenInput.documentId,
+          joinSequence: input.joinSequence,
+          handle: joinedSessionHandle,
+        });
+      }
 
-    if (previousSession) {
-      void leaveActiveTextSession(socket, previousSession);
-    }
-  } catch (error) {
-    if (joinedSessionHandle) {
-      await leaveActiveTextSession(socket, {
-        projectId: input.workspaceOpenInput.projectId,
-        documentId: input.workspaceOpenInput.documentId,
-        joinSequence: input.joinSequence,
-        handle: joinedSessionHandle,
-      });
-    }
+      if (!input.isLatestJoin()) {
+        return;
+      }
 
-    if (!input.isLatestJoin()) {
+      if (error instanceof ActiveDocumentSessionInvalidatedError) {
+        continue;
+      }
+
+      if (isUnexpectedWorkspaceError(error)) {
+        console.error("Workspace open failed", input.workspaceOpenInput, error);
+      }
+
+      socket.emit("realtime:error", mapWorkspaceError(error));
       return;
     }
-
-    if (isUnexpectedWorkspaceError(error)) {
-      console.error("Workspace open failed", input.workspaceOpenInput, error);
-    }
-
-    socket.emit("realtime:error", mapWorkspaceError(error));
   }
 }
 
@@ -350,12 +369,14 @@ async function applyDocumentUpdate(
         );
       },
     });
-
-    socket.emit("doc.update.ack", {
+    const updateEvent = {
       documentId: input.request.documentId,
+      updateB64: encodeBase64(result.acceptedUpdate),
       clientUpdateId: input.request.clientUpdateId,
       serverVersion: result.serverVersion,
-    });
+    };
+
+    socket.emit("doc.update", updateEvent);
     socket
       .to(
         createWorkspaceRoomName(
@@ -363,12 +384,12 @@ async function applyDocumentUpdate(
           input.request.documentId,
         ),
       )
-      .emit("doc.update", {
-        documentId: input.request.documentId,
-        updateB64: encodeBase64(result.acceptedUpdate),
-        clientUpdateId: input.request.clientUpdateId,
-        serverVersion: result.serverVersion,
-      });
+      .emit("doc.update", updateEvent);
+    socket.emit("doc.update.ack", {
+      documentId: input.request.documentId,
+      clientUpdateId: input.request.clientUpdateId,
+      serverVersion: result.serverVersion,
+    });
   } catch (error) {
     if (isUnexpectedDocumentUpdateError(error)) {
       console.error(

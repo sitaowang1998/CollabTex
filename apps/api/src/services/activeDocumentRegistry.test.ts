@@ -237,6 +237,56 @@ describe("active document registry", () => {
     expect(persistOnIdle).toHaveBeenCalledTimes(1);
   });
 
+  it("retries joins against a fresh generation when invalidation races with initial loading", async () => {
+    const collaborationService = createCollaborationServiceDouble();
+    const firstState = createDeferred<InitialDocumentState>();
+    const secondState = createDeferred<InitialDocumentState>();
+    const loadInitialDocumentState = vi
+      .fn<
+        (input: {
+          projectId: string;
+          documentId: string;
+        }) => Promise<InitialDocumentState>
+      >()
+      .mockReturnValueOnce(firstState.promise)
+      .mockReturnValueOnce(secondState.promise);
+    const registry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState,
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const firstJoin = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    registry.invalidate({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const secondJoin = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    firstState.resolve(createYjsState(Uint8Array.from([1, 2, 3]), 1));
+    secondState.resolve(createYjsState(Uint8Array.from([4, 5, 6]), 9));
+
+    const [firstHandle, secondHandle] = await Promise.all([
+      firstJoin,
+      secondJoin,
+    ]);
+
+    expect(loadInitialDocumentState).toHaveBeenCalledTimes(2);
+    expect(firstHandle.session).toBe(secondHandle.session);
+    expect(firstHandle.session.serverVersion).toBe(9);
+
+    await firstHandle.leave();
+    await secondHandle.leave();
+  });
+
   it("keeps different documents isolated", async () => {
     const collaborationService = createCollaborationServiceDouble();
     const registry = createActiveDocumentRegistry({

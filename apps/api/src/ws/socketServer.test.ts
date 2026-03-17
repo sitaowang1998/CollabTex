@@ -5,7 +5,10 @@ import type {
   WorkspaceErrorEvent,
   WorkspaceOpenedEvent,
 } from "@collab-tex/shared";
-import { createActiveDocumentRegistry } from "../services/activeDocumentRegistry.js";
+import {
+  ActiveDocumentSessionInvalidatedError,
+  createActiveDocumentRegistry,
+} from "../services/activeDocumentRegistry.js";
 import { signToken } from "../services/auth.js";
 import { createCollaborationService } from "../services/collaboration.js";
 import type {
@@ -745,6 +748,7 @@ describe("socket server", () => {
             clientCount: 1,
             document: authoritativeDocument,
             serverVersion: 7,
+            isInvalidated: false,
           };
 
           return {
@@ -753,6 +757,7 @@ describe("socket server", () => {
             leave: async () => {},
           };
         },
+        invalidate: () => {},
       },
     });
     const token = signToken("alice", testConfig.jwtSecret);
@@ -785,7 +790,100 @@ describe("socket server", () => {
     authoritativeDocument.destroy();
   });
 
-  it("acks accepted updates to the sender and broadcasts them to other joined sockets", async () => {
+  it("retries workspace:join when the first joined session is invalidated before sync", async () => {
+    const collaborationService = createCollaborationService();
+    const staleDocument =
+      collaborationService.createDocumentFromText("\\section{Stale}");
+    const authoritativeDocument = collaborationService.createDocumentFromText(
+      "\\section{Restored}",
+    );
+    const staleHandle = {
+      session: {
+        projectId: "project-123",
+        documentId: "doc-456",
+        clientCount: 1,
+        document: staleDocument,
+        serverVersion: 1,
+        isInvalidated: false,
+      },
+      runExclusive: async () => {
+        throw new ActiveDocumentSessionInvalidatedError();
+      },
+      leave: vi.fn().mockResolvedValue(undefined),
+    };
+    const authoritativeSession = {
+      projectId: "project-123",
+      documentId: "doc-456",
+      clientCount: 1,
+      document: authoritativeDocument,
+      serverVersion: 9,
+      isInvalidated: false,
+    };
+    const authoritativeHandle = {
+      session: authoritativeSession,
+      runExclusive: async <Result>(
+        task: (session: typeof authoritativeSession) => Promise<Result>,
+      ) => task(authoritativeSession),
+      leave: vi.fn().mockResolvedValue(undefined),
+    };
+    const join = vi
+      .fn()
+      .mockResolvedValueOnce(staleHandle)
+      .mockResolvedValueOnce(authoritativeHandle);
+
+    socketServer = await createTestSocketServer({
+      workspaceService: {
+        openDocument: async () => ({
+          workspace: createWorkspaceOpenedEvent("doc-456"),
+          initialSync: {
+            documentId: "doc-456",
+            yjsState: staleDocument.exportUpdate(),
+            serverVersion: 1,
+          },
+        }),
+      },
+      activeDocumentRegistry: {
+        join,
+        invalidate: () => {},
+      },
+    });
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const sync = await new Promise<DocumentSyncResponseEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+        client.once("doc.sync.response", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("realtime:error", (payload) => {
+          client.close();
+          reject(new Error(`Unexpected realtime error: ${payload.code}`));
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(join).toHaveBeenCalledTimes(2);
+    expect(staleHandle.leave).toHaveBeenCalledTimes(1);
+    expect(sync.serverVersion).toBe(9);
+    expect(decodeStateB64(sync.stateB64)).toBe("\\section{Restored}");
+
+    staleDocument.destroy();
+    authoritativeDocument.destroy();
+  });
+
+  it("delivers accepted updates to the sender and broadcasts them to other joined sockets", async () => {
     socketServer = await createTestSocketServer();
     const sender = socketServer.connect(
       signToken("alice", testConfig.jwtSecret),
@@ -806,8 +904,13 @@ describe("socket server", () => {
         clientUpdateId: string;
         serverVersion: number;
       };
+      senderUpdate: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
       senderStateB64: string;
-      senderBroadcastCount: number;
     }>((resolve, reject) => {
       let senderReady = false;
       let receiverReady = false;
@@ -823,16 +926,21 @@ describe("socket server", () => {
         clientUpdateId: string;
         serverVersion: number;
       } | null = null;
-      let senderBroadcastCount = 0;
+      let senderUpdate: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
 
       const resolveIfReady = () => {
-        if (!ack || !update) {
+        if (!ack || !update || !senderUpdate) {
           return;
         }
 
         sender.close();
         receiver.close();
-        resolve({ ack, update, senderStateB64, senderBroadcastCount });
+        resolve({ ack, update, senderUpdate, senderStateB64 });
       };
 
       const maybeSendUpdate = () => {
@@ -872,8 +980,9 @@ describe("socket server", () => {
         maybeSendUpdate();
       });
 
-      sender.on("doc.update", () => {
-        senderBroadcastCount += 1;
+      sender.once("doc.update", (payload) => {
+        senderUpdate = payload;
+        resolveIfReady();
       });
       sender.once("doc.update.ack", (payload) => {
         ack = payload;
@@ -919,7 +1028,7 @@ describe("socket server", () => {
       clientUpdateId: "client-update-1",
       serverVersion: 2,
     });
-    expect(result.senderBroadcastCount).toBe(0);
+    expect(result.senderUpdate).toEqual(result.update);
     expect(
       applyUpdateToStateB64(result.senderStateB64, result.update.updateB64),
     ).toBe("\\section{Test} Revised");
@@ -954,6 +1063,12 @@ describe("socket server", () => {
         clientUpdateId: string;
         serverVersion: number;
       };
+      senderUpdate: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
       senderStateB64: string;
     }>((resolve, reject) => {
       let senderStateB64 = "";
@@ -970,15 +1085,21 @@ describe("socket server", () => {
         clientUpdateId: string;
         serverVersion: number;
       } | null = null;
+      let senderUpdate: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
 
       const resolveIfReady = () => {
-        if (!ack || !update) {
+        if (!ack || !update || !senderUpdate) {
           return;
         }
 
         sender.close();
         receiver.close();
-        resolve({ ack, update, senderStateB64 });
+        resolve({ ack, update, senderUpdate, senderStateB64 });
       };
 
       const maybeSendUpdate = () => {
@@ -1024,6 +1145,10 @@ describe("socket server", () => {
         maybeSendUpdate();
       });
 
+      sender.once("doc.update", (payload) => {
+        senderUpdate = payload;
+        resolveIfReady();
+      });
       sender.once("doc.update.ack", (payload) => {
         ack = payload;
         resolveIfReady();
@@ -1056,6 +1181,7 @@ describe("socket server", () => {
       clientUpdateId: "client-update-1",
       serverVersion: 9,
     });
+    expect(broadcast.senderUpdate).toEqual(broadcast.update);
     expect(
       applyUpdateToStateB64(
         broadcast.senderStateB64,

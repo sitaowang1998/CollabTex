@@ -62,11 +62,17 @@ export class ActiveDocumentSessionInvalidatedError extends Error {
 }
 
 type ActiveSessionRecord = {
+  generation: number;
   session: ActiveDocumentSession;
   sessionView: ActiveDocumentSessionView;
   closePromise: Promise<void> | null;
   needsAnotherCloseCycle: boolean;
   pendingMutation: Promise<void>;
+};
+
+type PendingSessionRecord = {
+  generation: number;
+  promise: Promise<ActiveSessionRecord>;
 };
 
 export function createActiveDocumentRegistry({
@@ -79,67 +85,110 @@ export function createActiveDocumentRegistry({
   persistOnIdle: ActiveDocumentIdlePersister;
 }): ActiveDocumentRegistry {
   const activeSessions = new Map<string, ActiveSessionRecord>();
-  const pendingSessions = new Map<string, Promise<ActiveSessionRecord>>();
+  const pendingSessions = new Map<string, PendingSessionRecord>();
+  const sessionGenerations = new Map<string, number>();
 
   return {
     join: async ({ projectId, documentId }) => {
       const sessionKey = createSessionKey(projectId, documentId);
-      const record = await getOrCreateSession({
-        sessionKey,
-        projectId,
-        documentId,
-      });
+      while (true) {
+        const generation = getSessionGeneration(sessionKey);
+        const record = await getOrCreateSession({
+          sessionKey,
+          projectId,
+          documentId,
+          generation,
+        });
 
-      record.session.clientCount += 1;
+        if (
+          record.generation !== generation ||
+          record.session.isInvalidated ||
+          getSessionGeneration(sessionKey) !== generation
+        ) {
+          continue;
+        }
 
-      return createSessionHandle({
-        record,
-        sessionKey,
-      });
+        record.session.clientCount += 1;
+
+        return createSessionHandle({
+          record,
+          sessionKey,
+        });
+      }
     },
     invalidate: ({ projectId, documentId }) => {
       const sessionKey = createSessionKey(projectId, documentId);
+      const nextGeneration = getSessionGeneration(sessionKey) + 1;
       const record = activeSessions.get(sessionKey);
+      const pendingSession = pendingSessions.get(sessionKey);
 
-      if (!record) {
-        return;
+      sessionGenerations.set(sessionKey, nextGeneration);
+
+      if (record) {
+        activeSessions.delete(sessionKey);
+        record.session.isInvalidated = true;
       }
 
-      activeSessions.delete(sessionKey);
-      record.session.isInvalidated = true;
+      if (pendingSession) {
+        pendingSessions.delete(sessionKey);
+      }
     },
   };
+
+  function getSessionGeneration(sessionKey: string) {
+    return sessionGenerations.get(sessionKey) ?? 0;
+  }
 
   async function getOrCreateSession(input: {
     sessionKey: string;
     projectId: string;
     documentId: string;
+    generation: number;
   }) {
     const existingSession = activeSessions.get(input.sessionKey);
 
-    if (existingSession) {
+    if (existingSession && existingSession.generation === input.generation) {
       return existingSession;
     }
 
     const pendingSession = pendingSessions.get(input.sessionKey);
 
-    if (pendingSession) {
-      return pendingSession;
+    if (pendingSession && pendingSession.generation === input.generation) {
+      return pendingSession.promise;
     }
 
     const createdSession = createSessionRecord({
       projectId: input.projectId,
       documentId: input.documentId,
+      generation: input.generation,
     })
       .then((record) => {
+        const pending = pendingSessions.get(input.sessionKey);
+
+        if (
+          getSessionGeneration(input.sessionKey) !== input.generation ||
+          pending?.promise !== createdSession
+        ) {
+          record.session.isInvalidated = true;
+          record.session.document.destroy();
+          return record;
+        }
+
         activeSessions.set(input.sessionKey, record);
         return record;
       })
       .finally(() => {
-        pendingSessions.delete(input.sessionKey);
+        const pending = pendingSessions.get(input.sessionKey);
+
+        if (pending?.promise === createdSession) {
+          pendingSessions.delete(input.sessionKey);
+        }
       });
 
-    pendingSessions.set(input.sessionKey, createdSession);
+    pendingSessions.set(input.sessionKey, {
+      generation: input.generation,
+      promise: createdSession,
+    });
 
     return createdSession;
   }
@@ -147,6 +196,7 @@ export function createActiveDocumentRegistry({
   async function createSessionRecord(input: {
     projectId: string;
     documentId: string;
+    generation: number;
   }): Promise<ActiveSessionRecord> {
     const initialState = await loadInitialDocumentState({
       projectId: input.projectId,
@@ -166,6 +216,7 @@ export function createActiveDocumentRegistry({
     };
 
     return {
+      generation: input.generation,
       session,
       sessionView: createSessionView(session),
       closePromise: null,

@@ -144,8 +144,10 @@ Behavior:
 
 Behavior:
 
-- emitted to other clients joined to the same active document after a valid
-  update is accepted
+- emitted to joined clients on the same active document after a valid update
+  is accepted
+- the current `apps/api` implementation also emits this to the sending socket,
+  so every joined client applies the same authoritative accepted delta stream
 - echoes the sender-provided `clientUpdateId`
 - carries the authoritative accepted delta produced by the server, which may
   include conflict-retry reconciliation in addition to the sender's original
@@ -168,6 +170,8 @@ Behavior:
 - emitted only to the socket that sent the accepted `doc.update`
 - confirms which client update the server accepted
 - includes the authoritative post-accept server version
+- does not carry the accepted update payload; the sender receives that through
+  its own `doc.update` event
 
 ### `doc.reset`
 
