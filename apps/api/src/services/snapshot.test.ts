@@ -329,7 +329,16 @@ describe("snapshot service", () => {
         id: "snapshot-2",
         storagePath: "project-1/restored.json",
       }),
-      affectedTextDocumentIds: ["document-1", "deleted-text-doc"],
+      affectedTextDocuments: [
+        {
+          documentId: "document-1",
+          serverVersion: 3,
+        },
+        {
+          documentId: "deleted-text-doc",
+          serverVersion: 0,
+        },
+      ],
     });
 
     const restored = await service.restoreProjectSnapshot({
@@ -384,11 +393,13 @@ describe("snapshot service", () => {
       projectId: "project-1",
       documentId: "document-1",
       reason: "snapshot_restore",
+      serverVersion: 3,
     });
     expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(2, {
       projectId: "project-1",
       documentId: "deleted-text-doc",
       reason: "snapshot_restore",
+      serverVersion: 0,
     });
     expect(restored.id).toBe("snapshot-2");
   });

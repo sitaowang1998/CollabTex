@@ -36,16 +36,23 @@ describe("workspace service", () => {
         userId: "user-1",
       }),
     ).resolves.toEqual({
-      projectId: "project-1",
-      document: {
-        id: "document-1",
-        path: "/main.tex",
-        kind: "text",
-        mime: null,
-        createdAt: "2026-03-01T12:00:00.000Z",
-        updatedAt: "2026-03-01T12:00:00.000Z",
+      workspace: {
+        projectId: "project-1",
+        document: {
+          id: "document-1",
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          createdAt: "2026-03-01T12:00:00.000Z",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+        },
+        content: null,
       },
-      content: "\\section{Body}",
+      initialSync: {
+        documentId: "document-1",
+        yjsState: Uint8Array.from([]),
+        serverVersion: 1,
+      },
     });
     expect(currentTextStateService.loadOrHydrate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -79,10 +86,13 @@ describe("workspace service", () => {
         userId: "user-1",
       }),
     ).resolves.toMatchObject({
-      content: null,
-      document: {
-        kind: "binary",
+      workspace: {
+        content: null,
+        document: {
+          kind: "binary",
+        },
       },
+      initialSync: null,
     });
     expect(currentTextStateService.loadOrHydrate).not.toHaveBeenCalled();
   });

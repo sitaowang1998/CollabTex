@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
+  DocumentSyncResponseEvent,
   WorkspaceErrorEvent,
   WorkspaceOpenedEvent,
 } from "@collab-tex/shared";
-import type { WorkspaceService } from "../services/workspace.js";
 import { signToken } from "../services/auth.js";
+import { createCollaborationService } from "../services/collaboration.js";
+import type {
+  WorkspaceOpenResult,
+  WorkspaceService,
+} from "../services/workspace.js";
 import { testConfig } from "../test/helpers/appFactory.js";
 import { createDeferred } from "../test/helpers/deferred.js";
 import {
@@ -22,23 +27,27 @@ describe("socket server", () => {
     }
   });
 
-  it("emits the initial workspace payload after an authenticated join", async () => {
+  it("emits metadata-only workspace:opened and automatic sync for text joins", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const opened = await new Promise<{
-      projectId: string;
-      document: {
-        id: string;
-        path: string;
-        kind: string;
-        mime: string | null;
-        createdAt: string;
-        updatedAt: string;
-      };
-      content: string | null;
+    const { opened, sync } = await new Promise<{
+      opened: WorkspaceOpenedEvent;
+      sync: DocumentSyncResponseEvent;
     }>((resolve, reject) => {
+      let opened: WorkspaceOpenedEvent | null = null;
+      let sync: DocumentSyncResponseEvent | null = null;
+
+      const resolveIfReady = () => {
+        if (!opened || !sync) {
+          return;
+        }
+
+        client.close();
+        resolve({ opened, sync });
+      };
+
       client.once("connect", () => {
         client.emit("workspace:join", {
           projectId: "project-123",
@@ -47,8 +56,13 @@ describe("socket server", () => {
       });
 
       client.once("workspace:opened", (payload) => {
-        client.close();
-        resolve(payload);
+        opened = payload;
+        resolveIfReady();
+      });
+
+      client.once("doc.sync.response", (payload) => {
+        sync = payload;
+        resolveIfReady();
       });
 
       client.once("connect_error", (error) => {
@@ -67,49 +81,50 @@ describe("socket server", () => {
         createdAt: "2026-03-01T12:00:00.000Z",
         updatedAt: "2026-03-01T12:00:00.000Z",
       },
-      content: "\\section{Test}",
+      content: null,
     });
+    expect(sync).toEqual({
+      documentId: "doc-456",
+      stateB64: sync.stateB64,
+      serverVersion: 1,
+    });
+    expect(decodeStateB64(sync.stateB64)).toBe("\\section{Test}");
   });
 
-  it("opens binary documents with null content", async () => {
+  it("opens binary documents with null content and no automatic sync", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
+    const syncHandler = vi.fn();
 
-    const opened = await new Promise<{
-      projectId: string;
-      document: {
-        id: string;
-        path: string;
-        kind: string;
-        mime: string | null;
-        createdAt: string;
-        updatedAt: string;
-      };
-      content: string | null;
-    }>((resolve, reject) => {
-      client.once("connect", () => {
-        client.emit("workspace:join", {
-          projectId: "project-123",
-          documentId: "doc-binary",
+    const opened = await new Promise<WorkspaceOpenedEvent>(
+      (resolve, reject) => {
+        client.on("doc.sync.response", syncHandler);
+
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-binary",
+          });
         });
-      });
 
-      client.once("workspace:opened", (payload) => {
-        client.close();
-        resolve(payload);
-      });
+        client.once("workspace:opened", async (payload) => {
+          await waitForSocketFlush();
+          client.close();
+          resolve(payload);
+        });
 
-      client.once("realtime:error", (payload) => {
-        client.close();
-        reject(new Error(`Unexpected realtime error: ${payload.code}`));
-      });
+        client.once("realtime:error", (payload) => {
+          client.close();
+          reject(new Error(`Unexpected realtime error: ${payload.code}`));
+        });
 
-      client.once("connect_error", (error) => {
-        client.close();
-        reject(error);
-      });
-    });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
 
     expect(opened).toEqual({
       projectId: "project-123",
@@ -123,6 +138,7 @@ describe("socket server", () => {
       },
       content: null,
     });
+    expect(syncHandler).not.toHaveBeenCalled();
   });
 
   it("emits realtime:error when the user is not a project member", async () => {
@@ -268,6 +284,7 @@ describe("socket server", () => {
     const resetPayload = await new Promise<{
       documentId: string;
       reason: string;
+      serverVersion: number;
     }>((resolve, reject) => {
       client.once("connect", () => {
         client.emit("workspace:join", {
@@ -281,6 +298,7 @@ describe("socket server", () => {
           projectId: "project-123",
           documentId: "doc-456",
           reason: "snapshot_restore",
+          serverVersion: 7,
         });
       });
 
@@ -298,6 +316,7 @@ describe("socket server", () => {
     expect(resetPayload).toEqual({
       documentId: "doc-456",
       reason: "snapshot_restore",
+      serverVersion: 7,
     });
   });
 
@@ -366,9 +385,9 @@ describe("socket server", () => {
     }
   });
 
-  it("suppresses stale workspace:opened events when a newer join finishes first", async () => {
-    const firstJoin = createDeferred<WorkspaceOpenedEvent>();
-    const secondJoin = createDeferred<WorkspaceOpenedEvent>();
+  it("suppresses stale workspace:opened and sync events when a newer join finishes first", async () => {
+    const firstJoin = createDeferred<WorkspaceOpenResult>();
+    const secondJoin = createDeferred<WorkspaceOpenResult>();
     socketServer = await createTestSocketServer({
       workspaceService: createSequencedWorkspaceService({
         "doc-first": firstJoin.promise,
@@ -378,6 +397,7 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
     const openedEvents: WorkspaceOpenedEvent[] = [];
+    const syncEvents: DocumentSyncResponseEvent[] = [];
     const errorEvents: WorkspaceErrorEvent[] = [];
 
     await new Promise<void>((resolve, reject) => {
@@ -390,7 +410,7 @@ describe("socket server", () => {
           projectId: "project-123",
           documentId: "doc-second",
         });
-        secondJoin.resolve(createWorkspaceOpenedEvent("doc-second"));
+        secondJoin.resolve(createWorkspaceOpenResult("doc-second"));
       });
 
       client.on("workspace:opened", async (payload) => {
@@ -400,10 +420,14 @@ describe("socket server", () => {
           return;
         }
 
-        firstJoin.resolve(createWorkspaceOpenedEvent("doc-first"));
+        firstJoin.resolve(createWorkspaceOpenResult("doc-first"));
         await waitForSocketFlush();
         client.close();
         resolve();
+      });
+
+      client.on("doc.sync.response", (payload) => {
+        syncEvents.push(payload);
       });
 
       client.on("realtime:error", (payload) => {
@@ -417,12 +441,20 @@ describe("socket server", () => {
     });
 
     expect(openedEvents).toEqual([createWorkspaceOpenedEvent("doc-second")]);
+    expect(syncEvents).toHaveLength(1);
+    expect(syncEvents[0]).toMatchObject({
+      documentId: "doc-second",
+      serverVersion: 1,
+    });
+    expect(decodeStateB64(syncEvents[0].stateB64)).toBe(
+      "\\section{doc-second}",
+    );
     expect(errorEvents).toEqual([]);
   });
 
   it("suppresses stale realtime:error events when a newer join succeeds", async () => {
-    const firstJoin = createDeferred<WorkspaceOpenedEvent>();
-    const secondJoin = createDeferred<WorkspaceOpenedEvent>();
+    const firstJoin = createDeferred<WorkspaceOpenResult>();
+    const secondJoin = createDeferred<WorkspaceOpenResult>();
     socketServer = await createTestSocketServer({
       workspaceService: createSequencedWorkspaceService({
         "doc-first": firstJoin.promise,
@@ -444,7 +476,7 @@ describe("socket server", () => {
           projectId: "project-123",
           documentId: "doc-second",
         });
-        secondJoin.resolve(createWorkspaceOpenedEvent("doc-second"));
+        secondJoin.resolve(createWorkspaceOpenResult("doc-second"));
       });
 
       client.on("workspace:opened", async (payload) => {
@@ -476,7 +508,7 @@ describe("socket server", () => {
 });
 
 function createSequencedWorkspaceService(
-  resultsByDocumentId: Record<string, Promise<WorkspaceOpenedEvent>>,
+  resultsByDocumentId: Record<string, Promise<WorkspaceOpenResult>>,
 ): WorkspaceService {
   return {
     openDocument: async ({ projectId, documentId }) => {
@@ -487,6 +519,17 @@ function createSequencedWorkspaceService(
       }
 
       return result;
+    },
+  };
+}
+
+function createWorkspaceOpenResult(documentId: string): WorkspaceOpenResult {
+  return {
+    workspace: createWorkspaceOpenedEvent(documentId),
+    initialSync: {
+      documentId,
+      yjsState: createStateBytes(`\\section{${documentId}}`),
+      serverVersion: 1,
     },
   };
 }
@@ -502,8 +545,30 @@ function createWorkspaceOpenedEvent(documentId: string): WorkspaceOpenedEvent {
       createdAt: "2026-03-01T12:00:00.000Z",
       updatedAt: "2026-03-01T12:00:00.000Z",
     },
-    content: `\\section{${documentId}}`,
+    content: null,
   };
+}
+
+function createStateBytes(text: string): Uint8Array {
+  const document = createCollaborationService().createDocumentFromText(text);
+
+  try {
+    return document.exportUpdate();
+  } finally {
+    document.destroy();
+  }
+}
+
+function decodeStateB64(stateB64: string): string {
+  const document = createCollaborationService().createDocumentFromUpdate(
+    Buffer.from(stateB64, "base64"),
+  );
+
+  try {
+    return document.getText();
+  } finally {
+    document.destroy();
+  }
 }
 
 async function waitForSocketFlush(): Promise<void> {

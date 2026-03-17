@@ -75,7 +75,11 @@ describe("workspace current state integration", () => {
       userId: owner.id,
     });
 
-    expect(firstOpen.content).toBe(firstSnapshotContent);
+    expect(firstOpen.workspace.content).toBeNull();
+    expect(firstOpen.initialSync).toMatchObject({
+      documentId: document.id,
+      serverVersion: 1,
+    });
     await expect(
       firstRuntime.documentTextStateRepository.findByDocumentId(document.id),
     ).resolves.toMatchObject({
@@ -100,7 +104,11 @@ describe("workspace current state integration", () => {
       userId: owner.id,
     });
 
-    expect(reopened.content).toBe(firstSnapshotContent);
+    expect(reopened.workspace.content).toBeNull();
+    expect(reopened.initialSync).toMatchObject({
+      documentId: document.id,
+      serverVersion: 1,
+    });
     await expect(
       secondRuntime.documentTextStateRepository.findByDocumentId(document.id),
     ).resolves.toMatchObject({

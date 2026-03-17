@@ -102,14 +102,17 @@ export function createSocketDocumentResetPublisher(
       projectId,
       documentId,
       reason,
+      serverVersion,
     }: {
       projectId: string;
       documentId: string;
       reason: string;
+      serverVersion: number;
     }) => {
       io.to(createWorkspaceRoomName(projectId, documentId)).emit("doc.reset", {
         documentId,
         reason,
+        serverVersion,
       });
     },
   };
@@ -153,7 +156,15 @@ async function openWorkspace(
 
     void socket.join(nextWorkspaceRoomName);
     input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-    socket.emit("workspace:opened", openedWorkspace);
+    socket.emit("workspace:opened", openedWorkspace.workspace);
+
+    if (openedWorkspace.initialSync) {
+      socket.emit("doc.sync.response", {
+        documentId: openedWorkspace.initialSync.documentId,
+        stateB64: encodeBase64(openedWorkspace.initialSync.yjsState),
+        serverVersion: openedWorkspace.initialSync.serverVersion,
+      });
+    }
   } catch (error) {
     if (!input.isLatestJoin()) {
       return;
@@ -165,6 +176,10 @@ async function openWorkspace(
 
     socket.emit("realtime:error", mapWorkspaceError(error));
   }
+}
+
+function encodeBase64(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64");
 }
 
 function parseWorkspaceJoinRequest(
