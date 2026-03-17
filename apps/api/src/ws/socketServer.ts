@@ -438,7 +438,6 @@ async function applyDocumentUpdate(
     if (
       shouldSuppressStaleDocumentUpdateFailure(error, {
         isCurrentSession,
-        sessionState: input.sessionState,
       })
     ) {
       return;
@@ -687,7 +686,6 @@ function shouldSuppressStaleDocumentUpdateFailure(
   error: unknown,
   input: {
     isCurrentSession: () => boolean;
-    sessionState: ActiveTextSessionState;
   },
 ): boolean {
   if (
@@ -697,9 +695,7 @@ function shouldSuppressStaleDocumentUpdateFailure(
     return false;
   }
 
-  return (
-    !input.isCurrentSession() || input.sessionState.handle.session.isInvalidated
-  );
+  return !input.isCurrentSession();
 }
 
 async function leaveJoinedRoomIfNeeded(

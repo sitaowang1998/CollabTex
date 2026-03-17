@@ -1581,7 +1581,7 @@ describe("socket server", () => {
     expect(result.receiverUpdateCount).toBe(0);
   });
 
-  it("suppresses stale realtime:error when snapshot_restore invalidates a queued doc.update", async () => {
+  it("suppresses stale realtime:error when snapshot_restore invalidates a queued doc.update after the socket switches away", async () => {
     const updateStarted = createDeferred<void>();
     const releaseFailure = createDeferred<void>();
     socketServer = await createTestSocketServer({
@@ -1600,6 +1600,7 @@ describe("socket server", () => {
     const result = await new Promise<{
       errorCount: number;
       resetVersion: number;
+      switchedDocumentId: string;
     }>((resolve, reject) => {
       let senderStateB64 = "";
       let errorCount = 0;
@@ -1629,13 +1630,25 @@ describe("socket server", () => {
         });
       });
 
-      sender.once("doc.reset", async (payload) => {
+      sender.once("doc.reset", async () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-second",
+        });
+      });
+
+      sender.on("doc.sync.response", async (payload) => {
+        if (payload.documentId !== "doc-second") {
+          return;
+        }
+
         releaseFailure.resolve();
         await waitForSocketFlush();
         sender.close();
         resolve({
           errorCount,
-          resetVersion: payload.serverVersion,
+          resetVersion: 9,
+          switchedDocumentId: payload.documentId,
         });
       });
 
@@ -1649,7 +1662,65 @@ describe("socket server", () => {
     });
 
     expect(result.resetVersion).toBe(9);
+    expect(result.switchedDocumentId).toBe("doc-second");
     expect(result.errorCount).toBe(0);
+  });
+
+  it("emits realtime:error for a fresh post-reset doc.update on the current invalidated session", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        let senderStateB64 = "";
+
+        sender.once("connect", () => {
+          sender.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        sender.once("doc.sync.response", async (payload) => {
+          senderStateB64 = payload.stateB64;
+          await socketServer?.emitDocumentReset({
+            projectId: "project-123",
+            documentId: "doc-456",
+            reason: "snapshot_restore",
+            serverVersion: 9,
+          });
+        });
+
+        sender.once("doc.reset", () => {
+          sender.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: createIncrementalUpdateB64(
+              senderStateB64,
+              (document) => {
+                document.getText("content").insert(14, " Revised");
+              },
+            ),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        sender.once("realtime:error", (payload) => {
+          sender.close();
+          resolve(payload);
+        });
+        sender.once("connect_error", (error) => {
+          sender.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket session is no longer current",
+    });
   });
 
   it("does not broadcast post-reset doc.update events to sockets that have not rejoined", async () => {

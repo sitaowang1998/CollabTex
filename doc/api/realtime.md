@@ -236,6 +236,9 @@ Behavior:
 - stale queued `doc.update` failures that lose authority because the socket
   switched documents or a reset invalidated the old session are suppressed
   instead of being emitted into the socket's newer workspace context
+- a fresh `doc.update` sent after `doc.reset` but before rejoin still receives
+  `realtime:error`, because that invalidated session is still the socket's
+  current session and the client must explicitly rejoin
 - `doc.update` failures map as:
   - `INVALID_REQUEST` for malformed payloads, invalid Yjs/base64 payloads, and
     socket/document mismatches
