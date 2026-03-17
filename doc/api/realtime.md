@@ -21,10 +21,10 @@ contract stays stable while the later Yjs-backed implementation slices land.
 - `admin`, `editor`, `commenter`, and `reader` may join a workspace
 - the shared contract reserves `doc.sync.request` for joined project members,
   but the current `apps/api` transport does not handle that event yet
-- the shared contract also reserves `doc.update` / `doc.update.ack`, but the
-  current `apps/api` transport does not process or emit those events yet
-- `commenter` and `reader` are intended to remain read-only when the update
-  transport is wired, and must not be allowed to send `doc.update`
+- `admin` and `editor` may send `doc.update` after joining the matching text
+  workspace
+- `commenter` and `reader` remain read-only and receive `FORBIDDEN` if they
+  send `doc.update`
 - Project membership is still required for all workspace and document events
 
 ## Client To Server Events
@@ -77,11 +77,8 @@ Validation behavior:
 - `documentId` must be a non-empty string
 - `updateB64` must be a non-empty base64-encoded Yjs update payload
 - `clientUpdateId` must be a non-empty client-generated string
-- reserved in shared types, but not yet processed by the current `apps/api`
-  socket transport
 - valid only after the socket has joined the matching workspace/document
-- intended write access is limited to `admin` and `editor` once the update path
-  is wired
+- write access is limited to `admin` and `editor`
 
 ## Server To Client Events
 
@@ -143,10 +140,8 @@ Behavior:
 
 Behavior:
 
-- reserved in shared types, but not yet emitted by the current `apps/api`
-  socket transport
 - emitted to other clients joined to the same active document after a valid
-  update is accepted once the update path is wired
+  update is accepted
 - echoes the sender-provided `clientUpdateId`
 - includes the authoritative post-accept server version
 - delivered to all joined project members, including `commenter` and `reader`
@@ -163,10 +158,7 @@ Behavior:
 
 Behavior:
 
-- reserved in shared types, but not yet emitted by the current `apps/api`
-  socket transport
-- emitted only to the socket that sent the accepted `doc.update` once the
-  update path is wired
+- emitted only to the socket that sent the accepted `doc.update`
 - confirms which client update the server accepted
 - includes the authoritative post-accept server version
 
@@ -215,6 +207,12 @@ Behavior:
 - examples include invalid `workspace:join` payloads, invalid `doc.update`
   payloads, document/session mismatches, and read-only members attempting to
   send `doc.update`
+- `doc.update` failures map as:
+  - `INVALID_REQUEST` for malformed payloads, invalid Yjs/base64 payloads, and
+    socket/document mismatches
+  - `FORBIDDEN` for lost membership or missing write role
+  - `NOT_FOUND` for missing or non-text documents
+  - `UNAVAILABLE` for unexpected realtime persistence failures
 
 ## Deferred From This Change
 
