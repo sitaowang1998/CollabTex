@@ -36,24 +36,29 @@ describe("realtime document service", () => {
     });
     const storedDocument = createStoredDocument();
     const initialState = createStoredDocumentTextState("Hello", 1);
-    const persistedState = createStoredDocumentTextState("Hello world", 2);
+    const persistedState = createStoredDocumentTextStateFromUpdate(
+      applyMutationToState(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
+      }),
+      2,
+    );
 
     documentRepository.findById.mockResolvedValue(storedDocument);
     currentTextStateService.persist.mockResolvedValue(persistedState);
     const sessionHandle = await createSessionHandle(initialState);
 
-    await expect(
-      service.applyUpdate({
-        projectId: "project-1",
-        documentId: storedDocument.id,
-        userId: "user-1",
-        sessionHandle,
-        update: createIncrementalUpdate(initialState.yjsState, (document) => {
-          document.getText("content").insert(5, " world");
-        }),
-        isCurrentSession: () => true,
+    const accepted = await service.applyUpdate({
+      projectId: "project-1",
+      documentId: storedDocument.id,
+      userId: "user-1",
+      sessionHandle,
+      update: createIncrementalUpdate(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
       }),
-    ).resolves.toEqual({
+      isCurrentSession: () => true,
+    });
+
+    expect(accepted).toMatchObject({
       serverVersion: 2,
     });
 
@@ -65,6 +70,9 @@ describe("realtime document service", () => {
     );
     expect(sessionHandle.session.serverVersion).toBe(2);
     expect(sessionHandle.session.document.getText()).toBe("Hello world");
+    expect(
+      applyUpdateToState(initialState.yjsState, accepted.acceptedUpdate),
+    ).toBe("Hello world");
   });
 
   it("reloads durable state and retries when the compare-and-swap write conflicts", async () => {
@@ -79,6 +87,12 @@ describe("realtime document service", () => {
     });
     const storedDocument = createStoredDocument();
     const staleState = createStoredDocumentTextState("Hello", 1);
+    const originalUpdate = createIncrementalUpdate(
+      staleState.yjsState,
+      (document) => {
+        document.getText("content").insert(5, " world");
+      },
+    );
     const reloadedState = createStoredDocumentTextStateFromUpdate(
       applyMutationToState(staleState.yjsState, (document) => {
         document.getText("content").insert(5, " brave");
@@ -86,9 +100,7 @@ describe("realtime document service", () => {
       2,
     );
     const persistedState = createStoredDocumentTextStateFromUpdate(
-      applyMutationToState(reloadedState.yjsState, (document) => {
-        document.getText("content").insert(11, " world");
-      }),
+      applyIncrementalUpdate(reloadedState.yjsState, originalUpdate),
       3,
     );
 
@@ -99,18 +111,16 @@ describe("realtime document service", () => {
     currentTextStateService.loadOrHydrate.mockResolvedValue(reloadedState);
     const sessionHandle = await createSessionHandle(staleState);
 
-    await expect(
-      service.applyUpdate({
-        projectId: "project-1",
-        documentId: storedDocument.id,
-        userId: "user-1",
-        sessionHandle,
-        update: createIncrementalUpdate(staleState.yjsState, (document) => {
-          document.getText("content").insert(5, " world");
-        }),
-        isCurrentSession: () => true,
-      }),
-    ).resolves.toEqual({
+    const accepted = await service.applyUpdate({
+      projectId: "project-1",
+      documentId: storedDocument.id,
+      userId: "user-1",
+      sessionHandle,
+      update: originalUpdate,
+      isCurrentSession: () => true,
+    });
+
+    expect(accepted).toMatchObject({
       serverVersion: 3,
     });
 
@@ -127,7 +137,12 @@ describe("realtime document service", () => {
       }),
     );
     expect(sessionHandle.session.serverVersion).toBe(3);
-    expect(sessionHandle.session.document.getText()).toBe("Hello brave world");
+    expect(sessionHandle.session.document.getText()).toBe(
+      persistedState.textContent,
+    );
+    expect(
+      applyUpdateToState(staleState.yjsState, accepted.acceptedUpdate),
+    ).toBe(persistedState.textContent);
   });
 
   it("honors socket currency after queue wait", async () => {
@@ -428,6 +443,35 @@ function applyMutationToState(
   try {
     Y.applyUpdate(document, baseState);
     mutate(document);
+
+    return Y.encodeStateAsUpdate(document);
+  } finally {
+    document.destroy();
+  }
+}
+
+function applyUpdateToState(baseState: Uint8Array, update: Uint8Array): string {
+  const document = new Y.Doc();
+
+  try {
+    Y.applyUpdate(document, baseState);
+    Y.applyUpdate(document, update);
+
+    return document.getText("content").toString();
+  } finally {
+    document.destroy();
+  }
+}
+
+function applyIncrementalUpdate(
+  baseState: Uint8Array,
+  update: Uint8Array,
+): Uint8Array {
+  const document = new Y.Doc();
+
+  try {
+    Y.applyUpdate(document, baseState);
+    Y.applyUpdate(document, update);
 
     return Y.encodeStateAsUpdate(document);
   } finally {

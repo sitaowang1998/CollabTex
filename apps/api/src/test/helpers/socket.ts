@@ -6,7 +6,10 @@ import {
 } from "socket.io-client";
 import { createHttpApp } from "../../http/app.js";
 import { createAuthService } from "../../services/auth.js";
-import { createActiveDocumentRegistry } from "../../services/activeDocumentRegistry.js";
+import {
+  createActiveDocumentRegistry,
+  type ActiveDocumentRegistry,
+} from "../../services/activeDocumentRegistry.js";
 import { createActiveDocumentStateLoader } from "../../services/activeDocumentStateLoader.js";
 import { createCollaborationService } from "../../services/collaboration.js";
 import type {
@@ -60,6 +63,7 @@ export async function createTestSocketServer(options?: {
   snapshotService?: SnapshotService;
   workspaceService?: WorkspaceService;
   realtimeDocumentService?: RealtimeDocumentService;
+  activeDocumentRegistry?: ActiveDocumentRegistry;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
@@ -112,14 +116,16 @@ export async function createTestSocketServer(options?: {
       documentRepository,
       currentTextStateService,
     });
-  const activeDocumentRegistry = createActiveDocumentRegistry({
-    collaborationService,
-    loadInitialDocumentState: createActiveDocumentStateLoader({
-      documentRepository,
-      currentTextStateService,
-    }),
-    persistOnIdle: async () => {},
-  });
+  const activeDocumentRegistry =
+    options?.activeDocumentRegistry ??
+    createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: createActiveDocumentStateLoader({
+        documentRepository,
+        currentTextStateService,
+      }),
+      persistOnIdle: async () => {},
+    });
   const io = createSocketServer(server, testConfig, {
     workspaceService,
     activeDocumentRegistry,

@@ -123,7 +123,8 @@ Behavior:
 - emitted automatically after a successful text `workspace:join`
 - the current `apps/api` implementation does not emit this in response to
   `doc.sync.request` yet because that event is not handled
-- contains the full encoded CRDT state for the active document
+- contains the full encoded CRDT state from the authoritative joined active
+  session after any earlier queued mutations have completed
 - includes the current durable document version on the server
 - delivered to any joined project member, including `commenter` and `reader`
 
@@ -143,6 +144,9 @@ Behavior:
 - emitted to other clients joined to the same active document after a valid
   update is accepted
 - echoes the sender-provided `clientUpdateId`
+- carries the authoritative accepted delta produced by the server, which may
+  include conflict-retry reconciliation in addition to the sender's original
+  client delta
 - includes the authoritative post-accept server version
 - delivered to all joined project members, including `commenter` and `reader`
 

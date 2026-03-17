@@ -235,37 +235,67 @@ async function openWorkspace(
       return;
     }
 
+    if (nextActiveTextSession) {
+      const joinedSession = await nextActiveTextSession.runExclusive(
+        async (session) => {
+          if (!input.isLatestJoin()) {
+            return false;
+          }
+
+          const previousWorkspaceRoomName = input.getActiveWorkspaceRoomName();
+
+          if (
+            previousWorkspaceRoomName &&
+            previousWorkspaceRoomName !== nextWorkspaceRoomName
+          ) {
+            await socket.leave(previousWorkspaceRoomName);
+          }
+
+          await socket.join(nextWorkspaceRoomName);
+          input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+          await input.replaceActiveTextSession({
+            projectId: input.workspaceOpenInput.projectId,
+            documentId: input.workspaceOpenInput.documentId,
+            joinSequence: input.joinSequence,
+            handle: nextActiveTextSession,
+          });
+          joinedSessionHandle = null;
+          socket.emit("workspace:opened", openedWorkspace.workspace);
+          socket.emit("doc.sync.response", {
+            documentId: session.documentId,
+            stateB64: encodeBase64(session.document.exportUpdate()),
+            serverVersion: session.serverVersion,
+          });
+
+          return true;
+        },
+      );
+
+      if (!joinedSession) {
+        await leaveActiveTextSession(socket, {
+          projectId: input.workspaceOpenInput.projectId,
+          documentId: input.workspaceOpenInput.documentId,
+          joinSequence: input.joinSequence,
+          handle: nextActiveTextSession,
+        });
+      }
+
+      return;
+    }
+
     const previousWorkspaceRoomName = input.getActiveWorkspaceRoomName();
 
     if (
       previousWorkspaceRoomName &&
       previousWorkspaceRoomName !== nextWorkspaceRoomName
     ) {
-      void socket.leave(previousWorkspaceRoomName);
+      await socket.leave(previousWorkspaceRoomName);
     }
 
-    void socket.join(nextWorkspaceRoomName);
+    await socket.join(nextWorkspaceRoomName);
     input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-    await input.replaceActiveTextSession(
-      nextActiveTextSession
-        ? {
-            projectId: input.workspaceOpenInput.projectId,
-            documentId: input.workspaceOpenInput.documentId,
-            joinSequence: input.joinSequence,
-            handle: nextActiveTextSession,
-          }
-        : null,
-    );
-    joinedSessionHandle = null;
+    await input.replaceActiveTextSession(null);
     socket.emit("workspace:opened", openedWorkspace.workspace);
-
-    if (openedWorkspace.initialSync) {
-      socket.emit("doc.sync.response", {
-        documentId: openedWorkspace.initialSync.documentId,
-        stateB64: encodeBase64(openedWorkspace.initialSync.yjsState),
-        serverVersion: openedWorkspace.initialSync.serverVersion,
-      });
-    }
   } catch (error) {
     if (joinedSessionHandle) {
       await leaveActiveTextSession(socket, {
@@ -330,7 +360,7 @@ async function applyDocumentUpdate(
       )
       .emit("doc.update", {
         documentId: input.request.documentId,
-        updateB64: input.request.updateB64,
+        updateB64: encodeBase64(result.acceptedUpdate),
         clientUpdateId: input.request.clientUpdateId,
         serverVersion: result.serverVersion,
       });

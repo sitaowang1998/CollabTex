@@ -530,6 +530,12 @@ function createCollaborationServiceDouble(): CollaborationService {
     createEmptyTextDocument: vi
       .fn<CollaborationService["createEmptyTextDocument"]>()
       .mockImplementation(() => createDocumentDouble()),
+    createDocumentFromText: vi
+      .fn<CollaborationService["createDocumentFromText"]>()
+      .mockImplementation(() => createDocumentDouble()),
+    diffUpdates: vi
+      .fn<CollaborationService["diffUpdates"]>()
+      .mockReturnValue(Uint8Array.from([])),
   };
 }
 

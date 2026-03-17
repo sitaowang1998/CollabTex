@@ -13,6 +13,10 @@ export type CollaborationService = {
   createDocumentFromUpdate: (update: Uint8Array) => CollaborationDocument;
   createDocumentFromText: (text: string) => CollaborationDocument;
   createEmptyTextDocument: () => CollaborationDocument;
+  diffUpdates: (input: {
+    fromUpdate: Uint8Array;
+    toUpdate: Uint8Array;
+  }) => Uint8Array;
 };
 
 export class InvalidCollaborationUpdateError extends Error {
@@ -45,6 +49,23 @@ export function createCollaborationService(): CollaborationService {
       return createCollaborationDocument(document);
     },
     createEmptyTextDocument: () => createCollaborationDocument(new Y.Doc()),
+    diffUpdates: ({ fromUpdate, toUpdate }) => {
+      const fromDocument = new Y.Doc();
+      const toDocument = new Y.Doc();
+
+      try {
+        applyCollaborationUpdate(fromDocument, fromUpdate);
+        applyCollaborationUpdate(toDocument, toUpdate);
+
+        return Y.encodeStateAsUpdate(
+          toDocument,
+          Y.encodeStateVector(fromDocument),
+        );
+      } finally {
+        fromDocument.destroy();
+        toDocument.destroy();
+      }
+    },
   };
 }
 

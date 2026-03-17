@@ -394,6 +394,16 @@ describe("socket server", () => {
         "doc-first": firstJoin.promise,
         "doc-second": secondJoin.promise,
       }),
+      activeDocumentRegistry: createStaticActiveDocumentRegistry({
+        "doc-first": {
+          text: "\\section{doc-first}",
+          serverVersion: 1,
+        },
+        "doc-second": {
+          text: "\\section{doc-second}",
+          serverVersion: 1,
+        },
+      }),
     });
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
@@ -505,6 +515,72 @@ describe("socket server", () => {
 
     expect(openedEvents).toEqual([createWorkspaceOpenedEvent("doc-second")]);
     expect(errorEvents).toEqual([]);
+  });
+
+  it("emits the joined active-session snapshot instead of a stale workspace-open snapshot", async () => {
+    const collaborationService = createCollaborationService();
+    const authoritativeDocument = collaborationService.createDocumentFromText(
+      "\\section{Authoritative}",
+    );
+    const staleDocument =
+      collaborationService.createDocumentFromText("\\section{Stale}");
+    socketServer = await createTestSocketServer({
+      workspaceService: {
+        openDocument: async () => ({
+          workspace: createWorkspaceOpenedEvent("doc-456"),
+          initialSync: {
+            documentId: "doc-456",
+            yjsState: staleDocument.exportUpdate(),
+            serverVersion: 1,
+          },
+        }),
+      },
+      activeDocumentRegistry: {
+        join: async () => {
+          const session = {
+            projectId: "project-123",
+            documentId: "doc-456",
+            clientCount: 1,
+            document: authoritativeDocument,
+            serverVersion: 7,
+          };
+
+          return {
+            session,
+            runExclusive: async (task) => task(session),
+            leave: async () => {},
+          };
+        },
+      },
+    });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const sync = await new Promise<DocumentSyncResponseEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(sync.serverVersion).toBe(7);
+    expect(decodeStateB64(sync.stateB64)).toBe("\\section{Authoritative}");
+
+    staleDocument.destroy();
+    authoritativeDocument.destroy();
   });
 
   it("acks accepted updates to the sender and broadcasts them to other joined sockets", async () => {
@@ -647,6 +723,145 @@ describe("socket server", () => {
     ).toBe("\\section{Test} Revised");
   });
 
+  it("broadcasts the server-accepted update instead of the original client delta", async () => {
+    let acceptedUpdateB64 = "";
+    socketServer = await createTestSocketServer({
+      realtimeDocumentService: {
+        applyUpdate: async () => ({
+          serverVersion: 9,
+          acceptedUpdate: Buffer.from(acceptedUpdateB64, "base64"),
+        }),
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    const broadcast = await new Promise<{
+      ack: {
+        documentId: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
+      update: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
+      senderStateB64: string;
+    }>((resolve, reject) => {
+      let senderStateB64 = "";
+      let senderReady = false;
+      let receiverReady = false;
+      let ack: {
+        documentId: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
+      let update: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      } | null = null;
+
+      const resolveIfReady = () => {
+        if (!ack || !update) {
+          return;
+        }
+
+        sender.close();
+        receiver.close();
+        resolve({ ack, update, senderStateB64 });
+      };
+
+      const maybeSendUpdate = () => {
+        if (!senderReady || !receiverReady) {
+          return;
+        }
+
+        sender.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(senderStateB64, (document) => {
+            document.getText("content").insert(14, " Original");
+          }),
+          clientUpdateId: "client-update-1",
+        });
+      };
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+      receiver.once("connect", () => {
+        receiver.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.once("doc.sync.response", (payload) => {
+        senderReady = true;
+        senderStateB64 = payload.stateB64;
+        acceptedUpdateB64 = createIncrementalUpdateB64(
+          senderStateB64,
+          (document) => {
+            document.getText("content").insert(14, " Accepted");
+          },
+        );
+        maybeSendUpdate();
+      });
+      receiver.once("doc.sync.response", () => {
+        receiverReady = true;
+        maybeSendUpdate();
+      });
+
+      sender.once("doc.update.ack", (payload) => {
+        ack = payload;
+        resolveIfReady();
+      });
+      receiver.once("doc.update", (payload) => {
+        update = payload;
+        resolveIfReady();
+      });
+
+      sender.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+      receiver.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+    });
+
+    expect(broadcast.ack).toEqual({
+      documentId: "doc-456",
+      clientUpdateId: "client-update-1",
+      serverVersion: 9,
+    });
+    expect(broadcast.update).toEqual({
+      documentId: "doc-456",
+      updateB64: acceptedUpdateB64,
+      clientUpdateId: "client-update-1",
+      serverVersion: 9,
+    });
+    expect(
+      applyUpdateToStateB64(
+        broadcast.senderStateB64,
+        broadcast.update.updateB64,
+      ),
+    ).toBe("\\section{Test} Accepted");
+  });
+
   it("rejects invalid doc.update payloads after join", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
@@ -770,6 +985,47 @@ function createWorkspaceOpenedEvent(documentId: string): WorkspaceOpenedEvent {
       updatedAt: "2026-03-01T12:00:00.000Z",
     },
     content: null,
+  };
+}
+
+function createStaticActiveDocumentRegistry(
+  documentsById: Record<
+    string,
+    {
+      text: string;
+      serverVersion: number;
+    }
+  >,
+) {
+  return {
+    join: async ({ documentId }: { documentId: string }) => {
+      const documentState = documentsById[documentId];
+
+      if (!documentState) {
+        throw new Error(`Unexpected active document ${documentId}`);
+      }
+
+      const document = createCollaborationService().createDocumentFromText(
+        documentState.text,
+      );
+      const session = {
+        projectId: "project-123",
+        documentId,
+        clientCount: 1,
+        document,
+        serverVersion: documentState.serverVersion,
+      };
+
+      return {
+        session,
+        runExclusive: async <Result>(
+          task: (sessionState: typeof session) => Promise<Result>,
+        ) => task(session),
+        leave: async () => {
+          document.destroy();
+        },
+      };
+    },
   };
 }
 

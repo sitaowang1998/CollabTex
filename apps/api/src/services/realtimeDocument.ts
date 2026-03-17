@@ -9,6 +9,7 @@ import type { ProjectAccessService } from "./projectAccess.js";
 
 export type RealtimeDocumentUpdateResult = {
   serverVersion: number;
+  acceptedUpdate: Uint8Array;
 };
 
 export type RealtimeDocumentService = {
@@ -58,6 +59,8 @@ export function createRealtimeDocumentService({
       isCurrentSession,
     }) =>
       sessionHandle.runExclusive(async (session) => {
+        const baseState = session.document.exportUpdate();
+
         while (true) {
           if (!isCurrentSession()) {
             throw new RealtimeDocumentSessionMismatchError();
@@ -90,11 +93,17 @@ export function createRealtimeDocumentService({
               document: workingDocument,
               expectedVersion: session.serverVersion,
             });
+            const acceptedState = persisted.yjsState;
+            const acceptedUpdate = collaborationService.diffUpdates({
+              fromUpdate: baseState,
+              toUpdate: acceptedState,
+            });
 
             replaceSessionDocument(session, workingDocument, persisted.version);
 
             return {
               serverVersion: persisted.version,
+              acceptedUpdate,
             };
           } catch (error) {
             workingDocument.destroy();
