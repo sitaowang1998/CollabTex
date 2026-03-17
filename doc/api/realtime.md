@@ -125,6 +125,8 @@ Behavior:
   `doc.sync.request` yet because that event is not handled
 - contains the full encoded CRDT state from the authoritative joined active
   session after any earlier queued mutations have completed
+- successful text joins attach the socket to the current generation-scoped
+  text room for that active session
 - snapshot-restore resets invalidate cached active sessions first, so a later
   rejoin sync reloads restored durable state instead of reusing stale
   pre-reset in-memory state
@@ -144,8 +146,8 @@ Behavior:
 
 Behavior:
 
-- emitted to joined clients on the same active document after a valid update
-  is accepted
+- emitted to joined clients on the same active document session generation
+  after a valid update is accepted
 - the current `apps/api` implementation also emits this to the sending socket,
   so every joined client applies the same authoritative accepted delta stream
 - the sender only receives this if it is still joined to that same active
@@ -155,6 +157,8 @@ Behavior:
   include conflict-retry reconciliation in addition to the sender's original
   client delta
 - includes the authoritative post-accept server version
+- clients that received `doc.reset` but have not rejoined do not receive later
+  incremental updates from the new text session generation
 - delivered to all joined project members, including `commenter` and `reader`
 
 ### `doc.update.ack`
@@ -194,6 +198,8 @@ Behavior:
 - for `reason: "snapshot_restore"`, the server invalidates the previous active
   text session before broadcasting the reset, and clients are expected to
   rejoin to obtain the restored authoritative state
+- the reset is broadcast to the invalidated text-session generation, and
+  sockets stay isolated from the next generation until they explicitly rejoin
 - accepted updates from that invalidated session are not emitted after the
   reset boundary
 - includes the server version clients should treat as authoritative after the
@@ -227,6 +233,9 @@ Behavior:
 - examples include invalid `workspace:join` payloads, invalid `doc.update`
   payloads, document/session mismatches, and read-only members attempting to
   send `doc.update`
+- stale queued `doc.update` failures that lose authority because the socket
+  switched documents or a reset invalidated the old session are suppressed
+  instead of being emitted into the socket's newer workspace context
 - `doc.update` failures map as:
   - `INVALID_REQUEST` for malformed payloads, invalid Yjs/base64 payloads, and
     socket/document mismatches

@@ -177,7 +177,22 @@ export function createSocketDocumentResetPublisher(
       serverVersion: number;
     }) => {
       if (reason === "snapshot_restore") {
-        activeDocumentRegistry.invalidate({ projectId, documentId });
+        const { invalidatedGeneration } = activeDocumentRegistry.invalidate({
+          projectId,
+          documentId,
+        });
+
+        io.to(
+          createTextWorkspaceRoomName(
+            projectId,
+            documentId,
+            invalidatedGeneration,
+          ),
+        ).emit("doc.reset", {
+          documentId,
+          reason,
+          serverVersion,
+        });
       }
 
       io.to(createWorkspaceRoomName(projectId, documentId)).emit("doc.reset", {
@@ -225,10 +240,16 @@ export async function openWorkspace(
         : null;
 
       joinedSessionHandle = nextActiveTextSession;
-      const nextWorkspaceRoomName = createWorkspaceRoomName(
-        input.workspaceOpenInput.projectId,
-        input.workspaceOpenInput.documentId,
-      );
+      const nextWorkspaceRoomName = nextActiveTextSession
+        ? createTextWorkspaceRoomName(
+            input.workspaceOpenInput.projectId,
+            input.workspaceOpenInput.documentId,
+            nextActiveTextSession.session.generation,
+          )
+        : createWorkspaceRoomName(
+            input.workspaceOpenInput.projectId,
+            input.workspaceOpenInput.documentId,
+          );
 
       if (!input.isLatestJoin()) {
         await leaveJoinedSessionIfNeeded(socket, input, joinedSessionHandle);
@@ -287,6 +308,7 @@ export async function openWorkspace(
           projectId: input.workspaceOpenInput.projectId,
           documentId: input.workspaceOpenInput.documentId,
           joinSequence: input.joinSequence,
+          workspaceRoomName: nextWorkspaceRoomName,
           handle: nextActiveTextSession,
         });
         joinedSessionHandle = null;
@@ -320,6 +342,11 @@ export async function openWorkspace(
           projectId: input.workspaceOpenInput.projectId,
           documentId: input.workspaceOpenInput.documentId,
           joinSequence: input.joinSequence,
+          workspaceRoomName: createTextWorkspaceRoomName(
+            input.workspaceOpenInput.projectId,
+            input.workspaceOpenInput.documentId,
+            joinedSessionHandle.session.generation,
+          ),
           handle: joinedSessionHandle,
         });
       }
@@ -395,12 +422,7 @@ async function applyDocumentUpdate(
 
     if (emitPlan.shouldBroadcastToPeers) {
       socket
-        .to(
-          createWorkspaceRoomName(
-            input.sessionState.projectId,
-            input.request.documentId,
-          ),
-        )
+        .to(input.sessionState.workspaceRoomName)
         .emit("doc.update", updateEvent);
     }
 
@@ -413,6 +435,15 @@ async function applyDocumentUpdate(
       });
     }
   } catch (error) {
+    if (
+      shouldSuppressStaleDocumentUpdateFailure(error, {
+        isCurrentSession,
+        sessionState: input.sessionState,
+      })
+    ) {
+      return;
+    }
+
     if (isUnexpectedDocumentUpdateError(error)) {
       console.error(
         "Document update failed",
@@ -549,6 +580,14 @@ export function createWorkspaceRoomName(
   return `workspace:${projectId}:${documentId}`;
 }
 
+export function createTextWorkspaceRoomName(
+  projectId: string,
+  documentId: string,
+  generation: number,
+): string {
+  return `workspace:${projectId}:${documentId}:text:${generation}`;
+}
+
 function mapWorkspaceError(error: unknown): WorkspaceErrorEvent {
   if (error instanceof WorkspaceAccessDeniedError) {
     return {
@@ -644,6 +683,25 @@ function isUnexpectedDocumentUpdateError(error: unknown): boolean {
   );
 }
 
+function shouldSuppressStaleDocumentUpdateFailure(
+  error: unknown,
+  input: {
+    isCurrentSession: () => boolean;
+    sessionState: ActiveTextSessionState;
+  },
+): boolean {
+  if (
+    !(error instanceof RealtimeDocumentSessionMismatchError) &&
+    !(error instanceof ActiveDocumentSessionInvalidatedError)
+  ) {
+    return false;
+  }
+
+  return (
+    !input.isCurrentSession() || input.sessionState.handle.session.isInvalidated
+  );
+}
+
 async function leaveJoinedRoomIfNeeded(
   socket: WorkspaceSocket,
   input: {
@@ -674,6 +732,11 @@ async function leaveJoinedSessionIfNeeded(
     projectId: input.workspaceOpenInput.projectId,
     documentId: input.workspaceOpenInput.documentId,
     joinSequence: input.joinSequence,
+    workspaceRoomName: createTextWorkspaceRoomName(
+      input.workspaceOpenInput.projectId,
+      input.workspaceOpenInput.documentId,
+      joinedSessionHandle.session.generation,
+    ),
     handle: joinedSessionHandle,
   });
 }
@@ -708,5 +771,6 @@ type ActiveTextSessionState = {
   projectId: string;
   documentId: string;
   joinSequence: number;
+  workspaceRoomName: string;
   handle: ActiveDocumentSessionHandle;
 };

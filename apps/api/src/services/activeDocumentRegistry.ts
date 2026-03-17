@@ -13,6 +13,7 @@ export type InitialDocumentState =
 export type ActiveDocumentSession = {
   projectId: string;
   documentId: string;
+  generation: number;
   clientCount: number;
   document: CollaborationDocument;
   serverVersion: number;
@@ -22,9 +23,11 @@ export type ActiveDocumentSession = {
 export type ActiveDocumentSessionView = Readonly<{
   projectId: string;
   documentId: string;
+  generation: number;
   clientCount: number;
   document: CollaborationDocument;
   serverVersion: number;
+  isInvalidated: boolean;
 }>;
 
 export type ActiveDocumentSessionHandle = {
@@ -52,7 +55,9 @@ export type ActiveDocumentRegistry = {
     projectId: string;
     documentId: string;
   }) => Promise<ActiveDocumentSessionHandle>;
-  invalidate: (input: { projectId: string; documentId: string }) => void;
+  invalidate: (input: { projectId: string; documentId: string }) => {
+    invalidatedGeneration: number;
+  };
 };
 
 export class ActiveDocumentSessionInvalidatedError extends Error {
@@ -118,7 +123,8 @@ export function createActiveDocumentRegistry({
     },
     invalidate: ({ projectId, documentId }) => {
       const sessionKey = createSessionKey(projectId, documentId);
-      const nextGeneration = getSessionGeneration(sessionKey) + 1;
+      const invalidatedGeneration = getSessionGeneration(sessionKey);
+      const nextGeneration = invalidatedGeneration + 1;
       const record = activeSessions.get(sessionKey);
       const pendingSession = pendingSessions.get(sessionKey);
 
@@ -132,6 +138,8 @@ export function createActiveDocumentRegistry({
       if (pendingSession) {
         pendingSessions.delete(sessionKey);
       }
+
+      return { invalidatedGeneration };
     },
   };
 
@@ -209,6 +217,7 @@ export function createActiveDocumentRegistry({
     const session: ActiveDocumentSession = {
       projectId: input.projectId,
       documentId: input.documentId,
+      generation: input.generation,
       clientCount: 0,
       document,
       serverVersion: initialState.serverVersion,
@@ -360,6 +369,9 @@ function createSessionView(
     get documentId() {
       return session.documentId;
     },
+    get generation() {
+      return session.generation;
+    },
     get clientCount() {
       return session.clientCount;
     },
@@ -368,6 +380,9 @@ function createSessionView(
     },
     get serverVersion() {
       return session.serverVersion;
+    },
+    get isInvalidated() {
+      return session.isInvalidated;
     },
   });
 }

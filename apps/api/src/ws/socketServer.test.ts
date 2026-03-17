@@ -11,6 +11,7 @@ import {
 } from "../services/activeDocumentRegistry.js";
 import { signToken } from "../services/auth.js";
 import { createCollaborationService } from "../services/collaboration.js";
+import { RealtimeDocumentSessionMismatchError } from "../services/realtimeDocument.js";
 import type {
   WorkspaceOpenResult,
   WorkspaceService,
@@ -21,7 +22,11 @@ import {
   createTestSocketServer,
   type TestSocketServer,
 } from "../test/helpers/socket.js";
-import { createWorkspaceRoomName, openWorkspace } from "./socketServer.js";
+import {
+  createTextWorkspaceRoomName,
+  createWorkspaceRoomName,
+  openWorkspace,
+} from "./socketServer.js";
 
 describe("socket server", () => {
   let socketServer: TestSocketServer | undefined;
@@ -597,9 +602,10 @@ describe("socket server", () => {
     const emittedEvents: Array<{ event: string; payload: unknown }> = [];
     const leaveCalls: string[] = [];
     let latestJoinSequence = 2;
-    let activeWorkspaceRoomName = createWorkspaceRoomName(
+    let activeWorkspaceRoomName = createTextWorkspaceRoomName(
       "project-123",
       "doc-first",
+      0,
     );
     const firstHandle = await createStaticActiveDocumentRegistry({
       "doc-first": {
@@ -614,6 +620,7 @@ describe("socket server", () => {
       projectId: "project-123",
       documentId: "doc-first",
       joinSequence: 1,
+      workspaceRoomName: activeWorkspaceRoomName,
       handle: firstHandle,
     };
     const socket = {
@@ -745,6 +752,7 @@ describe("socket server", () => {
           const session = {
             projectId: "project-123",
             documentId: "doc-456",
+            generation: 0,
             clientCount: 1,
             document: authoritativeDocument,
             serverVersion: 7,
@@ -757,7 +765,7 @@ describe("socket server", () => {
             leave: async () => {},
           };
         },
-        invalidate: () => {},
+        invalidate: () => ({ invalidatedGeneration: 0 }),
       },
     });
     const token = signToken("alice", testConfig.jwtSecret);
@@ -801,6 +809,7 @@ describe("socket server", () => {
       session: {
         projectId: "project-123",
         documentId: "doc-456",
+        generation: 0,
         clientCount: 1,
         document: staleDocument,
         serverVersion: 1,
@@ -814,6 +823,7 @@ describe("socket server", () => {
     const authoritativeSession = {
       projectId: "project-123",
       documentId: "doc-456",
+      generation: 1,
       clientCount: 1,
       document: authoritativeDocument,
       serverVersion: 9,
@@ -844,7 +854,7 @@ describe("socket server", () => {
       },
       activeDocumentRegistry: {
         join,
-        invalidate: () => {},
+        invalidate: () => ({ invalidatedGeneration: 0 }),
       },
     });
     const client = socketServer.connect(
@@ -1343,6 +1353,83 @@ describe("socket server", () => {
     ).toBe("\\section{Test} Revised");
   });
 
+  it("suppresses stale realtime:error when a queued doc.update loses authority after a document switch", async () => {
+    const updateStarted = createDeferred<void>();
+    const releaseFailure = createDeferred<void>();
+    socketServer = await createTestSocketServer({
+      realtimeDocumentService: {
+        applyUpdate: async () => {
+          updateStarted.resolve();
+          await releaseFailure.promise;
+          throw new RealtimeDocumentSessionMismatchError();
+        },
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      errorCount: number;
+      switchedDocumentId: string;
+    }>((resolve, reject) => {
+      let senderStateB64 = "";
+      let errorCount = 0;
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.on("doc.sync.response", async (payload) => {
+        if (payload.documentId === "doc-456") {
+          senderStateB64 = payload.stateB64;
+          sender.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: createIncrementalUpdateB64(
+              senderStateB64,
+              (document) => {
+                document.getText("content").insert(14, " Revised");
+              },
+            ),
+            clientUpdateId: "client-update-1",
+          });
+          await updateStarted.promise;
+          sender.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-second",
+          });
+          return;
+        }
+
+        if (payload.documentId !== "doc-second") {
+          return;
+        }
+
+        releaseFailure.resolve();
+        await waitForSocketFlush();
+        sender.close();
+        resolve({
+          errorCount,
+          switchedDocumentId: payload.documentId,
+        });
+      });
+
+      sender.on("realtime:error", () => {
+        errorCount += 1;
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        reject(error);
+      });
+    });
+
+    expect(result.switchedDocumentId).toBe("doc-second");
+    expect(result.errorCount).toBe(0);
+  });
+
   it("suppresses post-reset doc.update emits when snapshot_restore invalidates the session", async () => {
     const updateStarted = createDeferred<void>();
     const releaseAcceptedUpdate = createDeferred<void>();
@@ -1492,6 +1579,254 @@ describe("socket server", () => {
     expect(result.senderUpdateCount).toBe(0);
     expect(result.senderAckCount).toBe(0);
     expect(result.receiverUpdateCount).toBe(0);
+  });
+
+  it("suppresses stale realtime:error when snapshot_restore invalidates a queued doc.update", async () => {
+    const updateStarted = createDeferred<void>();
+    const releaseFailure = createDeferred<void>();
+    socketServer = await createTestSocketServer({
+      realtimeDocumentService: {
+        applyUpdate: async () => {
+          updateStarted.resolve();
+          await releaseFailure.promise;
+          throw new ActiveDocumentSessionInvalidatedError();
+        },
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      errorCount: number;
+      resetVersion: number;
+    }>((resolve, reject) => {
+      let senderStateB64 = "";
+      let errorCount = 0;
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.once("doc.sync.response", async (payload) => {
+        senderStateB64 = payload.stateB64;
+        sender.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(senderStateB64, (document) => {
+            document.getText("content").insert(14, " Revised");
+          }),
+          clientUpdateId: "client-update-1",
+        });
+        await updateStarted.promise;
+        await socketServer?.emitDocumentReset({
+          projectId: "project-123",
+          documentId: "doc-456",
+          reason: "snapshot_restore",
+          serverVersion: 9,
+        });
+      });
+
+      sender.once("doc.reset", async (payload) => {
+        releaseFailure.resolve();
+        await waitForSocketFlush();
+        sender.close();
+        resolve({
+          errorCount,
+          resetVersion: payload.serverVersion,
+        });
+      });
+
+      sender.on("realtime:error", () => {
+        errorCount += 1;
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        reject(error);
+      });
+    });
+
+    expect(result.resetVersion).toBe(9);
+    expect(result.errorCount).toBe(0);
+  });
+
+  it("does not broadcast post-reset doc.update events to sockets that have not rejoined", async () => {
+    const collaborationService = createCollaborationService();
+    let currentText = "\\section{Before}";
+    let currentVersion = 1;
+    const activeDocumentRegistry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: async () => ({
+        kind: "yjs-update",
+        update: createStateBytes(currentText),
+        serverVersion: currentVersion,
+      }),
+      persistOnIdle: async () => {},
+    });
+
+    socketServer = await createTestSocketServer({
+      workspaceService: {
+        openDocument: async ({ documentId }) => ({
+          workspace: createWorkspaceOpenedEvent(documentId),
+          initialSync: {
+            documentId,
+            yjsState: createStateBytes(currentText),
+            serverVersion: currentVersion,
+          },
+        }),
+      },
+      activeDocumentRegistry,
+      realtimeDocumentService: {
+        applyUpdate: async ({ update }) => ({
+          serverVersion: currentVersion + 1,
+          acceptedUpdate: update,
+        }),
+      },
+    });
+
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const staleReceiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      staleReceiverUpdateCount: number;
+      senderResetVersion: number;
+      staleReceiverResetVersion: number;
+      restoredSyncVersion: number;
+      senderUpdateVersion: number;
+    }>((resolve, reject) => {
+      let senderReady = false;
+      let receiverReady = false;
+      let resetTriggered = false;
+      let senderResetVersion: number | null = null;
+      let staleReceiverResetVersion: number | null = null;
+      let staleReceiverUpdateCount = 0;
+
+      const maybeReset = async () => {
+        if (!senderReady || !receiverReady || resetTriggered) {
+          return;
+        }
+
+        resetTriggered = true;
+        currentText = "\\section{Restored}";
+        currentVersion = 9;
+
+        await socketServer?.emitDocumentReset({
+          projectId: "project-123",
+          documentId: "doc-456",
+          reason: "snapshot_restore",
+          serverVersion: currentVersion,
+        });
+      };
+
+      const maybeRejoin = () => {
+        if (senderResetVersion === null || staleReceiverResetVersion === null) {
+          return;
+        }
+
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      };
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+      staleReceiver.once("connect", () => {
+        staleReceiver.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.on("doc.sync.response", async (payload) => {
+        if (payload.serverVersion === 1) {
+          senderReady = true;
+          await maybeReset();
+          return;
+        }
+
+        sender.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(
+            payload.stateB64,
+            (document) => {
+              document.getText("content").insert(18, " Revised");
+            },
+          ),
+          clientUpdateId: "client-update-1",
+        });
+      });
+      staleReceiver.once("doc.sync.response", async () => {
+        receiverReady = true;
+        await maybeReset();
+      });
+
+      sender.once("doc.reset", (payload) => {
+        senderResetVersion = payload.serverVersion;
+        maybeRejoin();
+      });
+      staleReceiver.once("doc.reset", (payload) => {
+        staleReceiverResetVersion = payload.serverVersion;
+        maybeRejoin();
+      });
+
+      staleReceiver.on("doc.update", () => {
+        staleReceiverUpdateCount += 1;
+      });
+      sender.once("doc.update", async (payload) => {
+        const senderUpdateVersion = payload.serverVersion;
+        await waitForSocketFlush();
+        sender.close();
+        staleReceiver.close();
+        resolve({
+          staleReceiverUpdateCount,
+          senderResetVersion: senderResetVersion ?? -1,
+          staleReceiverResetVersion: staleReceiverResetVersion ?? -1,
+          restoredSyncVersion: currentVersion,
+          senderUpdateVersion,
+        });
+      });
+      sender.once("realtime:error", (payload) => {
+        sender.close();
+        staleReceiver.close();
+        reject(new Error(`Unexpected sender realtime error: ${payload.code}`));
+      });
+      staleReceiver.once("realtime:error", (payload) => {
+        sender.close();
+        staleReceiver.close();
+        reject(
+          new Error(
+            `Unexpected stale receiver realtime error: ${payload.code}`,
+          ),
+        );
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        staleReceiver.close();
+        reject(error);
+      });
+      staleReceiver.once("connect_error", (error) => {
+        sender.close();
+        staleReceiver.close();
+        reject(error);
+      });
+    });
+
+    expect(result.senderResetVersion).toBe(9);
+    expect(result.staleReceiverResetVersion).toBe(9);
+    expect(result.restoredSyncVersion).toBe(9);
+    expect(result.senderUpdateVersion).toBe(10);
+    expect(result.staleReceiverUpdateCount).toBe(0);
   });
 
   it("rejects invalid doc.update payloads after join", async () => {
@@ -1678,6 +2013,7 @@ function createStaticActiveDocumentRegistry(
       const session = {
         projectId: "project-123",
         documentId,
+        generation: 0,
         clientCount: 1,
         document,
         serverVersion: documentState.serverVersion,
@@ -1694,7 +2030,7 @@ function createStaticActiveDocumentRegistry(
         },
       };
     },
-    invalidate: () => {},
+    invalidate: () => ({ invalidatedGeneration: 0 }),
   };
 }
 
