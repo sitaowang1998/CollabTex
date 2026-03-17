@@ -148,6 +148,8 @@ Behavior:
   is accepted
 - the current `apps/api` implementation also emits this to the sending socket,
   so every joined client applies the same authoritative accepted delta stream
+- the sender only receives this if it is still joined to that same active
+  document session when the accepted update reaches the transport emit step
 - echoes the sender-provided `clientUpdateId`
 - carries the authoritative accepted delta produced by the server, which may
   include conflict-retry reconciliation in addition to the sender's original
@@ -172,6 +174,8 @@ Behavior:
 - includes the authoritative post-accept server version
 - does not carry the accepted update payload; the sender receives that through
   its own `doc.update` event
+- if the socket has already switched away from that session before emit time,
+  the ack is suppressed
 
 ### `doc.reset`
 
@@ -190,6 +194,8 @@ Behavior:
 - for `reason: "snapshot_restore"`, the server invalidates the previous active
   text session before broadcasting the reset, and clients are expected to
   rejoin to obtain the restored authoritative state
+- accepted updates from that invalidated session are not emitted after the
+  reset boundary
 - includes the server version clients should treat as authoritative after the
   reset
 - `serverVersion: 0` is reserved for resets where the document no longer has a

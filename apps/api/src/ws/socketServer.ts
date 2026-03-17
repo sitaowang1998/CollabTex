@@ -351,6 +351,17 @@ async function applyDocumentUpdate(
     getActiveTextSession: () => ActiveTextSessionState | null;
   },
 ) {
+  const isCurrentSession = () => {
+    const currentSession = input.getActiveTextSession();
+
+    return (
+      currentSession?.handle === input.sessionState.handle &&
+      currentSession.projectId === input.sessionState.projectId &&
+      currentSession.documentId === input.sessionState.documentId &&
+      currentSession.joinSequence === input.sessionState.joinSequence
+    );
+  };
+
   try {
     const result = await realtimeDocumentService.applyUpdate({
       projectId: input.sessionState.projectId,
@@ -358,16 +369,7 @@ async function applyDocumentUpdate(
       userId: socket.data.userId ?? "",
       sessionHandle: input.sessionState.handle,
       update: input.request.update,
-      isCurrentSession: () => {
-        const currentSession = input.getActiveTextSession();
-
-        return (
-          currentSession?.handle === input.sessionState.handle &&
-          currentSession.projectId === input.sessionState.projectId &&
-          currentSession.documentId === input.sessionState.documentId &&
-          currentSession.joinSequence === input.sessionState.joinSequence
-        );
-      },
+      isCurrentSession,
     });
     const updateEvent = {
       documentId: input.request.documentId,
@@ -375,21 +377,41 @@ async function applyDocumentUpdate(
       clientUpdateId: input.request.clientUpdateId,
       serverVersion: result.serverVersion,
     };
+    const emitPlan = await input.sessionState.handle.runExclusive(
+      async (session) => {
+        if (session.isInvalidated) {
+          return {
+            shouldBroadcastToPeers: false,
+            shouldEmitToSender: false,
+          };
+        }
 
-    socket.emit("doc.update", updateEvent);
-    socket
-      .to(
-        createWorkspaceRoomName(
-          input.sessionState.projectId,
-          input.request.documentId,
-        ),
-      )
-      .emit("doc.update", updateEvent);
-    socket.emit("doc.update.ack", {
-      documentId: input.request.documentId,
-      clientUpdateId: input.request.clientUpdateId,
-      serverVersion: result.serverVersion,
-    });
+        return {
+          shouldBroadcastToPeers: true,
+          shouldEmitToSender: isCurrentSession(),
+        };
+      },
+    );
+
+    if (emitPlan.shouldBroadcastToPeers) {
+      socket
+        .to(
+          createWorkspaceRoomName(
+            input.sessionState.projectId,
+            input.request.documentId,
+          ),
+        )
+        .emit("doc.update", updateEvent);
+    }
+
+    if (emitPlan.shouldEmitToSender) {
+      socket.emit("doc.update", updateEvent);
+      socket.emit("doc.update.ack", {
+        documentId: input.request.documentId,
+        clientUpdateId: input.request.clientUpdateId,
+        serverVersion: result.serverVersion,
+      });
+    }
   } catch (error) {
     if (isUnexpectedDocumentUpdateError(error)) {
       console.error(

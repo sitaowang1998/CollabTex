@@ -1190,6 +1190,310 @@ describe("socket server", () => {
     ).toBe("\\section{Test} Accepted");
   });
 
+  it("suppresses sender update events after the socket switches documents while the write is pending", async () => {
+    const updateStarted = createDeferred<void>();
+    const releaseAcceptedUpdate = createDeferred<void>();
+    socketServer = await createTestSocketServer({
+      realtimeDocumentService: {
+        applyUpdate: async ({ update }) => {
+          updateStarted.resolve();
+          await releaseAcceptedUpdate.promise;
+
+          return {
+            serverVersion: 2,
+            acceptedUpdate: update,
+          };
+        },
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      receiverUpdate: {
+        documentId: string;
+        updateB64: string;
+        clientUpdateId: string;
+        serverVersion: number;
+      };
+      senderStateB64: string;
+      senderUpdateCount: number;
+      senderAckCount: number;
+    }>((resolve, reject) => {
+      let senderStateB64 = "";
+      let senderReady = false;
+      let receiverReady = false;
+      let senderSwitched = false;
+      let senderUpdateCount = 0;
+      let senderAckCount = 0;
+
+      const maybeSendUpdate = () => {
+        if (!senderReady || !receiverReady || !senderStateB64) {
+          return;
+        }
+
+        void (async () => {
+          sender.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: createIncrementalUpdateB64(
+              senderStateB64,
+              (document) => {
+                document.getText("content").insert(14, " Revised");
+              },
+            ),
+            clientUpdateId: "client-update-1",
+          });
+          await updateStarted.promise;
+          sender.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-second",
+          });
+        })();
+      };
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+      receiver.once("connect", () => {
+        receiver.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.on("doc.sync.response", (payload) => {
+        if (payload.documentId === "doc-456") {
+          senderReady = true;
+          senderStateB64 = payload.stateB64;
+          maybeSendUpdate();
+          return;
+        }
+
+        if (payload.documentId === "doc-second") {
+          senderSwitched = true;
+          releaseAcceptedUpdate.resolve();
+        }
+      });
+      receiver.once("doc.sync.response", () => {
+        receiverReady = true;
+        maybeSendUpdate();
+      });
+
+      sender.on("doc.update", () => {
+        senderUpdateCount += 1;
+      });
+      sender.on("doc.update.ack", () => {
+        senderAckCount += 1;
+      });
+      receiver.once("doc.update", async (payload) => {
+        if (!senderSwitched) {
+          reject(new Error("Expected sender to switch before peer update"));
+          return;
+        }
+
+        await waitForSocketFlush();
+        sender.close();
+        receiver.close();
+        resolve({
+          receiverUpdate: payload,
+          senderStateB64,
+          senderUpdateCount,
+          senderAckCount,
+        });
+      });
+
+      sender.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(new Error(`Unexpected sender realtime error: ${payload.code}`));
+      });
+      receiver.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(
+          new Error(`Unexpected receiver realtime error: ${payload.code}`),
+        );
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+      receiver.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+    });
+
+    expect(result.senderUpdateCount).toBe(0);
+    expect(result.senderAckCount).toBe(0);
+    expect(
+      applyUpdateToStateB64(
+        result.senderStateB64,
+        result.receiverUpdate.updateB64,
+      ),
+    ).toBe("\\section{Test} Revised");
+  });
+
+  it("suppresses post-reset doc.update emits when snapshot_restore invalidates the session", async () => {
+    const updateStarted = createDeferred<void>();
+    const releaseAcceptedUpdate = createDeferred<void>();
+    socketServer = await createTestSocketServer({
+      realtimeDocumentService: {
+        applyUpdate: async ({ update }) => {
+          updateStarted.resolve();
+          await releaseAcceptedUpdate.promise;
+
+          return {
+            serverVersion: 2,
+            acceptedUpdate: update,
+          };
+        },
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      senderUpdateCount: number;
+      senderAckCount: number;
+      receiverUpdateCount: number;
+      senderResetVersion: number;
+      receiverResetVersion: number;
+    }>((resolve, reject) => {
+      let senderStateB64 = "";
+      let senderReady = false;
+      let receiverReady = false;
+      let senderUpdateCount = 0;
+      let senderAckCount = 0;
+      let receiverUpdateCount = 0;
+      let senderResetVersion: number | null = null;
+      let receiverResetVersion: number | null = null;
+
+      const maybeSendUpdate = async () => {
+        if (!senderReady || !receiverReady || !senderStateB64) {
+          return;
+        }
+
+        sender.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(senderStateB64, (document) => {
+            document.getText("content").insert(14, " Revised");
+          }),
+          clientUpdateId: "client-update-1",
+        });
+
+        await updateStarted.promise;
+        await socketServer?.emitDocumentReset({
+          projectId: "project-123",
+          documentId: "doc-456",
+          reason: "snapshot_restore",
+          serverVersion: 9,
+        });
+      };
+
+      const resolveIfReady = async () => {
+        if (senderResetVersion === null || receiverResetVersion === null) {
+          return;
+        }
+
+        releaseAcceptedUpdate.resolve();
+        await waitForSocketFlush();
+        sender.close();
+        receiver.close();
+        resolve({
+          senderUpdateCount,
+          senderAckCount,
+          receiverUpdateCount,
+          senderResetVersion,
+          receiverResetVersion,
+        });
+      };
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+      receiver.once("connect", () => {
+        receiver.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.once("doc.sync.response", async (payload) => {
+        senderReady = true;
+        senderStateB64 = payload.stateB64;
+        await maybeSendUpdate();
+      });
+      receiver.once("doc.sync.response", async () => {
+        receiverReady = true;
+        await maybeSendUpdate();
+      });
+
+      sender.on("doc.update", () => {
+        senderUpdateCount += 1;
+      });
+      sender.on("doc.update.ack", () => {
+        senderAckCount += 1;
+      });
+      receiver.on("doc.update", () => {
+        receiverUpdateCount += 1;
+      });
+      sender.once("doc.reset", async (payload) => {
+        senderResetVersion = payload.serverVersion;
+        await resolveIfReady();
+      });
+      receiver.once("doc.reset", async (payload) => {
+        receiverResetVersion = payload.serverVersion;
+        await resolveIfReady();
+      });
+
+      sender.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(new Error(`Unexpected sender realtime error: ${payload.code}`));
+      });
+      receiver.once("realtime:error", (payload) => {
+        sender.close();
+        receiver.close();
+        reject(
+          new Error(`Unexpected receiver realtime error: ${payload.code}`),
+        );
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+      receiver.once("connect_error", (error) => {
+        sender.close();
+        receiver.close();
+        reject(error);
+      });
+    });
+
+    expect(result.senderResetVersion).toBe(9);
+    expect(result.receiverResetVersion).toBe(9);
+    expect(result.senderUpdateCount).toBe(0);
+    expect(result.senderAckCount).toBe(0);
+    expect(result.receiverUpdateCount).toBe(0);
+  });
+
   it("rejects invalid doc.update payloads after join", async () => {
     socketServer = await createTestSocketServer();
     const token = signToken("alice", testConfig.jwtSecret);
