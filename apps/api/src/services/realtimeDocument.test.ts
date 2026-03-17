@@ -76,6 +76,90 @@ describe("realtime document service", () => {
     ).toBe("Hello world");
   });
 
+  it("keeps accepted-context computation inside the same exclusive queue turn", async () => {
+    const collaborationService = createCollaborationService();
+    const documentRepository = createDocumentRepository();
+    const currentTextStateService = createCurrentTextStateService();
+    const service = createRealtimeDocumentService({
+      collaborationService,
+      projectAccessService: createProjectAccessService(),
+      documentRepository,
+      currentTextStateService,
+    });
+    const storedDocument = createStoredDocument();
+    const initialState = createStoredDocumentTextState("Hello", 1);
+    const firstPersistedState = createStoredDocumentTextStateFromUpdate(
+      applyMutationToState(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
+      }),
+      2,
+    );
+    const secondPersistedState = createStoredDocumentTextStateFromUpdate(
+      applyMutationToState(firstPersistedState.yjsState, (document) => {
+        document.getText("content").insert(11, " again");
+      }),
+      3,
+    );
+    const firstAcceptedContextStarted = createDeferred<void>();
+    const releaseFirstAcceptedContext = createDeferred<void>();
+
+    documentRepository.findById.mockResolvedValue(storedDocument);
+    currentTextStateService.persist
+      .mockResolvedValueOnce(firstPersistedState)
+      .mockResolvedValueOnce(secondPersistedState);
+    const sessionHandle = await createSessionHandle(initialState);
+
+    const firstUpdate = service.applyUpdate({
+      projectId: "project-1",
+      documentId: storedDocument.id,
+      userId: "user-1",
+      sessionHandle,
+      update: createIncrementalUpdate(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
+      }),
+      isCurrentSession: () => true,
+      buildAcceptedContext: async () => {
+        firstAcceptedContextStarted.resolve();
+        await releaseFirstAcceptedContext.promise;
+
+        return { acceptedOrder: 1 };
+      },
+    });
+
+    await firstAcceptedContextStarted.promise;
+
+    const secondUpdate = service.applyUpdate({
+      projectId: "project-1",
+      documentId: storedDocument.id,
+      userId: "user-1",
+      sessionHandle,
+      update: createIncrementalUpdate(
+        firstPersistedState.yjsState,
+        (document) => {
+          document.getText("content").insert(11, " again");
+        },
+      ),
+      isCurrentSession: () => true,
+      buildAcceptedContext: () => ({ acceptedOrder: 2 }),
+    });
+
+    await Promise.resolve();
+
+    expect(currentTextStateService.persist).toHaveBeenCalledTimes(1);
+
+    releaseFirstAcceptedContext.resolve();
+
+    await expect(firstUpdate).resolves.toMatchObject({
+      serverVersion: 2,
+      acceptedContext: { acceptedOrder: 1 },
+    });
+    await expect(secondUpdate).resolves.toMatchObject({
+      serverVersion: 3,
+      acceptedContext: { acceptedOrder: 2 },
+    });
+    expect(currentTextStateService.persist).toHaveBeenCalledTimes(2);
+  });
+
   it("reloads durable state and retries when the compare-and-swap write conflicts", async () => {
     const collaborationService = createCollaborationService();
     const documentRepository = createDocumentRepository();

@@ -1048,9 +1048,15 @@ describe("socket server", () => {
     let acceptedUpdateB64 = "";
     socketServer = await createTestSocketServer({
       realtimeDocumentService: {
-        applyUpdate: async () => ({
+        applyUpdate: async ({ buildAcceptedContext }) => ({
           serverVersion: 9,
           acceptedUpdate: Buffer.from(acceptedUpdateB64, "base64"),
+          acceptedContext: buildAcceptedContext
+            ? await buildAcceptedContext({
+                session: { isInvalidated: false },
+                isCurrentSession: true,
+              })
+            : undefined,
         }),
       },
     });
@@ -1205,13 +1211,23 @@ describe("socket server", () => {
     const releaseAcceptedUpdate = createDeferred<void>();
     socketServer = await createTestSocketServer({
       realtimeDocumentService: {
-        applyUpdate: async ({ update }) => {
+        applyUpdate: async ({
+          update,
+          isCurrentSession,
+          buildAcceptedContext,
+        }) => {
           updateStarted.resolve();
           await releaseAcceptedUpdate.promise;
 
           return {
             serverVersion: 2,
             acceptedUpdate: update,
+            acceptedContext: buildAcceptedContext
+              ? await buildAcceptedContext({
+                  session: { isInvalidated: false },
+                  isCurrentSession: isCurrentSession(),
+                })
+              : undefined,
           };
         },
       },
@@ -1435,13 +1451,19 @@ describe("socket server", () => {
     const releaseAcceptedUpdate = createDeferred<void>();
     socketServer = await createTestSocketServer({
       realtimeDocumentService: {
-        applyUpdate: async ({ update }) => {
+        applyUpdate: async ({ update, buildAcceptedContext }) => {
           updateStarted.resolve();
           await releaseAcceptedUpdate.promise;
 
           return {
             serverVersion: 2,
             acceptedUpdate: update,
+            acceptedContext: buildAcceptedContext
+              ? await buildAcceptedContext({
+                  session: { isInvalidated: true },
+                  isCurrentSession: true,
+                })
+              : undefined,
           };
         },
       },
@@ -1750,9 +1772,15 @@ describe("socket server", () => {
       },
       activeDocumentRegistry,
       realtimeDocumentService: {
-        applyUpdate: async ({ update }) => ({
+        applyUpdate: async ({ update, buildAcceptedContext }) => ({
           serverVersion: currentVersion + 1,
           acceptedUpdate: update,
+          acceptedContext: buildAcceptedContext
+            ? await buildAcceptedContext({
+                session: { isInvalidated: false },
+                isCurrentSession: true,
+              })
+            : undefined,
         }),
       },
     });
@@ -1936,6 +1964,45 @@ describe("socket server", () => {
     expect(errorPayload).toEqual({
       code: "INVALID_REQUEST",
       message: "updateB64 must be a valid base64-encoded Yjs update",
+    });
+  });
+
+  it("rejects decoded doc.update payloads that are not valid Yjs updates", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<{ code: string; message: string }>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", () => {
+          client.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: Buffer.from([1, 2, 3]).toString("base64"),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "update payload is not a valid Yjs update",
     });
   });
 

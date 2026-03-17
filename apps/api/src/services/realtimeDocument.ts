@@ -1,4 +1,5 @@
 import {
+  type ActiveDocumentSession,
   ActiveDocumentSessionInvalidatedError,
   type ActiveDocumentSessionHandle,
 } from "./activeDocumentRegistry.js";
@@ -10,20 +11,29 @@ import {
 import { DOCUMENT_WRITE_ROLES, type DocumentRepository } from "./document.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 
-export type RealtimeDocumentUpdateResult = {
+export type RealtimeDocumentUpdateResult<AcceptedContext = undefined> = {
   serverVersion: number;
   acceptedUpdate: Uint8Array;
+  acceptedContext: AcceptedContext;
+};
+
+export type RealtimeDocumentUpdateInput<AcceptedContext = undefined> = {
+  projectId: string;
+  documentId: string;
+  userId: string;
+  sessionHandle: Pick<ActiveDocumentSessionHandle, "runExclusive">;
+  update: Uint8Array;
+  isCurrentSession: () => boolean;
+  buildAcceptedContext?: (input: {
+    session: Pick<ActiveDocumentSession, "isInvalidated">;
+    isCurrentSession: boolean;
+  }) => AcceptedContext | Promise<AcceptedContext>;
 };
 
 export type RealtimeDocumentService = {
-  applyUpdate: (input: {
-    projectId: string;
-    documentId: string;
-    userId: string;
-    sessionHandle: Pick<ActiveDocumentSessionHandle, "runExclusive">;
-    update: Uint8Array;
-    isCurrentSession: () => boolean;
-  }) => Promise<RealtimeDocumentUpdateResult>;
+  applyUpdate: <AcceptedContext = undefined>(
+    input: RealtimeDocumentUpdateInput<AcceptedContext>,
+  ) => Promise<RealtimeDocumentUpdateResult<AcceptedContext>>;
 };
 
 export class RealtimeDocumentSessionMismatchError extends Error {
@@ -55,15 +65,20 @@ export function createRealtimeDocumentService({
   >;
 }): RealtimeDocumentService {
   return {
-    applyUpdate: async ({
-      projectId,
-      documentId,
-      userId,
-      sessionHandle,
-      update,
-      isCurrentSession,
-    }) =>
-      sessionHandle.runExclusive(async (session) => {
+    applyUpdate: async <AcceptedContext = undefined>(
+      input: RealtimeDocumentUpdateInput<AcceptedContext>,
+    ) => {
+      const {
+        projectId,
+        documentId,
+        userId,
+        sessionHandle,
+        update,
+        isCurrentSession,
+        buildAcceptedContext,
+      } = input;
+
+      return sessionHandle.runExclusive(async (session) => {
         const baseState = session.document.exportUpdate();
 
         while (true) {
@@ -109,10 +124,17 @@ export function createRealtimeDocumentService({
             });
 
             replaceSessionDocument(session, workingDocument, persisted.version);
+            const acceptedContext = buildAcceptedContext
+              ? await buildAcceptedContext({
+                  session,
+                  isCurrentSession: isCurrentSession(),
+                })
+              : (undefined as AcceptedContext);
 
             return {
               serverVersion: persisted.version,
               acceptedUpdate,
+              acceptedContext,
             };
           } catch (error) {
             workingDocument.destroy();
@@ -135,7 +157,8 @@ export function createRealtimeDocumentService({
             );
           }
         }
-      }),
+      });
+    },
   };
 }
 

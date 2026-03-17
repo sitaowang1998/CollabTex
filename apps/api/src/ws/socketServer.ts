@@ -397,6 +397,13 @@ async function applyDocumentUpdate(
       sessionHandle: input.sessionState.handle,
       update: input.request.update,
       isCurrentSession,
+      buildAcceptedContext: ({
+        session,
+        isCurrentSession: isSenderCurrent,
+      }) => ({
+        shouldBroadcastToPeers: !session.isInvalidated,
+        shouldEmitToSender: isSenderCurrent && !session.isInvalidated,
+      }),
     });
     const updateEvent = {
       documentId: input.request.documentId,
@@ -404,29 +411,14 @@ async function applyDocumentUpdate(
       clientUpdateId: input.request.clientUpdateId,
       serverVersion: result.serverVersion,
     };
-    const emitPlan = await input.sessionState.handle.runExclusive(
-      async (session) => {
-        if (session.isInvalidated) {
-          return {
-            shouldBroadcastToPeers: false,
-            shouldEmitToSender: false,
-          };
-        }
 
-        return {
-          shouldBroadcastToPeers: true,
-          shouldEmitToSender: isCurrentSession(),
-        };
-      },
-    );
-
-    if (emitPlan.shouldBroadcastToPeers) {
+    if (result.acceptedContext.shouldBroadcastToPeers) {
       socket
         .to(input.sessionState.workspaceRoomName)
         .emit("doc.update", updateEvent);
     }
 
-    if (emitPlan.shouldEmitToSender) {
+    if (result.acceptedContext.shouldEmitToSender) {
       socket.emit("doc.update", updateEvent);
       socket.emit("doc.update.ack", {
         documentId: input.request.documentId,
@@ -628,7 +620,7 @@ function mapDocumentUpdateError(error: unknown): WorkspaceErrorEvent {
           ? "socket is not joined to this document"
           : error instanceof ActiveDocumentSessionInvalidatedError
             ? "socket session is no longer current"
-            : "updateB64 must be a valid base64-encoded Yjs update",
+            : "update payload is not a valid Yjs update",
     };
   }
 

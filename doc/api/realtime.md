@@ -157,6 +157,8 @@ Behavior:
   include conflict-retry reconciliation in addition to the sender's original
   client delta
 - includes the authoritative post-accept server version
+- accepted `doc.update` events are emitted in the same order the server
+  accepted them for that document session
 - clients that received `doc.reset` but have not rejoined do not receive later
   incremental updates from the new text session generation
 - delivered to all joined project members, including `commenter` and `reader`
@@ -240,8 +242,8 @@ Behavior:
   `realtime:error`, because that invalidated session is still the socket's
   current session and the client must explicitly rejoin
 - `doc.update` failures map as:
-  - `INVALID_REQUEST` for malformed payloads, invalid Yjs/base64 payloads, and
-    socket/document mismatches
+  - `INVALID_REQUEST` for malformed payloads, invalid base64, invalid decoded
+    Yjs update payloads, and socket/document mismatches
   - `FORBIDDEN` for lost membership or missing write role
   - `NOT_FOUND` for missing or non-text documents
   - `UNAVAILABLE` for unexpected realtime persistence failures
