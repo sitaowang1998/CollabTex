@@ -19,8 +19,12 @@ import { createCollaborationService } from "./services/collaboration.js";
 import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
+import { createActiveDocumentIdleReconciler } from "./services/activeDocumentIdleReconciler.js";
+import { createActiveDocumentRegistry } from "./services/activeDocumentRegistry.js";
+import { createActiveDocumentStateLoader } from "./services/activeDocumentStateLoader.js";
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
+import { createRealtimeDocumentService } from "./services/realtimeDocument.js";
 import {
   createSnapshotService,
   type SnapshotResetPublisher,
@@ -85,6 +89,17 @@ async function main() {
       snapshotService,
       collaborationService,
     });
+    const activeDocumentRegistry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: createActiveDocumentStateLoader({
+        documentRepository,
+        currentTextStateService,
+      }),
+      persistOnIdle: createActiveDocumentIdleReconciler({
+        documentTextStateRepository,
+        currentTextStateService,
+      }),
+    });
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
       projectLookup: projectRepository,
@@ -134,8 +149,18 @@ async function main() {
         documentRepository,
         currentTextStateService,
       }),
+      activeDocumentRegistry,
+      realtimeDocumentService: createRealtimeDocumentService({
+        collaborationService,
+        projectAccessService,
+        documentRepository,
+        currentTextStateService,
+      }),
     });
-    resetPublisher = createSocketDocumentResetPublisher(io);
+    resetPublisher = createSocketDocumentResetPublisher(
+      io,
+      activeDocumentRegistry,
+    );
 
     installShutdownHandlers({
       server,

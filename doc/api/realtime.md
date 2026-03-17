@@ -21,10 +21,10 @@ contract stays stable while the later Yjs-backed implementation slices land.
 - `admin`, `editor`, `commenter`, and `reader` may join a workspace
 - the shared contract reserves `doc.sync.request` for joined project members,
   but the current `apps/api` transport does not handle that event yet
-- the shared contract also reserves `doc.update` / `doc.update.ack`, but the
-  current `apps/api` transport does not process or emit those events yet
-- `commenter` and `reader` are intended to remain read-only when the update
-  transport is wired, and must not be allowed to send `doc.update`
+- `admin` and `editor` may send `doc.update` after joining the matching text
+  workspace
+- `commenter` and `reader` remain read-only and receive `FORBIDDEN` if they
+  send `doc.update`
 - Project membership is still required for all workspace and document events
 
 ## Client To Server Events
@@ -77,11 +77,8 @@ Validation behavior:
 - `documentId` must be a non-empty string
 - `updateB64` must be a non-empty base64-encoded Yjs update payload
 - `clientUpdateId` must be a non-empty client-generated string
-- reserved in shared types, but not yet processed by the current `apps/api`
-  socket transport
 - valid only after the socket has joined the matching workspace/document
-- intended write access is limited to `admin` and `editor` once the update path
-  is wired
+- write access is limited to `admin` and `editor`
 
 ## Server To Client Events
 
@@ -126,7 +123,13 @@ Behavior:
 - emitted automatically after a successful text `workspace:join`
 - the current `apps/api` implementation does not emit this in response to
   `doc.sync.request` yet because that event is not handled
-- contains the full encoded CRDT state for the active document
+- contains the full encoded CRDT state from the authoritative joined active
+  session after any earlier queued mutations have completed
+- successful text joins attach the socket to the current generation-scoped
+  text room for that active session
+- snapshot-restore resets invalidate cached active sessions first, so a later
+  rejoin sync reloads restored durable state instead of reusing stale
+  pre-reset in-memory state
 - includes the current durable document version on the server
 - delivered to any joined project member, including `commenter` and `reader`
 
@@ -143,12 +146,21 @@ Behavior:
 
 Behavior:
 
-- reserved in shared types, but not yet emitted by the current `apps/api`
-  socket transport
-- emitted to other clients joined to the same active document after a valid
-  update is accepted once the update path is wired
+- emitted to joined clients on the same active document session generation
+  after a valid update is accepted
+- the current `apps/api` implementation also emits this to the sending socket,
+  so every joined client applies the same authoritative accepted delta stream
+- the sender only receives this if it is still joined to that same active
+  document session when the accepted update reaches the transport emit step
 - echoes the sender-provided `clientUpdateId`
+- carries the authoritative accepted delta produced by the server, which may
+  include conflict-retry reconciliation in addition to the sender's original
+  client delta
 - includes the authoritative post-accept server version
+- accepted `doc.update` events are emitted in the same order the server
+  accepted them for that document session
+- clients that received `doc.reset` but have not rejoined do not receive later
+  incremental updates from the new text session generation
 - delivered to all joined project members, including `commenter` and `reader`
 
 ### `doc.update.ack`
@@ -163,12 +175,13 @@ Behavior:
 
 Behavior:
 
-- reserved in shared types, but not yet emitted by the current `apps/api`
-  socket transport
-- emitted only to the socket that sent the accepted `doc.update` once the
-  update path is wired
+- emitted only to the socket that sent the accepted `doc.update`
 - confirms which client update the server accepted
 - includes the authoritative post-accept server version
+- does not carry the accepted update payload; the sender receives that through
+  its own `doc.update` event
+- if the socket has already switched away from that session before emit time,
+  the ack is suppressed
 
 ### `doc.reset`
 
@@ -184,6 +197,13 @@ Behavior:
 
 - emitted when the server needs clients to discard local incremental state and
   re-sync the document
+- for `reason: "snapshot_restore"`, the server invalidates the previous active
+  text session before broadcasting the reset, and clients are expected to
+  rejoin to obtain the restored authoritative state
+- the reset is broadcast to the invalidated text-session generation, and
+  sockets stay isolated from the next generation until they explicitly rejoin
+- accepted updates from that invalidated session are not emitted after the
+  reset boundary
 - includes the server version clients should treat as authoritative after the
   reset
 - `serverVersion: 0` is reserved for resets where the document no longer has a
@@ -215,6 +235,18 @@ Behavior:
 - examples include invalid `workspace:join` payloads, invalid `doc.update`
   payloads, document/session mismatches, and read-only members attempting to
   send `doc.update`
+- stale queued `doc.update` failures that lose authority because the socket
+  switched documents or a reset invalidated the old session are suppressed
+  instead of being emitted into the socket's newer workspace context
+- a fresh `doc.update` sent after `doc.reset` but before rejoin still receives
+  `realtime:error`, because that invalidated session is still the socket's
+  current session and the client must explicitly rejoin
+- `doc.update` failures map as:
+  - `INVALID_REQUEST` for malformed payloads, invalid base64, invalid decoded
+    Yjs update payloads, and socket/document mismatches
+  - `FORBIDDEN` for lost membership or missing write role
+  - `NOT_FOUND` for missing or non-text documents
+  - `UNAVAILABLE` for unexpected realtime persistence failures
 
 ## Deferred From This Change
 

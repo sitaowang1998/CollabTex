@@ -175,6 +175,47 @@ describe("collaboration service", () => {
       InvalidCollaborationUpdateError,
     );
   });
+
+  it("derives an incremental update between two authoritative states", () => {
+    const service = createCollaborationService();
+    const fromDocument = track(
+      openedDocuments,
+      service.createDocumentFromText("Hello"),
+    );
+    const toDocument = track(
+      openedDocuments,
+      service.createDocumentFromUpdate(fromDocument.exportUpdate()),
+    );
+    const replica = track(
+      openedDocuments,
+      service.createDocumentFromUpdate(fromDocument.exportUpdate()),
+    );
+    const sourceDocument = new Y.Doc();
+
+    try {
+      Y.applyUpdate(sourceDocument, fromDocument.exportUpdate());
+      toDocument.applyUpdate(
+        createIncrementalUpdate(
+          sourceDocument,
+          fromDocument.exportUpdate(),
+          (document) => {
+            document.getText("content").insert(5, " brave world");
+          },
+        ),
+      );
+
+      replica.applyUpdate(
+        service.diffUpdates({
+          fromUpdate: fromDocument.exportUpdate(),
+          toUpdate: toDocument.exportUpdate(),
+        }),
+      );
+
+      expect(replica.getText()).toBe("Hello brave world");
+    } finally {
+      sourceDocument.destroy();
+    }
+  });
 });
 
 function createIncrementalUpdate(

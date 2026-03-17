@@ -34,6 +34,7 @@ describe("active document state loader", () => {
     ).resolves.toEqual({
       kind: "yjs-update",
       update: Uint8Array.from([1, 2, 3]),
+      serverVersion: 1,
     });
     expect(currentTextStateService.loadOrHydrate).toHaveBeenCalledWith(
       document,
