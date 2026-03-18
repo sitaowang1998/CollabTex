@@ -2824,7 +2824,8 @@ function createStaticActiveDocumentRegistry(
       };
     },
     invalidate: () => ({ invalidatedGeneration: 0 }),
-    drain: async () => ({ timedOut: false, failedCount: 0 }),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    drain: async (timeoutMs: number) => ({ timedOut: false, failedCount: 0 }),
   };
 }
 

@@ -146,47 +146,74 @@ export function createActiveDocumentRegistry({
       return { invalidatedGeneration };
     },
     drain: async (timeoutMs: number) => {
-      const work: Promise<void | undefined>[] = [];
+      const deadline = Date.now() + timeoutMs;
+      let totalFailedCount = 0;
+      const seen = new Set<Promise<unknown>>();
 
-      for (const record of activeSessions.values()) {
-        work.push(record.pendingMutationOutcome);
-        if (record.closePromise) {
-          work.push(record.closePromise.catch(() => undefined));
+      while (true) {
+        const work: Promise<void | undefined>[] = [];
+
+        for (const record of activeSessions.values()) {
+          if (!seen.has(record.pendingMutationOutcome)) {
+            seen.add(record.pendingMutationOutcome);
+            work.push(record.pendingMutationOutcome);
+          }
+          if (record.closePromise && !seen.has(record.closePromise)) {
+            seen.add(record.closePromise);
+            work.push(record.closePromise);
+          }
         }
-      }
 
-      for (const record of pendingSessions.values()) {
-        work.push(
-          record.promise.then(
-            (r) => r.pendingMutationOutcome,
-            () => undefined,
-          ),
-        );
-      }
+        for (const record of pendingSessions.values()) {
+          if (!seen.has(record.promise)) {
+            seen.add(record.promise);
+            work.push(
+              record.promise.then(
+                (r) => r.pendingMutationOutcome,
+                () => undefined,
+              ),
+            );
+          }
+        }
 
-      if (work.length === 0) return { timedOut: false, failedCount: 0 };
-      const allDone = Promise.allSettled(work).then((results) => {
-        const failures = results.filter((r) => r.status === "rejected");
-        if (failures.length > 0) {
-          console.error(
-            `drain: ${failures.length}/${results.length} in-flight mutations failed`,
+        if (work.length === 0)
+          return { timedOut: false, failedCount: totalFailedCount };
+
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          console.warn(
+            `drain: timed out after ${timeoutMs}ms with ${work.length} pending operations`,
           );
+          return { timedOut: true, failedCount: totalFailedCount };
         }
-        return { done: true as const, failedCount: failures.length };
-      });
-      let timer: ReturnType<typeof setTimeout>;
-      const timeout = new Promise<"timeout">((resolve) => {
-        timer = setTimeout(() => resolve("timeout"), timeoutMs);
-      });
-      const outcome = await Promise.race([allDone, timeout]);
-      clearTimeout(timer!);
-      if (outcome === "timeout") {
-        console.warn(
-          `drain: timed out after ${timeoutMs}ms with ${work.length} pending mutations`,
-        );
-        return { timedOut: true, failedCount: 0 };
+
+        const allDone = Promise.allSettled(work).then((results) => {
+          const failures = results.filter((r) => r.status === "rejected");
+          if (failures.length > 0) {
+            console.error(
+              `drain: ${failures.length}/${results.length} in-flight operations failed`,
+            );
+          }
+          return failures.length;
+        });
+
+        let timer: ReturnType<typeof setTimeout>;
+        const timeout = new Promise<"timeout">((resolve) => {
+          timer = setTimeout(() => resolve("timeout"), remainingMs);
+        });
+
+        const outcome = await Promise.race([allDone, timeout]);
+        clearTimeout(timer!);
+
+        if (outcome === "timeout") {
+          console.warn(
+            `drain: timed out after ${timeoutMs}ms with ${work.length} pending operations`,
+          );
+          return { timedOut: true, failedCount: totalFailedCount };
+        }
+
+        totalFailedCount += outcome;
       }
-      return { timedOut: false, failedCount: outcome.failedCount };
     },
   };
 

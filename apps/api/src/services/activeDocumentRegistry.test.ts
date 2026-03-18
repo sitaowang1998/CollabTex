@@ -741,7 +741,7 @@ describe("active document registry", () => {
 
     expect(drainResult).toEqual({ timedOut: false, failedCount: 1 });
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("in-flight mutations failed"),
+      expect.stringContaining("in-flight operations failed"),
     );
 
     errorSpy.mockRestore();
@@ -813,9 +813,9 @@ describe("active document registry", () => {
   });
 
   it("drain resolves when a close cycle fails", async () => {
-    const persistOnIdle = vi
-      .fn()
-      .mockRejectedValue(new Error("persist failed"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const persistDeferred = createDeferred<void>();
+    const persistOnIdle = vi.fn().mockReturnValue(persistDeferred.promise);
     const registry = createActiveDocumentRegistry({
       collaborationService: createCollaborationServiceDouble(),
       loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
@@ -827,13 +827,70 @@ describe("active document registry", () => {
       documentId: "doc-1",
     });
 
-    // leave will reject because persistOnIdle fails, but drain should still resolve
+    // leave triggers close cycle; drain should see the in-flight closePromise
     const leavePromise = handle.leave().catch(() => {});
 
+    await vi.waitFor(() => {
+      expect(persistOnIdle).toHaveBeenCalledTimes(1);
+    });
+
+    const drainPromise = registry.drain(5000);
+
+    persistDeferred.reject(new Error("persist failed"));
+
+    const drainResult = await drainPromise;
     await leavePromise;
 
-    const drainResult = await registry.drain(5000);
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 1 });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("in-flight operations failed"),
+    );
+
+    errorSpy.mockRestore();
+  });
+
+  it("drain picks up close cycles that start after initial snapshot", async () => {
+    const persistOnIdle = vi.fn().mockResolvedValue(undefined);
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle,
+    });
+
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const mutationDeferred = createDeferred<void>();
+    let closeCycleStarted = false;
+
+    // Queue a mutation that, when it completes, triggers a leave.
+    // The first drain pass sees only pendingMutationOutcome (no closePromise yet).
+    // The second pass should pick up the close cycle.
+    handle.runExclusive(async () => {
+      await mutationDeferred.promise;
+    });
+
+    const drainPromise = registry.drain(5000);
+
+    // Resolve the mutation, then leave — this starts a close cycle after drain's first snapshot
+    mutationDeferred.resolve();
+    await vi.waitFor(() => {
+      // mutation settled
+    });
+
+    const leavePromise = handle.leave();
+    await vi.waitFor(() => {
+      closeCycleStarted = persistOnIdle.mock.calls.length > 0;
+      expect(closeCycleStarted).toBe(true);
+    });
+
+    const drainResult = await drainPromise;
+    await leavePromise;
+
     expect(drainResult).toEqual({ timedOut: false, failedCount: 0 });
+    expect(persistOnIdle).toHaveBeenCalledTimes(1);
   });
 
   it("waits for queued mutations before idle persistence", async () => {
