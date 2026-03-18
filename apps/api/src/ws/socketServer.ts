@@ -20,6 +20,7 @@ import { DocumentTextStateDocumentNotFoundError } from "../services/currentTextS
 import {
   ProjectNotFoundError,
   ProjectRoleRequiredError,
+  type ProjectAccessService,
 } from "../services/projectAccess.js";
 import {
   RealtimeDocumentNotFoundError,
@@ -40,6 +41,7 @@ export function createSocketServer(
     workspaceService: WorkspaceService;
     activeDocumentRegistry: ActiveDocumentRegistry;
     realtimeDocumentService: RealtimeDocumentService;
+    projectAccessService: Pick<ProjectAccessService, "requireProjectMember">;
   },
 ) {
   const io = new Server<
@@ -117,6 +119,20 @@ export function createSocketServer(
 
           return previousSession;
         },
+        revalidateAccess: async (projectId, accessUserId) => {
+          try {
+            await dependencies.projectAccessService.requireProjectMember(
+              projectId,
+              accessUserId,
+            );
+          } catch (error) {
+            if (error instanceof ProjectNotFoundError) {
+              throw new WorkspaceAccessDeniedError();
+            }
+
+            throw error;
+          }
+        },
       });
     });
 
@@ -141,6 +157,32 @@ export function createSocketServer(
       void applyDocumentUpdate(socket, dependencies.realtimeDocumentService, {
         request,
         sessionState,
+        getActiveTextSession: () => activeTextSession,
+      });
+    });
+
+    socket.on("doc.sync.request", (payload) => {
+      const request = parseSyncRequest(payload);
+
+      if ("code" in request) {
+        socket.emit("realtime:error", request);
+        return;
+      }
+
+      const sessionState = activeTextSession;
+
+      if (!sessionState || request.documentId !== sessionState.documentId) {
+        socket.emit("realtime:error", {
+          code: "INVALID_REQUEST",
+          message: "socket is not joined to this document",
+        });
+        return;
+      }
+
+      void handleSyncRequest(socket, dependencies.projectAccessService, {
+        request,
+        sessionState,
+        userId,
         getActiveTextSession: () => activeTextSession,
       });
     });
@@ -182,24 +224,35 @@ export function createSocketDocumentResetPublisher(
           documentId,
         });
 
-        io.to(
-          createTextWorkspaceRoomName(
-            projectId,
+        try {
+          io.to(
+            createTextWorkspaceRoomName(
+              projectId,
+              documentId,
+              invalidatedGeneration,
+            ),
+          ).emit("doc.reset", {
             documentId,
-            invalidatedGeneration,
-          ),
-        ).emit("doc.reset", {
-          documentId,
-          reason,
-          serverVersion,
-        });
+            reason,
+            serverVersion,
+          });
+        } catch (error) {
+          console.error("Failed to broadcast doc.reset to text session", error);
+        }
       }
 
-      io.to(createWorkspaceRoomName(projectId, documentId)).emit("doc.reset", {
-        documentId,
-        reason,
-        serverVersion,
-      });
+      try {
+        io.to(createWorkspaceRoomName(projectId, documentId)).emit(
+          "doc.reset",
+          {
+            documentId,
+            reason,
+            serverVersion,
+          },
+        );
+      } catch (error) {
+        console.error("Failed to broadcast doc.reset to workspace", error);
+      }
     },
   };
 }
@@ -222,6 +275,7 @@ export async function openWorkspace(
     swapActiveTextSession: (
       nextSession: ActiveTextSessionState | null,
     ) => ActiveTextSessionState | null;
+    revalidateAccess: (projectId: string, userId: string) => Promise<void>;
   },
 ): Promise<void> {
   while (input.isLatestJoin()) {
@@ -289,6 +343,11 @@ export async function openWorkspace(
             if (!input.isLatestJoin()) {
               return null;
             }
+
+            await input.revalidateAccess(
+              input.workspaceOpenInput.projectId,
+              input.workspaceOpenInput.userId,
+            );
 
             return {
               documentId: session.documentId,
@@ -413,18 +472,26 @@ async function applyDocumentUpdate(
     };
 
     if (result.acceptedContext.shouldBroadcastToPeers) {
-      socket
-        .to(input.sessionState.workspaceRoomName)
-        .emit("doc.update", updateEvent);
+      try {
+        socket
+          .to(input.sessionState.workspaceRoomName)
+          .emit("doc.update", updateEvent);
+      } catch (error) {
+        console.error("Failed to broadcast update to peers", error);
+      }
     }
 
     if (result.acceptedContext.shouldEmitToSender) {
-      socket.emit("doc.update", updateEvent);
-      socket.emit("doc.update.ack", {
-        documentId: input.request.documentId,
-        clientUpdateId: input.request.clientUpdateId,
-        serverVersion: result.serverVersion,
-      });
+      try {
+        socket.emit("doc.update", updateEvent);
+        socket.emit("doc.update.ack", {
+          documentId: input.request.documentId,
+          clientUpdateId: input.request.clientUpdateId,
+          serverVersion: result.serverVersion,
+        });
+      } catch (error) {
+        console.error("Failed to emit update to sender", error);
+      }
     }
   } catch (error) {
     if (
@@ -450,6 +517,82 @@ async function applyDocumentUpdate(
     }
 
     socket.emit("realtime:error", mapDocumentUpdateError(error));
+  }
+}
+
+async function handleSyncRequest(
+  socket: WorkspaceSocket,
+  projectAccessService: Pick<ProjectAccessService, "requireProjectMember">,
+  input: {
+    request: { documentId: string };
+    sessionState: ActiveTextSessionState;
+    userId: string;
+    getActiveTextSession: () => ActiveTextSessionState | null;
+  },
+) {
+  const isCurrentSession = () => {
+    const currentSession = input.getActiveTextSession();
+
+    return (
+      currentSession?.handle === input.sessionState.handle &&
+      currentSession.projectId === input.sessionState.projectId &&
+      currentSession.documentId === input.sessionState.documentId &&
+      currentSession.joinSequence === input.sessionState.joinSequence
+    );
+  };
+
+  try {
+    const syncResponse = await input.sessionState.handle.runExclusive(
+      async (session) => {
+        if (session.isInvalidated) {
+          throw new ActiveDocumentSessionInvalidatedError();
+        }
+
+        if (!isCurrentSession()) {
+          throw new RealtimeDocumentSessionMismatchError();
+        }
+
+        await projectAccessService.requireProjectMember(
+          input.sessionState.projectId,
+          input.userId,
+        );
+
+        return {
+          documentId: session.documentId,
+          stateB64: encodeBase64(session.document.exportUpdate()),
+          serverVersion: session.serverVersion,
+        };
+      },
+    );
+
+    if (!isCurrentSession()) {
+      return;
+    }
+
+    socket.emit("doc.sync.response", syncResponse);
+  } catch (error) {
+    if (
+      shouldSuppressStaleDocumentUpdateFailure(error, {
+        isCurrentSession,
+      })
+    ) {
+      return;
+    }
+
+    if (isUnexpectedSyncRequestError(error)) {
+      console.error(
+        "Sync request failed",
+        {
+          socketId: socket.id,
+          userId: input.userId,
+          projectId: input.sessionState.projectId,
+          documentId: input.request.documentId,
+        },
+        error,
+      );
+    }
+
+    socket.emit("realtime:error", mapSyncRequestError(error));
   }
 }
 
@@ -560,6 +703,29 @@ function isStrictBase64(value: string): boolean {
     : false;
 }
 
+function parseSyncRequest(
+  value: unknown,
+): { documentId: string } | WorkspaceErrorEvent {
+  if (!isObject(value)) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "doc.sync.request payload must be an object",
+    };
+  }
+
+  const documentId =
+    typeof value.documentId === "string" ? value.documentId.trim() : "";
+
+  if (!documentId) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "documentId is required",
+    };
+  }
+
+  return { documentId };
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -652,6 +818,41 @@ function mapDocumentUpdateError(error: unknown): WorkspaceErrorEvent {
     code: "UNAVAILABLE",
     message: "realtime unavailable",
   };
+}
+
+function mapSyncRequestError(error: unknown): WorkspaceErrorEvent {
+  if (
+    error instanceof RealtimeDocumentSessionMismatchError ||
+    error instanceof ActiveDocumentSessionInvalidatedError
+  ) {
+    return {
+      code: "INVALID_REQUEST",
+      message:
+        error instanceof RealtimeDocumentSessionMismatchError
+          ? "socket is not joined to this document"
+          : "socket session is no longer current",
+    };
+  }
+
+  if (error instanceof ProjectNotFoundError) {
+    return {
+      code: "FORBIDDEN",
+      message: "project membership required",
+    };
+  }
+
+  return {
+    code: "UNAVAILABLE",
+    message: "realtime unavailable",
+  };
+}
+
+function isUnexpectedSyncRequestError(error: unknown): boolean {
+  return (
+    !(error instanceof RealtimeDocumentSessionMismatchError) &&
+    !(error instanceof ActiveDocumentSessionInvalidatedError) &&
+    !(error instanceof ProjectNotFoundError)
+  );
 }
 
 function isUnexpectedWorkspaceError(error: unknown): boolean {

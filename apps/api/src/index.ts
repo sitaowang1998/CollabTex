@@ -150,6 +150,7 @@ async function main() {
         currentTextStateService,
       }),
       activeDocumentRegistry,
+      projectAccessService,
       realtimeDocumentService: createRealtimeDocumentService({
         collaborationService,
         projectAccessService,

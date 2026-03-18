@@ -64,6 +64,10 @@ export async function createTestSocketServer(options?: {
   workspaceService?: WorkspaceService;
   realtimeDocumentService?: RealtimeDocumentService;
   activeDocumentRegistry?: ActiveDocumentRegistry;
+  projectAccessService?: Pick<
+    import("../../services/projectAccess.js").ProjectAccessService,
+    "requireProjectMember"
+  >;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
@@ -126,31 +130,47 @@ export async function createTestSocketServer(options?: {
       }),
       persistOnIdle: async () => {},
     });
+  const projectAccessService = {
+    requireProjectMember: async (projectId: string, userId: string) => {
+      const project = await projectRepository.findForUser(projectId, userId);
+
+      if (!project) {
+        throw new ProjectNotFoundError();
+      }
+
+      return project;
+    },
+    requireProjectRole: async (
+      projectId: string,
+      userId: string,
+      allowedRoles: readonly string[],
+    ) => {
+      const project = await projectRepository.findForUser(projectId, userId);
+
+      if (!project) {
+        throw new ProjectNotFoundError();
+      }
+
+      if (!allowedRoles.includes(project.myRole)) {
+        throw new ProjectRoleRequiredError(
+          allowedRoles as readonly import("@collab-tex/shared").ProjectRole[],
+        );
+      }
+
+      return project;
+    },
+  };
+  const effectiveProjectAccessService =
+    options?.projectAccessService ?? projectAccessService;
   const io = createSocketServer(server, testConfig, {
     workspaceService,
     activeDocumentRegistry,
+    projectAccessService: effectiveProjectAccessService,
     realtimeDocumentService:
       options?.realtimeDocumentService ??
       createRealtimeDocumentService({
         collaborationService,
-        projectAccessService: {
-          requireProjectRole: async (projectId, userId, allowedRoles) => {
-            const project = await projectRepository.findForUser(
-              projectId,
-              userId,
-            );
-
-            if (!project) {
-              throw new ProjectNotFoundError();
-            }
-
-            if (!allowedRoles.includes(project.myRole)) {
-              throw new ProjectRoleRequiredError(allowedRoles);
-            }
-
-            return project;
-          },
-        },
+        projectAccessService,
         documentRepository,
         currentTextStateService,
       }),
