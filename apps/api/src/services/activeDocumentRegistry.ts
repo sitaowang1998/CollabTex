@@ -179,13 +179,7 @@ export function createActiveDocumentRegistry({
         if (work.length === 0)
           return { timedOut: false, failedCount: totalFailedCount };
 
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) {
-          console.warn(
-            `drain: timed out after ${timeoutMs}ms with ${work.length} pending operations`,
-          );
-          return { timedOut: true, failedCount: totalFailedCount };
-        }
+        const remainingMs = Math.max(0, deadline - Date.now());
 
         const allDone = Promise.allSettled(work).then((results) => {
           const failures = results.filter((r) => r.status === "rejected");
