@@ -520,7 +520,7 @@ async function applyDocumentUpdate(
       console.debug("Suppressed stale session doc.update failure", {
         socketId: socket.id,
         documentId: input.request.documentId,
-        error: (error as Error).constructor.name,
+        error: error instanceof Error ? error.constructor.name : String(error),
       });
       return;
     }
@@ -602,7 +602,7 @@ async function handleSyncRequest(
       console.debug("Suppressed stale session doc.sync.request failure", {
         socketId: socket.id,
         documentId: input.request.documentId,
-        error: (error as Error).constructor.name,
+        error: error instanceof Error ? error.constructor.name : String(error),
       });
       return;
     }
