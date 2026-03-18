@@ -206,33 +206,44 @@ function installShutdownHandlers({
 
     isShuttingDown = true;
     console.log(`Received ${signal}, shutting down`);
+    let hadError = false;
 
     try {
       snapshotRefreshTrigger.stop();
-      await activeDocumentRegistry.drain(shutdownDrainTimeoutMs);
     } catch (error) {
-      console.error("Shutdown: drain failed", error);
+      hadError = true;
+      console.error("Shutdown: snapshot refresh stop failed", error);
     }
 
     try {
       await closeSocketServer(io);
     } catch (error) {
+      hadError = true;
       console.error("Shutdown: socket server close failed", error);
+    }
+
+    try {
+      await activeDocumentRegistry.drain(shutdownDrainTimeoutMs);
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: drain failed", error);
     }
 
     try {
       await closeHttpServer(server);
     } catch (error) {
+      hadError = true;
       console.error("Shutdown: HTTP server close failed", error);
     }
 
     try {
       await databaseClient.$disconnect();
     } catch (error) {
+      hadError = true;
       console.error("Shutdown: database disconnect failed", error);
     }
 
-    process.exit(0);
+    process.exit(hadError ? 1 : 0);
   }
 
   process.once("SIGINT", () => {

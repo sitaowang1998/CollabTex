@@ -286,6 +286,7 @@ export function createActiveDocumentRegistry({
         input.record.pendingMutationOutcome = nextMutation.then(
           () => undefined,
         );
+        input.record.pendingMutationOutcome.catch(() => {});
         input.record.pendingMutation = nextMutation.then(
           () => undefined,
           () => undefined,
