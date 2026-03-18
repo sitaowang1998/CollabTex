@@ -237,7 +237,11 @@ export function createSocketDocumentResetPublisher(
             serverVersion,
           });
         } catch (error) {
-          console.error("Failed to broadcast doc.reset to text session", error);
+          console.error(
+            "Failed to broadcast doc.reset to text session",
+            { projectId, documentId, reason },
+            error,
+          );
         }
       }
 
@@ -251,7 +255,11 @@ export function createSocketDocumentResetPublisher(
           },
         );
       } catch (error) {
-        console.error("Failed to broadcast doc.reset to workspace", error);
+        console.error(
+          "Failed to broadcast doc.reset to workspace",
+          { projectId, documentId, reason },
+          error,
+        );
       }
     },
   };
@@ -477,7 +485,15 @@ async function applyDocumentUpdate(
           .to(input.sessionState.workspaceRoomName)
           .emit("doc.update", updateEvent);
       } catch (error) {
-        console.error("Failed to broadcast update to peers", error);
+        console.error(
+          "Failed to broadcast update to peers",
+          {
+            socketId: socket.id,
+            documentId: input.request.documentId,
+            roomName: input.sessionState.workspaceRoomName,
+          },
+          error,
+        );
       }
     }
 
@@ -491,7 +507,7 @@ async function applyDocumentUpdate(
     }
   } catch (error) {
     if (
-      shouldSuppressStaleDocumentUpdateFailure(error, {
+      shouldSuppressStaleSessionFailure(error, {
         isCurrentSession,
       })
     ) {
@@ -568,7 +584,7 @@ async function handleSyncRequest(
     socket.emit("doc.sync.response", syncResponse);
   } catch (error) {
     if (
-      shouldSuppressStaleDocumentUpdateFailure(error, {
+      shouldSuppressStaleSessionFailure(error, {
         isCurrentSession,
       })
     ) {
@@ -837,6 +853,13 @@ function mapSyncRequestError(error: unknown): WorkspaceErrorEvent {
     };
   }
 
+  if (error instanceof ProjectRoleRequiredError) {
+    return {
+      code: "FORBIDDEN",
+      message: "required project role missing",
+    };
+  }
+
   return {
     code: "UNAVAILABLE",
     message: "realtime unavailable",
@@ -847,7 +870,8 @@ function isUnexpectedSyncRequestError(error: unknown): boolean {
   return (
     !(error instanceof RealtimeDocumentSessionMismatchError) &&
     !(error instanceof ActiveDocumentSessionInvalidatedError) &&
-    !(error instanceof ProjectNotFoundError)
+    !(error instanceof ProjectNotFoundError) &&
+    !(error instanceof ProjectRoleRequiredError)
   );
 }
 
@@ -871,7 +895,7 @@ function isUnexpectedDocumentUpdateError(error: unknown): boolean {
   );
 }
 
-function shouldSuppressStaleDocumentUpdateFailure(
+function shouldSuppressStaleSessionFailure(
   error: unknown,
   input: {
     isCurrentSession: () => boolean;
