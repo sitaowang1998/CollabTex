@@ -1,11 +1,11 @@
 # Realtime API Contract
 
-This document is the checked-in Socket.IO contract for the intended Week 2
-realtime surface in `apps/api`.
+This document is the checked-in Socket.IO contract for the realtime surface
+in `apps/api`.
 
-`workspace:join` and `workspace:opened` remain the workspace entrypoint events.
-The document sync/update/reset events below are defined now so the shared
-contract stays stable while the later Yjs-backed implementation slices land.
+`workspace:join` and `workspace:opened` are the workspace entrypoint events.
+The document sync/update/reset events below define the shared contract for
+the Yjs-backed realtime implementation.
 
 ## Authentication
 
@@ -210,7 +210,7 @@ Behavior:
   reset
 - `serverVersion: 0` is reserved for resets where the document no longer has a
   live current-state row after the server-side change
-- the initial Week 2 use case is snapshot restore / reopen resynchronization
+- the current use case is snapshot restore / reopen resynchronization
 
 ### `realtime:error`
 
@@ -258,4 +258,4 @@ Behavior:
 ## Deferred From This Change
 
 - `presence.update` is part of the broader proposal but is intentionally not
-  included in the checked-in Week 2 contract for this slice
+  included in the current contract

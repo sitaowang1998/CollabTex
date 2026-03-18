@@ -237,6 +237,8 @@ export function createSocketDocumentResetPublisher(
             serverVersion,
           });
         } catch (error) {
+          // Fire-and-forget safety net — Socket.IO emit is extremely unlikely
+          // to throw synchronously, but we catch to avoid crashing the caller.
           console.error(
             "Failed to broadcast doc.reset to text session",
             { projectId, documentId, reason },
@@ -255,6 +257,8 @@ export function createSocketDocumentResetPublisher(
           },
         );
       } catch (error) {
+        // Fire-and-forget safety net — Socket.IO emit is extremely unlikely
+        // to throw synchronously, but we catch to avoid crashing the caller.
         console.error(
           "Failed to broadcast doc.reset to workspace",
           { projectId, documentId, reason },
@@ -485,6 +489,8 @@ async function applyDocumentUpdate(
           .to(input.sessionState.workspaceRoomName)
           .emit("doc.update", updateEvent);
       } catch (error) {
+        // Fire-and-forget safety net — Socket.IO emit is extremely unlikely
+        // to throw synchronously, but we catch to avoid crashing the caller.
         console.error(
           "Failed to broadcast update to peers",
           {
@@ -511,6 +517,11 @@ async function applyDocumentUpdate(
         isCurrentSession,
       })
     ) {
+      console.debug("Suppressed stale session doc.update failure", {
+        socketId: socket.id,
+        documentId: input.request.documentId,
+        error: (error as Error).constructor.name,
+      });
       return;
     }
 
@@ -588,6 +599,11 @@ async function handleSyncRequest(
         isCurrentSession,
       })
     ) {
+      console.debug("Suppressed stale session doc.sync.request failure", {
+        socketId: socket.id,
+        documentId: input.request.documentId,
+        error: (error as Error).constructor.name,
+      });
       return;
     }
 
