@@ -863,12 +863,11 @@ describe("active document registry", () => {
     });
 
     const mutationDeferred = createDeferred<void>();
-    let closeCycleStarted = false;
 
     // Queue a mutation that, when it completes, triggers a leave.
     // The first drain pass sees only pendingMutationOutcome (no closePromise yet).
     // The second pass should pick up the close cycle.
-    handle.runExclusive(async () => {
+    const mutationPromise = handle.runExclusive(async () => {
       await mutationDeferred.promise;
     });
 
@@ -876,14 +875,11 @@ describe("active document registry", () => {
 
     // Resolve the mutation, then leave — this starts a close cycle after drain's first snapshot
     mutationDeferred.resolve();
-    await vi.waitFor(() => {
-      // mutation settled
-    });
+    await mutationPromise;
 
     const leavePromise = handle.leave();
     await vi.waitFor(() => {
-      closeCycleStarted = persistOnIdle.mock.calls.length > 0;
-      expect(closeCycleStarted).toBe(true);
+      expect(persistOnIdle).toHaveBeenCalledTimes(1);
     });
 
     const drainResult = await drainPromise;
