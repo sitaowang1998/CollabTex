@@ -661,6 +661,110 @@ describe("active document registry", () => {
     expect(persistOnIdle).toHaveBeenCalledTimes(1);
   });
 
+  it("drain waits for pending session initialization", async () => {
+    const initialState = createDeferred<InitialDocumentState>();
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockReturnValue(initialState.promise),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const joinPromise = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    let drained = false;
+    const drainPromise = registry.drain(5000).then(() => {
+      drained = true;
+    });
+
+    await vi.waitFor(() => {
+      expect(drained).toBe(false);
+    });
+
+    initialState.resolve(createEmptyState());
+    await drainPromise;
+
+    expect(drained).toBe(true);
+
+    const handle = await joinPromise;
+    await handle.leave();
+  });
+
+  it("drain resolves when a pending session init fails", async () => {
+    const initialState = createDeferred<InitialDocumentState>();
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockReturnValue(initialState.promise),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const joinPromise = registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const drainPromise = registry.drain(5000);
+
+    initialState.reject(new Error("snapshot unavailable"));
+
+    await expect(drainPromise).resolves.toBeUndefined();
+    await expect(joinPromise).rejects.toThrow("snapshot unavailable");
+  });
+
+  it("drain logs when mutations fail", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    handle
+      .runExclusive(async () => {
+        throw new Error("mutation failed");
+      })
+      .catch(() => {});
+
+    await registry.drain(5000);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("in-flight mutations failed"),
+    );
+
+    errorSpy.mockRestore();
+    registry.invalidate({ projectId: "project-1", documentId: "doc-1" });
+  });
+
+  it("drain logs when timeout fires", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    handle.runExclusive(() => new Promise<void>(() => {}));
+
+    await registry.drain(50);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("timed out after 50ms"),
+    );
+
+    warnSpy.mockRestore();
+    registry.invalidate({ projectId: "project-1", documentId: "doc-1" });
+  });
+
   it("waits for queued mutations before idle persistence", async () => {
     const persistOnIdle = vi.fn().mockResolvedValue(undefined);
     const registry = createActiveDocumentRegistry({

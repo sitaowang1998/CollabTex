@@ -74,6 +74,7 @@ type ActiveSessionRecord = {
   closePromise: Promise<void> | null;
   needsAnotherCloseCycle: boolean;
   pendingMutation: Promise<void>;
+  pendingMutationOutcome: Promise<void>;
 };
 
 type PendingSessionRecord = {
@@ -144,14 +145,36 @@ export function createActiveDocumentRegistry({
     },
     drain: async (timeoutMs: number) => {
       const mutations = Array.from(activeSessions.values()).map(
-        (record) => record.pendingMutation,
+        (record) => record.pendingMutationOutcome,
       );
-      if (mutations.length === 0) return;
-      const allDone = Promise.allSettled(mutations).then(() => undefined);
-      const timeout = new Promise<void>((resolve) =>
-        setTimeout(resolve, timeoutMs),
+      const pendingInits = Array.from(pendingSessions.values()).map((record) =>
+        record.promise.then(
+          (r) => r.pendingMutationOutcome,
+          () => undefined,
+        ),
       );
-      await Promise.race([allDone, timeout]);
+      const all = [...mutations, ...pendingInits];
+      if (all.length === 0) return;
+      const allDone = Promise.allSettled(all).then((results) => {
+        const failures = results.filter((r) => r.status === "rejected");
+        if (failures.length > 0) {
+          console.error(
+            `drain: ${failures.length}/${results.length} in-flight mutations failed`,
+          );
+        }
+        return "done" as const;
+      });
+      let timer: ReturnType<typeof setTimeout>;
+      const timeout = new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+      });
+      const outcome = await Promise.race([allDone, timeout]);
+      clearTimeout(timer!);
+      if (outcome === "timeout") {
+        console.warn(
+          `drain: timed out after ${timeoutMs}ms with ${all.length} pending mutations`,
+        );
+      }
     },
   };
 
@@ -243,6 +266,7 @@ export function createActiveDocumentRegistry({
       closePromise: null,
       needsAnotherCloseCycle: false,
       pendingMutation: Promise.resolve(),
+      pendingMutationOutcome: Promise.resolve(),
     };
   }
 
@@ -259,6 +283,9 @@ export function createActiveDocumentRegistry({
           task(input.record.session),
         );
 
+        input.record.pendingMutationOutcome = nextMutation.then(
+          () => undefined,
+        );
         input.record.pendingMutation = nextMutation.then(
           () => undefined,
           () => undefined,
