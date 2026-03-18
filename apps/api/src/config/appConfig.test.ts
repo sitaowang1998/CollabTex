@@ -102,6 +102,17 @@ describe("loadConfig", () => {
     ).toThrow("SHUTDOWN_DRAIN_TIMEOUT_MS must be a positive integer");
   });
 
+  it("treats whitespace SHUTDOWN_DRAIN_TIMEOUT_MS as default", () => {
+    const config = loadConfig({
+      JWT_SECRET: "test-secret",
+      CLIENT_ORIGIN: "http://localhost:5173",
+      DATABASE_URL: INVALID_TEST_DATABASE_URL,
+      SHUTDOWN_DRAIN_TIMEOUT_MS: "   ",
+    });
+
+    expect(config.shutdownDrainTimeoutMs).toBe(5000);
+  });
+
   it("throws for an invalid port", () => {
     expect(() =>
       loadConfig({

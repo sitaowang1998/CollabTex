@@ -595,9 +595,10 @@ describe("active document registry", () => {
     });
 
     releaseTask.resolve();
-    await drainPromise;
+    const drainResult = await drainPromise;
 
     expect(taskCompleted.value).toBe(true);
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 0 });
 
     await handle.leave();
   });
@@ -617,10 +618,11 @@ describe("active document registry", () => {
     handle.runExclusive(() => new Promise<void>(() => {}));
 
     const start = Date.now();
-    await registry.drain(50);
+    const drainResult = await registry.drain(50);
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeLessThan(500);
+    expect(drainResult).toEqual({ timedOut: true, failedCount: 0 });
 
     // Clean up — invalidate to discard the stuck session
     registry.invalidate({ projectId: "project-1", documentId: "doc-1" });
@@ -633,7 +635,8 @@ describe("active document registry", () => {
       persistOnIdle: vi.fn().mockResolvedValue(undefined),
     });
 
-    await registry.drain(5000);
+    const drainResult = await registry.drain(5000);
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 0 });
   });
 
   it("primary durability does not depend on idle flush timing", async () => {
@@ -709,7 +712,10 @@ describe("active document registry", () => {
 
     initialState.reject(new Error("snapshot unavailable"));
 
-    await expect(drainPromise).resolves.toBeUndefined();
+    await expect(drainPromise).resolves.toEqual({
+      timedOut: false,
+      failedCount: 0,
+    });
     await expect(joinPromise).rejects.toThrow("snapshot unavailable");
   });
 
@@ -731,8 +737,9 @@ describe("active document registry", () => {
       })
       .catch(() => {});
 
-    await registry.drain(5000);
+    const drainResult = await registry.drain(5000);
 
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 1 });
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("in-flight mutations failed"),
     );
@@ -763,6 +770,70 @@ describe("active document registry", () => {
 
     warnSpy.mockRestore();
     registry.invalidate({ projectId: "project-1", documentId: "doc-1" });
+  });
+
+  it("drain waits for in-flight close cycles to complete", async () => {
+    const persistDeferred = createDeferred<void>();
+    const persistOnIdle = vi.fn().mockReturnValue(persistDeferred.promise);
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle,
+    });
+
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    // leave triggers closeSessionWhenIdle → runCloseCycle → persistOnIdle
+    const leavePromise = handle.leave();
+
+    await vi.waitFor(() => {
+      expect(persistOnIdle).toHaveBeenCalledTimes(1);
+    });
+
+    const drainPromise = registry.drain(5000);
+
+    // drain should not resolve while persistOnIdle is pending
+    let drained = false;
+    drainPromise.then(() => {
+      drained = true;
+    });
+
+    await vi.waitFor(() => {
+      expect(drained).toBe(false);
+    });
+
+    persistDeferred.resolve();
+    const drainResult = await drainPromise;
+    await leavePromise;
+
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 0 });
+  });
+
+  it("drain resolves when a close cycle fails", async () => {
+    const persistOnIdle = vi
+      .fn()
+      .mockRejectedValue(new Error("persist failed"));
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle,
+    });
+
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    // leave will reject because persistOnIdle fails, but drain should still resolve
+    const leavePromise = handle.leave().catch(() => {});
+
+    await leavePromise;
+
+    const drainResult = await registry.drain(5000);
+    expect(drainResult).toEqual({ timedOut: false, failedCount: 0 });
   });
 
   it("waits for queued mutations before idle persistence", async () => {

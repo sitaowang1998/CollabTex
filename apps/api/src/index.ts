@@ -223,7 +223,12 @@ function installShutdownHandlers({
     }
 
     try {
-      await activeDocumentRegistry.drain(shutdownDrainTimeoutMs);
+      const drainResult = await activeDocumentRegistry.drain(
+        shutdownDrainTimeoutMs,
+      );
+      if (drainResult.timedOut || drainResult.failedCount > 0) {
+        hadError = true;
+      }
     } catch (error) {
       hadError = true;
       console.error("Shutdown: drain failed", error);

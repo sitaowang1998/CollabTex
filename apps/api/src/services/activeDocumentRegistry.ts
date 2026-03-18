@@ -58,7 +58,9 @@ export type ActiveDocumentRegistry = {
   invalidate: (input: { projectId: string; documentId: string }) => {
     invalidatedGeneration: number;
   };
-  drain: (timeoutMs: number) => Promise<void>;
+  drain: (
+    timeoutMs: number,
+  ) => Promise<{ timedOut: boolean; failedCount: number }>;
 };
 
 export class ActiveDocumentSessionInvalidatedError extends Error {
@@ -144,25 +146,33 @@ export function createActiveDocumentRegistry({
       return { invalidatedGeneration };
     },
     drain: async (timeoutMs: number) => {
-      const mutations = Array.from(activeSessions.values()).map(
-        (record) => record.pendingMutationOutcome,
-      );
-      const pendingInits = Array.from(pendingSessions.values()).map((record) =>
-        record.promise.then(
-          (r) => r.pendingMutationOutcome,
-          () => undefined,
-        ),
-      );
-      const all = [...mutations, ...pendingInits];
-      if (all.length === 0) return;
-      const allDone = Promise.allSettled(all).then((results) => {
+      const work: Promise<void | undefined>[] = [];
+
+      for (const record of activeSessions.values()) {
+        work.push(record.pendingMutationOutcome);
+        if (record.closePromise) {
+          work.push(record.closePromise.catch(() => undefined));
+        }
+      }
+
+      for (const record of pendingSessions.values()) {
+        work.push(
+          record.promise.then(
+            (r) => r.pendingMutationOutcome,
+            () => undefined,
+          ),
+        );
+      }
+
+      if (work.length === 0) return { timedOut: false, failedCount: 0 };
+      const allDone = Promise.allSettled(work).then((results) => {
         const failures = results.filter((r) => r.status === "rejected");
         if (failures.length > 0) {
           console.error(
             `drain: ${failures.length}/${results.length} in-flight mutations failed`,
           );
         }
-        return "done" as const;
+        return { done: true as const, failedCount: failures.length };
       });
       let timer: ReturnType<typeof setTimeout>;
       const timeout = new Promise<"timeout">((resolve) => {
@@ -172,9 +182,11 @@ export function createActiveDocumentRegistry({
       clearTimeout(timer!);
       if (outcome === "timeout") {
         console.warn(
-          `drain: timed out after ${timeoutMs}ms with ${all.length} pending mutations`,
+          `drain: timed out after ${timeoutMs}ms with ${work.length} pending mutations`,
         );
+        return { timedOut: true, failedCount: 0 };
       }
+      return { timedOut: false, failedCount: outcome.failedCount };
     },
   };
 

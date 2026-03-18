@@ -42,11 +42,12 @@ function parseRequiredEnv(name: string, rawValue: string | undefined): string {
 }
 
 function parseShutdownDrainTimeoutMs(rawValue: string | undefined): number {
-  if (rawValue === undefined) {
+  const trimmed = rawValue?.trim();
+  if (trimmed === undefined || trimmed === "") {
     return DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
   }
 
-  const value = Number(rawValue);
+  const value = Number(trimmed);
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error("SHUTDOWN_DRAIN_TIMEOUT_MS must be a positive integer");
   }
