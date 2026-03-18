@@ -58,6 +58,9 @@ export type ActiveDocumentRegistry = {
   invalidate: (input: { projectId: string; documentId: string }) => {
     invalidatedGeneration: number;
   };
+  drain: (
+    timeoutMs: number,
+  ) => Promise<{ timedOut: boolean; failedCount: number }>;
 };
 
 export class ActiveDocumentSessionInvalidatedError extends Error {
@@ -73,6 +76,7 @@ type ActiveSessionRecord = {
   closePromise: Promise<void> | null;
   needsAnotherCloseCycle: boolean;
   pendingMutation: Promise<void>;
+  pendingMutationOutcome: Promise<void>;
 };
 
 type PendingSessionRecord = {
@@ -140,6 +144,70 @@ export function createActiveDocumentRegistry({
       }
 
       return { invalidatedGeneration };
+    },
+    drain: async (timeoutMs: number) => {
+      const deadline = Date.now() + timeoutMs;
+      let totalFailedCount = 0;
+      const seen = new Set<Promise<unknown>>();
+
+      while (true) {
+        const work: Promise<void | undefined>[] = [];
+
+        for (const record of activeSessions.values()) {
+          if (!seen.has(record.pendingMutationOutcome)) {
+            seen.add(record.pendingMutationOutcome);
+            work.push(record.pendingMutationOutcome);
+          }
+          if (record.closePromise && !seen.has(record.closePromise)) {
+            seen.add(record.closePromise);
+            work.push(record.closePromise);
+          }
+        }
+
+        for (const record of pendingSessions.values()) {
+          if (!seen.has(record.promise)) {
+            seen.add(record.promise);
+            work.push(
+              record.promise.then(
+                (r) => r.pendingMutationOutcome,
+                () => undefined,
+              ),
+            );
+          }
+        }
+
+        if (work.length === 0)
+          return { timedOut: false, failedCount: totalFailedCount };
+
+        const remainingMs = Math.max(0, deadline - Date.now());
+
+        const allDone = Promise.allSettled(work).then((results) => {
+          const failures = results.filter((r) => r.status === "rejected");
+          if (failures.length > 0) {
+            console.error(
+              `drain: ${failures.length}/${results.length} in-flight operations failed`,
+            );
+          }
+          return failures.length;
+        });
+
+        let timer: ReturnType<typeof setTimeout>;
+        const timeout = new Promise<"timeout">((resolve) => {
+          timer = setTimeout(() => resolve("timeout"), remainingMs);
+        });
+
+        const outcome = await Promise.race([allDone, timeout]);
+        clearTimeout(timer!);
+
+        if (outcome === "timeout") {
+          console.warn(
+            `drain: timed out after ${timeoutMs}ms with ${work.length} pending operations`,
+          );
+          return { timedOut: true, failedCount: totalFailedCount };
+        }
+
+        totalFailedCount += outcome;
+      }
     },
   };
 
@@ -231,6 +299,7 @@ export function createActiveDocumentRegistry({
       closePromise: null,
       needsAnotherCloseCycle: false,
       pendingMutation: Promise.resolve(),
+      pendingMutationOutcome: Promise.resolve(),
     };
   }
 
@@ -247,6 +316,10 @@ export function createActiveDocumentRegistry({
           task(input.record.session),
         );
 
+        input.record.pendingMutationOutcome = nextMutation.then(
+          () => undefined,
+        );
+        input.record.pendingMutationOutcome.catch(() => {});
         input.record.pendingMutation = nextMutation.then(
           () => undefined,
           () => undefined,

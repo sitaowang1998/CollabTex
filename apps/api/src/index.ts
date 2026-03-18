@@ -168,6 +168,8 @@ async function main() {
       io,
       databaseClient,
       snapshotRefreshTrigger,
+      activeDocumentRegistry,
+      shutdownDrainTimeoutMs: config.shutdownDrainTimeoutMs,
     });
     snapshotRefreshTrigger.kick();
     await listen(server, config.port);
@@ -185,11 +187,15 @@ function installShutdownHandlers({
   io,
   databaseClient,
   snapshotRefreshTrigger,
+  activeDocumentRegistry,
+  shutdownDrainTimeoutMs,
 }: {
   server: http.Server;
   io: ReturnType<typeof createSocketServer>;
   databaseClient: ReturnType<typeof createDatabaseClient>;
   snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
+  activeDocumentRegistry: ReturnType<typeof createActiveDocumentRegistry>;
+  shutdownDrainTimeoutMs: number;
 }) {
   let isShuttingDown = false;
 
@@ -200,17 +206,49 @@ function installShutdownHandlers({
 
     isShuttingDown = true;
     console.log(`Received ${signal}, shutting down`);
+    let hadError = false;
 
     try {
       snapshotRefreshTrigger.stop();
-      await closeSocketServer(io);
-      await closeHttpServer(server);
-      await databaseClient.$disconnect();
-      process.exit(0);
     } catch (error) {
-      console.error("Failed to shut down cleanly", error);
-      process.exit(1);
+      hadError = true;
+      console.error("Shutdown: snapshot refresh stop failed", error);
     }
+
+    try {
+      await closeSocketServer(io);
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: socket server close failed", error);
+    }
+
+    try {
+      const drainResult = await activeDocumentRegistry.drain(
+        shutdownDrainTimeoutMs,
+      );
+      if (drainResult.timedOut || drainResult.failedCount > 0) {
+        hadError = true;
+      }
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: drain failed", error);
+    }
+
+    try {
+      await closeHttpServer(server);
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: HTTP server close failed", error);
+    }
+
+    try {
+      await databaseClient.$disconnect();
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: database disconnect failed", error);
+    }
+
+    process.exit(hadError ? 1 : 0);
   }
 
   process.once("SIGINT", () => {

@@ -353,6 +353,8 @@ describe("membership repository integration", () => {
         userId: target.id,
         role: "editor",
       });
+      // Prevent Node unhandled-rejection if this rejects before we await it below
+      actorWrite.catch(() => {});
 
       if (!releaseLock) {
         throw new Error("Expected test lock release handler");
@@ -438,6 +440,8 @@ describe("membership repository integration", () => {
         userId: invited.id,
         role: "reader",
       });
+      // Prevent Node unhandled-rejection if this rejects before we await it below
+      createMembership.catch(() => {});
 
       if (!releaseLock) {
         throw new Error("Expected test lock release handler");

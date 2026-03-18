@@ -19,6 +19,7 @@ describe("loadConfig", () => {
       clientOrigin: "http://localhost:5173",
       databaseUrl: INVALID_TEST_DATABASE_URL,
       snapshotStorageRoot: "var/snapshots",
+      shutdownDrainTimeoutMs: 5000,
     });
   });
 
@@ -31,6 +32,7 @@ describe("loadConfig", () => {
         CLIENT_ORIGIN: "http://localhost:4000",
         DATABASE_URL: INVALID_TEST_DATABASE_URL,
         SNAPSHOT_STORAGE_ROOT: "tmp/snapshots",
+        SHUTDOWN_DRAIN_TIMEOUT_MS: "10000",
       }),
     ).toEqual({
       nodeEnv: "test",
@@ -39,6 +41,7 @@ describe("loadConfig", () => {
       clientOrigin: "http://localhost:4000",
       databaseUrl: INVALID_TEST_DATABASE_URL,
       snapshotStorageRoot: "tmp/snapshots",
+      shutdownDrainTimeoutMs: 10000,
     });
   });
 
@@ -86,6 +89,28 @@ describe("loadConfig", () => {
         DATABASE_URL: "   ",
       }),
     ).toThrow("DATABASE_URL is required");
+  });
+
+  it("throws for an invalid SHUTDOWN_DRAIN_TIMEOUT_MS", () => {
+    expect(() =>
+      loadConfig({
+        JWT_SECRET: "test-secret",
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: INVALID_TEST_DATABASE_URL,
+        SHUTDOWN_DRAIN_TIMEOUT_MS: "not-a-number",
+      }),
+    ).toThrow("SHUTDOWN_DRAIN_TIMEOUT_MS must be a positive integer");
+  });
+
+  it("treats whitespace SHUTDOWN_DRAIN_TIMEOUT_MS as default", () => {
+    const config = loadConfig({
+      JWT_SECRET: "test-secret",
+      CLIENT_ORIGIN: "http://localhost:5173",
+      DATABASE_URL: INVALID_TEST_DATABASE_URL,
+      SHUTDOWN_DRAIN_TIMEOUT_MS: "   ",
+    });
+
+    expect(config.shutdownDrainTimeoutMs).toBe(5000);
   });
 
   it("throws for an invalid port", () => {
