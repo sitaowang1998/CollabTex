@@ -168,6 +168,8 @@ async function main() {
       io,
       databaseClient,
       snapshotRefreshTrigger,
+      activeDocumentRegistry,
+      shutdownDrainTimeoutMs: config.shutdownDrainTimeoutMs,
     });
     snapshotRefreshTrigger.kick();
     await listen(server, config.port);
@@ -185,11 +187,15 @@ function installShutdownHandlers({
   io,
   databaseClient,
   snapshotRefreshTrigger,
+  activeDocumentRegistry,
+  shutdownDrainTimeoutMs,
 }: {
   server: http.Server;
   io: ReturnType<typeof createSocketServer>;
   databaseClient: ReturnType<typeof createDatabaseClient>;
   snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
+  activeDocumentRegistry: ReturnType<typeof createActiveDocumentRegistry>;
+  shutdownDrainTimeoutMs: number;
 }) {
   let isShuttingDown = false;
 
@@ -203,6 +209,7 @@ function installShutdownHandlers({
 
     try {
       snapshotRefreshTrigger.stop();
+      await activeDocumentRegistry.drain(shutdownDrainTimeoutMs);
       await closeSocketServer(io);
       await closeHttpServer(server);
       await databaseClient.$disconnect();

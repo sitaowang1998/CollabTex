@@ -569,6 +569,98 @@ describe("active document registry", () => {
     await handle.leave();
   });
 
+  it("drain waits for in-flight exclusive tasks to complete", async () => {
+    const releaseTask = createDeferred<void>();
+    const persistOnIdle = vi.fn().mockResolvedValue(undefined);
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle,
+    });
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    const taskCompleted = { value: false };
+    handle.runExclusive(async () => {
+      await releaseTask.promise;
+      taskCompleted.value = true;
+    });
+
+    const drainPromise = registry.drain(5000);
+
+    await vi.waitFor(() => {
+      expect(taskCompleted.value).toBe(false);
+    });
+
+    releaseTask.resolve();
+    await drainPromise;
+
+    expect(taskCompleted.value).toBe(true);
+
+    await handle.leave();
+  });
+
+  it("drain respects its timeout", async () => {
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    // Queue a task that never resolves
+    handle.runExclusive(() => new Promise<void>(() => {}));
+
+    const start = Date.now();
+    await registry.drain(50);
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(500);
+
+    // Clean up — invalidate to discard the stuck session
+    registry.invalidate({ projectId: "project-1", documentId: "doc-1" });
+  });
+
+  it("drain resolves immediately when no sessions are active", async () => {
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await registry.drain(5000);
+  });
+
+  it("primary durability does not depend on idle flush timing", async () => {
+    const persistOnIdle = vi.fn().mockResolvedValue(undefined);
+    const registry = createActiveDocumentRegistry({
+      collaborationService: createCollaborationServiceDouble(),
+      loadInitialDocumentState: vi.fn().mockResolvedValue(createEmptyState()),
+      persistOnIdle,
+    });
+    const handle = await registry.join({
+      projectId: "project-1",
+      documentId: "doc-1",
+    });
+
+    await handle.runExclusive(async (session) => {
+      session.serverVersion = 1;
+    });
+
+    // persistOnIdle should NOT have been called while the session is active
+    expect(persistOnIdle).not.toHaveBeenCalled();
+
+    await handle.leave();
+
+    // persistOnIdle is called only after the last client leaves
+    expect(persistOnIdle).toHaveBeenCalledTimes(1);
+  });
+
   it("waits for queued mutations before idle persistence", async () => {
     const persistOnIdle = vi.fn().mockResolvedValue(undefined);
     const registry = createActiveDocumentRegistry({

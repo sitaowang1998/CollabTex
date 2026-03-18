@@ -1,5 +1,6 @@
 const DEFAULT_PORT = 3000;
 const DEFAULT_NODE_ENV = "development";
+const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
 export type AppConfig = {
   nodeEnv: string;
@@ -8,6 +9,7 @@ export type AppConfig = {
   clientOrigin: string;
   databaseUrl: string;
   snapshotStorageRoot: string;
+  shutdownDrainTimeoutMs: number;
 };
 
 function parsePort(rawPort: string | undefined): number {
@@ -39,6 +41,19 @@ function parseRequiredEnv(name: string, rawValue: string | undefined): string {
   return value;
 }
 
+function parseShutdownDrainTimeoutMs(rawValue: string | undefined): number {
+  if (rawValue === undefined) {
+    return DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("SHUTDOWN_DRAIN_TIMEOUT_MS must be a positive integer");
+  }
+
+  return value;
+}
+
 function parseSnapshotStorageRoot(
   rawSnapshotStorageRoot: string | undefined,
 ): string {
@@ -57,5 +72,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
     databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
     snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
+    shutdownDrainTimeoutMs: parseShutdownDrainTimeoutMs(
+      env.SHUTDOWN_DRAIN_TIMEOUT_MS,
+    ),
   };
 }

@@ -2824,6 +2824,7 @@ function createStaticActiveDocumentRegistry(
       };
     },
     invalidate: () => ({ invalidatedGeneration: 0 }),
+    drain: async () => {},
   };
 }
 

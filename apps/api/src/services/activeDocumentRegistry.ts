@@ -58,6 +58,7 @@ export type ActiveDocumentRegistry = {
   invalidate: (input: { projectId: string; documentId: string }) => {
     invalidatedGeneration: number;
   };
+  drain: (timeoutMs: number) => Promise<void>;
 };
 
 export class ActiveDocumentSessionInvalidatedError extends Error {
@@ -140,6 +141,17 @@ export function createActiveDocumentRegistry({
       }
 
       return { invalidatedGeneration };
+    },
+    drain: async (timeoutMs: number) => {
+      const mutations = Array.from(activeSessions.values()).map(
+        (record) => record.pendingMutation,
+      );
+      if (mutations.length === 0) return;
+      const allDone = Promise.allSettled(mutations).then(() => undefined);
+      const timeout = new Promise<void>((resolve) =>
+        setTimeout(resolve, timeoutMs),
+      );
+      await Promise.race([allDone, timeout]);
     },
   };
 
