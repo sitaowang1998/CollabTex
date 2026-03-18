@@ -482,16 +482,12 @@ async function applyDocumentUpdate(
     }
 
     if (result.acceptedContext.shouldEmitToSender) {
-      try {
-        socket.emit("doc.update", updateEvent);
-        socket.emit("doc.update.ack", {
-          documentId: input.request.documentId,
-          clientUpdateId: input.request.clientUpdateId,
-          serverVersion: result.serverVersion,
-        });
-      } catch (error) {
-        console.error("Failed to emit update to sender", error);
-      }
+      socket.emit("doc.update", updateEvent);
+      socket.emit("doc.update.ack", {
+        documentId: input.request.documentId,
+        clientUpdateId: input.request.clientUpdateId,
+        serverVersion: result.serverVersion,
+      });
     }
   } catch (error) {
     if (

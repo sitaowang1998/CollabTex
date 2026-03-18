@@ -2312,6 +2312,182 @@ describe("socket server", () => {
     });
   });
 
+  it("emits realtime:error for a fresh post-reset doc.sync.request on the current invalidated session", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        sender.once("connect", () => {
+          sender.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        sender.once("doc.sync.response", async () => {
+          await socketServer?.emitDocumentReset({
+            projectId: "project-123",
+            documentId: "doc-456",
+            reason: "snapshot_restore",
+            serverVersion: 9,
+          });
+        });
+
+        sender.once("doc.reset", () => {
+          sender.emit("doc.sync.request", {
+            documentId: "doc-456",
+          });
+        });
+
+        sender.once("realtime:error", (payload) => {
+          sender.close();
+          resolve(payload);
+        });
+        sender.once("connect_error", (error) => {
+          sender.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket session is no longer current",
+    });
+  });
+
+  it("suppresses stale doc.sync.request after a document switch", async () => {
+    const syncStarted = createDeferred<void>();
+    const releaseSync = createDeferred<void>();
+    const collaborationService = createCollaborationService();
+    const document =
+      collaborationService.createDocumentFromText("\\section{Test}");
+    const session = {
+      projectId: "project-123",
+      documentId: "doc-456",
+      generation: 0,
+      clientCount: 1,
+      document,
+      serverVersion: 1,
+      isInvalidated: false,
+    };
+
+    let doc456RunExclusiveCount = 0;
+    socketServer = await createTestSocketServer({
+      activeDocumentRegistry: {
+        join: async ({ documentId }) => {
+          if (documentId === "doc-456") {
+            return {
+              session,
+              runExclusive: async <Result>(
+                task: (sessionState: typeof session) => Promise<Result>,
+              ) => {
+                doc456RunExclusiveCount += 1;
+                if (doc456RunExclusiveCount > 1) {
+                  syncStarted.resolve();
+                  await releaseSync.promise;
+                }
+                return task(session);
+              },
+              leave: async () => {
+                document.destroy();
+              },
+            };
+          }
+
+          const secondDoc =
+            collaborationService.createDocumentFromText("\\section{Second}");
+          const secondSession = {
+            projectId: "project-123",
+            documentId,
+            generation: 0,
+            clientCount: 1,
+            document: secondDoc,
+            serverVersion: 1,
+            isInvalidated: false,
+          };
+
+          return {
+            session: secondSession,
+            runExclusive: async <Result>(
+              task: (sessionState: typeof secondSession) => Promise<Result>,
+            ) => task(secondSession),
+            leave: async () => {
+              secondDoc.destroy();
+            },
+          };
+        },
+        invalidate: () => ({ invalidatedGeneration: 0 }),
+      },
+    });
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      errorCount: number;
+      syncResponseDocIds: string[];
+      switchedDocumentId: string;
+    }>((resolve, reject) => {
+      let errorCount = 0;
+      const syncResponseDocIds: string[] = [];
+
+      sender.once("connect", () => {
+        sender.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      sender.on("doc.sync.response", async (payload) => {
+        syncResponseDocIds.push(payload.documentId);
+
+        if (
+          payload.documentId === "doc-456" &&
+          syncResponseDocIds.length === 1
+        ) {
+          sender.emit("doc.sync.request", {
+            documentId: "doc-456",
+          });
+          await syncStarted.promise;
+          sender.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-second",
+          });
+          return;
+        }
+
+        if (payload.documentId === "doc-second") {
+          releaseSync.resolve();
+          await waitForSocketFlush();
+          sender.close();
+          resolve({
+            errorCount,
+            syncResponseDocIds,
+            switchedDocumentId: payload.documentId,
+          });
+        }
+      });
+
+      sender.on("realtime:error", () => {
+        errorCount += 1;
+      });
+      sender.once("connect_error", (error) => {
+        sender.close();
+        reject(error);
+      });
+    });
+
+    expect(result.switchedDocumentId).toBe("doc-second");
+    expect(result.errorCount).toBe(0);
+    // Should have initial join sync for doc-456 and join sync for doc-second,
+    // but NOT a second doc-456 sync response from the stale request
+    expect(result.syncResponseDocIds).toEqual(["doc-456", "doc-second"]);
+  });
+
   it("rejects workspace join when membership is revoked during queue wait", async () => {
     let membershipRevoked = false;
     const queueBlocker = createDeferred<void>();
