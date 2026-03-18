@@ -1,11 +1,11 @@
 # Realtime API Contract
 
-This document is the checked-in Socket.IO contract for the intended Week 2
-realtime surface in `apps/api`.
+This document is the checked-in Socket.IO contract for the realtime surface
+in `apps/api`.
 
-`workspace:join` and `workspace:opened` remain the workspace entrypoint events.
-The document sync/update/reset events below are defined now so the shared
-contract stays stable while the later Yjs-backed implementation slices land.
+`workspace:join` and `workspace:opened` are the workspace entrypoint events.
+The document sync/update/reset events below define the shared contract for
+the Yjs-backed realtime implementation.
 
 ## Authentication
 
@@ -19,8 +19,8 @@ contract stays stable while the later Yjs-backed implementation slices land.
 ## Role Behavior
 
 - `admin`, `editor`, `commenter`, and `reader` may join a workspace
-- the shared contract reserves `doc.sync.request` for joined project members,
-  but the current `apps/api` transport does not handle that event yet
+- any joined project member may send `doc.sync.request` to re-sync a text
+  document they are currently joined to
 - `admin` and `editor` may send `doc.update` after joining the matching text
   workspace
 - `commenter` and `reader` remain read-only and receive `FORBIDDEN` if they
@@ -56,10 +56,11 @@ Validation behavior:
 
 - payload must be an object
 - `documentId` must be a non-empty string
-- reserved in shared types, but not yet processed by the current `apps/api`
-  socket transport
-- valid only after the socket has joined the matching workspace/document
-- intended for any joined project member once explicit re-sync support is wired
+- valid only after the socket has joined the matching text workspace/document
+- available to any joined project member (all roles)
+- membership is re-checked inside the per-document serialized queue, so
+  revocations that land between the initial join and the sync request are
+  caught
 
 ### `doc.update`
 
@@ -121,8 +122,9 @@ Behavior:
 Behavior:
 
 - emitted automatically after a successful text `workspace:join`
-- the current `apps/api` implementation does not emit this in response to
-  `doc.sync.request` yet because that event is not handled
+- also emitted in response to `doc.sync.request` from the same serialized
+  queue, so the returned state is post-commit relative to any earlier queued
+  mutations
 - contains the full encoded CRDT state from the authoritative joined active
   session after any earlier queued mutations have completed
 - successful text joins attach the socket to the current generation-scoped
@@ -208,7 +210,7 @@ Behavior:
   reset
 - `serverVersion: 0` is reserved for resets where the document no longer has a
   live current-state row after the server-side change
-- the initial Week 2 use case is snapshot restore / reopen resynchronization
+- the current use case is snapshot restore / reopen resynchronization
 
 ### `realtime:error`
 
@@ -241,6 +243,11 @@ Behavior:
 - a fresh `doc.update` sent after `doc.reset` but before rejoin still receives
   `realtime:error`, because that invalidated session is still the socket's
   current session and the client must explicitly rejoin
+- `doc.sync.request` failures map as:
+  - `INVALID_REQUEST` for malformed payloads, document/session mismatches, and
+    invalidated sessions
+  - `FORBIDDEN` for lost membership
+  - `UNAVAILABLE` for unexpected failures
 - `doc.update` failures map as:
   - `INVALID_REQUEST` for malformed payloads, invalid base64, invalid decoded
     Yjs update payloads, and socket/document mismatches
@@ -251,4 +258,4 @@ Behavior:
 ## Deferred From This Change
 
 - `presence.update` is part of the broader proposal but is intentionally not
-  included in the checked-in Week 2 contract for this slice
+  included in the current contract
