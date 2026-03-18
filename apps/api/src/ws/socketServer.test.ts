@@ -768,6 +768,7 @@ describe("socket server", () => {
           };
         },
         invalidate: () => ({ invalidatedGeneration: 0 }),
+        drain: async () => ({ timedOut: false, failedCount: 0 }),
       },
     });
     const token = signToken("alice", testConfig.jwtSecret);
@@ -857,6 +858,7 @@ describe("socket server", () => {
       activeDocumentRegistry: {
         join,
         invalidate: () => ({ invalidatedGeneration: 0 }),
+        drain: async () => ({ timedOut: false, failedCount: 0 }),
       },
     });
     const client = socketServer.connect(
@@ -2421,6 +2423,7 @@ describe("socket server", () => {
           };
         },
         invalidate: () => ({ invalidatedGeneration: 0 }),
+        drain: async () => ({ timedOut: false, failedCount: 0 }),
       },
     });
     const sender = socketServer.connect(
@@ -2522,6 +2525,7 @@ describe("socket server", () => {
           },
         }),
         invalidate: () => ({ invalidatedGeneration: 0 }),
+        drain: async () => ({ timedOut: false, failedCount: 0 }),
       },
       workspaceService: {
         openDocument: async () => ({
