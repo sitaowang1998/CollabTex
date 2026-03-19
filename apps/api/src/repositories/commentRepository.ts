@@ -56,19 +56,17 @@ export function createCommentRepository(
             },
             include: {
               comments: {
-                orderBy: { createdAt: "asc" },
+                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
               },
             },
           });
 
           return mapThreadWithComments(thread);
         } catch (error) {
-          if (
-            isPrismaKnownRequestLikeError(error) &&
-            error.code === "P2003" &&
-            isAuthorFkViolation(error)
-          ) {
-            throw new CommentAuthorNotFoundError();
+          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+            throw isAuthorFkViolation(error)
+              ? new CommentAuthorNotFoundError()
+              : new CommentDocumentNotFoundError();
           }
 
           throw error;
@@ -84,10 +82,10 @@ export function createCommentRepository(
         },
         include: {
           comments: {
-            orderBy: { createdAt: "asc" },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
       return threads.map(mapThreadWithComments);
@@ -120,12 +118,10 @@ export function createCommentRepository(
 
           return mapComment(comment);
         } catch (error) {
-          if (
-            isPrismaKnownRequestLikeError(error) &&
-            error.code === "P2003" &&
-            isAuthorFkViolation(error)
-          ) {
-            throw new CommentAuthorNotFoundError();
+          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+            throw isAuthorFkViolation(error)
+              ? new CommentAuthorNotFoundError()
+              : new CommentThreadNotFoundError();
           }
 
           throw error;
