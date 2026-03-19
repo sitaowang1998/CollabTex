@@ -11,6 +11,7 @@ tags:
   - name: Projects
   - name: Members
   - name: Snapshots
+  - name: Comments
   - name: Documents
 paths:
   /api/health:
@@ -346,6 +347,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/projects/{projectId}/docs/{docId}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/DocId"
+    get:
+      tags:
+        - Comments
+      summary: List comment threads for a document
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Comment threads for the document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentThreadListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags:
+        - Comments
+      summary: Create a new comment thread anchored to a text selection
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCommentThreadRequest"
+      responses:
+        "201":
+          description: Comment thread created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentThreadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/threads/{threadId}/reply:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ThreadId"
+    post:
+      tags:
+        - Comments
+      summary: Reply to an existing comment thread
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplyToThreadRequest"
+      responses:
+        "201":
+          description: Reply added to thread
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{projectId}/tree:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -535,6 +617,22 @@ components:
         type: string
         format: uuid
       description: User identifier
+    DocId:
+      name: docId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Document identifier
+    ThreadId:
+      name: threadId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Comment thread identifier
     SnapshotId:
       name: snapshotId
       in: path
@@ -1066,3 +1164,139 @@ components:
           type:
             - string
             - "null"
+    CommentThreadStatus:
+      type: string
+      enum:
+        - open
+        - resolved
+    Comment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - threadId
+        - authorId
+        - body
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        threadId:
+          type: string
+          format: uuid
+        authorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    CommentThread:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - documentId
+        - projectId
+        - status
+        - startAnchor
+        - endAnchor
+        - quotedText
+        - createdAt
+        - updatedAt
+        - comments
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/CommentThreadStatus"
+        startAnchor:
+          type: string
+          maxLength: 1024
+        endAnchor:
+          type: string
+          maxLength: 1024
+        quotedText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+    CreateCommentThreadRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - startAnchorB64
+        - endAnchorB64
+        - quotedText
+        - body
+      properties:
+        startAnchorB64:
+          type: string
+          description: Base64-encoded start anchor of the text selection.
+          minLength: 1
+        endAnchorB64:
+          type: string
+          description: Base64-encoded end anchor of the text selection.
+          minLength: 1
+        quotedText:
+          type: string
+          description: The selected text at thread creation time.
+          minLength: 1
+        body:
+          type: string
+          description: The initial comment body.
+          minLength: 1
+    ReplyToThreadRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          description: The reply comment body.
+          minLength: 1
+    CommentThreadListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - threads
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommentThread"
+    CommentThreadResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - thread
+      properties:
+        thread:
+          $ref: "#/components/schemas/CommentThread"
+    CommentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - comment
+      properties:
+        comment:
+          $ref: "#/components/schemas/Comment"
