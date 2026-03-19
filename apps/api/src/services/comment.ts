@@ -13,7 +13,7 @@ export type StoredCommentThread = {
 export type StoredComment = {
   id: string;
   threadId: string;
-  authorId: string;
+  authorId: string | null;
   body: string;
   createdAt: Date;
 };

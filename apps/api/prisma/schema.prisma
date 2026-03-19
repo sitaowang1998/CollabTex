@@ -148,11 +148,11 @@ model CommentThread {
 model Comment {
   id        String        @id @default(uuid()) @db.Uuid
   threadId  String        @db.Uuid
-  authorId  String        @db.Uuid
+  authorId  String?       @db.Uuid
   body      String        @db.Text
   createdAt DateTime      @default(now())
   thread    CommentThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@index([threadId, createdAt])
 }
