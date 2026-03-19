@@ -5,6 +5,7 @@ import { createCommentRepository } from "../repositories/commentRepository.js";
 import { createDocumentRepository } from "../repositories/documentRepository.js";
 import { createProjectRepository } from "../repositories/projectRepository.js";
 import {
+  CommentAuthorNotFoundError,
   CommentDocumentNotFoundError,
   CommentThreadNotFoundError,
 } from "../services/comment.js";
@@ -457,6 +458,128 @@ describe("comment repository integration", () => {
     );
 
     expect(found).toBeNull();
+  });
+
+  it("rejects thread creation with cross-project document mismatch", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`comment-cross-${suffix}@example.com`);
+    const projectA = await createProject(owner.id, `Cross A ${suffix}`);
+    const projectB = await createProject(owner.id, `Cross B ${suffix}`);
+    const docA = await createTextDocument(projectA.id, owner.id, "/main.tex");
+    const repository = createCommentRepository(getDb());
+
+    await expect(
+      repository.createThread({
+        projectId: projectB.id,
+        documentId: docA.id,
+        startAnchor: "a",
+        endAnchor: "b",
+        quotedText: "text",
+        authorId: owner.id,
+        body: "cross-project comment",
+      }),
+    ).rejects.toBeInstanceOf(CommentDocumentNotFoundError);
+  });
+
+  it("rejects createThread with nonexistent author", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`comment-no-author-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `Comment No Author ${suffix}`,
+    );
+    const document = await createTextDocument(
+      project.id,
+      owner.id,
+      "/main.tex",
+    );
+    const repository = createCommentRepository(getDb());
+
+    await expect(
+      repository.createThread({
+        projectId: project.id,
+        documentId: document.id,
+        startAnchor: "a",
+        endAnchor: "b",
+        quotedText: "text",
+        authorId: "00000000-0000-0000-0000-000000000000",
+        body: "ghost comment",
+      }),
+    ).rejects.toBeInstanceOf(CommentAuthorNotFoundError);
+  });
+
+  it("rejects addComment with nonexistent author", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `comment-add-no-author-${suffix}@example.com`,
+    );
+    const project = await createProject(
+      owner.id,
+      `Comment Add No Author ${suffix}`,
+    );
+    const document = await createTextDocument(
+      project.id,
+      owner.id,
+      "/main.tex",
+    );
+    const repository = createCommentRepository(getDb());
+
+    const thread = await repository.createThread({
+      projectId: project.id,
+      documentId: document.id,
+      startAnchor: "a",
+      endAnchor: "b",
+      quotedText: "text",
+      authorId: owner.id,
+      body: "comment",
+    });
+
+    await expect(
+      repository.addComment({
+        threadId: thread.id,
+        authorId: "00000000-0000-0000-0000-000000000000",
+        body: "ghost reply",
+      }),
+    ).rejects.toBeInstanceOf(CommentAuthorNotFoundError);
+  });
+
+  it("returns full StoredComment shape from addComment", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`comment-shape-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Comment Shape ${suffix}`);
+    const document = await createTextDocument(
+      project.id,
+      owner.id,
+      "/main.tex",
+    );
+    const repository = createCommentRepository(getDb());
+
+    const thread = await repository.createThread({
+      projectId: project.id,
+      documentId: document.id,
+      startAnchor: "a",
+      endAnchor: "b",
+      quotedText: "text",
+      authorId: owner.id,
+      body: "first",
+    });
+
+    const reply = await repository.addComment({
+      threadId: thread.id,
+      authorId: owner.id,
+      body: "reply body",
+    });
+
+    expect(reply).toMatchObject({
+      threadId: thread.id,
+      authorId: owner.id,
+      body: "reply body",
+    });
+    expect(reply.id).toEqual(expect.any(String));
+    expect(reply.createdAt).toBeInstanceOf(Date);
+    expect(Object.keys(reply).sort()).toEqual(
+      ["id", "threadId", "authorId", "body", "createdAt"].sort(),
+    );
   });
 
   it("returns empty list for document with no threads", async () => {

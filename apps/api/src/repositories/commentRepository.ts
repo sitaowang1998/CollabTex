@@ -5,6 +5,7 @@ import {
   lockActiveProject,
 } from "./projectRepositoryUtils.js";
 import {
+  CommentAuthorNotFoundError,
   CommentDocumentNotFoundError,
   CommentThreadNotFoundError,
   type CommentRepository,
@@ -63,7 +64,7 @@ export function createCommentRepository(
           return mapThreadWithComments(thread);
         } catch (error) {
           if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
-            throw new CommentDocumentNotFoundError();
+            throw new CommentAuthorNotFoundError();
           }
 
           throw error;
@@ -116,7 +117,7 @@ export function createCommentRepository(
           return mapComment(comment);
         } catch (error) {
           if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
-            throw new CommentThreadNotFoundError();
+            throw new CommentAuthorNotFoundError();
           }
 
           throw error;

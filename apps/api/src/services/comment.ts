@@ -55,3 +55,9 @@ export class CommentDocumentNotFoundError extends Error {
     super("Document not found for comment");
   }
 }
+
+export class CommentAuthorNotFoundError extends Error {
+  constructor() {
+    super("Author not found for comment");
+  }
+}
