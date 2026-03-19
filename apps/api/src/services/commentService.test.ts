@@ -246,6 +246,7 @@ describe("comment service", () => {
       });
 
       const result = await service.replyToThread({
+        projectId: "project-1",
         threadId: "thread-1",
         actorUserId: "user-1",
         body: "reply body",
@@ -281,7 +282,28 @@ describe("comment service", () => {
 
       await expect(
         service.replyToThread({
+          projectId: "project-1",
           threadId: "missing-thread",
+          actorUserId: "user-1",
+          body: "reply",
+        }),
+      ).rejects.toBeInstanceOf(CommentThreadNotFoundError);
+      expect(projectAccessService.requireProjectRole).not.toHaveBeenCalled();
+      expect(commentRepository.addComment).not.toHaveBeenCalled();
+    });
+
+    it("rejects when thread belongs to a different project", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      commentRepository.findThreadById.mockResolvedValue(createThread());
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      await expect(
+        service.replyToThread({
+          projectId: "other-project",
+          threadId: "thread-1",
           actorUserId: "user-1",
           body: "reply",
         }),
@@ -303,6 +325,7 @@ describe("comment service", () => {
 
       await expect(
         service.replyToThread({
+          projectId: "project-1",
           threadId: "thread-1",
           actorUserId: "user-1",
           body: "reply",
@@ -327,6 +350,7 @@ describe("comment service", () => {
 
       await expect(
         service.replyToThread({
+          projectId: "project-1",
           threadId: "thread-1",
           actorUserId: "deleted-user",
           body: "reply",

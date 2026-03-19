@@ -11,6 +11,7 @@ import {
 } from "../../services/comment.js";
 import type { CommentService } from "../../services/commentService.js";
 import {
+  ProjectAdminRequiredError,
   ProjectNotFoundError,
   ProjectRoleRequiredError,
 } from "../../services/project.js";
@@ -22,6 +23,10 @@ import {
   parseRequiredTrimmedString,
   parseUuidParam,
 } from "../validation/requestValidation.js";
+
+const MAX_ANCHOR_LENGTH = 1024;
+const MAX_COMMENT_BODY_LENGTH = 10000;
+const MAX_QUOTED_TEXT_LENGTH = 10000;
 
 export function createCommentRouter(
   config: AppConfig,
@@ -134,6 +139,7 @@ export function createCommentRouter(
         const authenticatedRequest = req as AuthenticatedRequest;
 
         const comment = await commentService.replyToThread({
+          projectId,
           threadId,
           actorUserId: authenticatedRequest.userId,
           body: body.body,
@@ -166,24 +172,48 @@ function parseCreateThreadRequest(raw: unknown): CreateThreadBody | HttpError {
     "startAnchorB64",
   );
   if (startAnchorB64 instanceof HttpError) return startAnchorB64;
+  if (startAnchorB64.length > MAX_ANCHOR_LENGTH) {
+    return new HttpError(
+      400,
+      `startAnchorB64 must be at most ${MAX_ANCHOR_LENGTH} characters`,
+    );
+  }
 
   const endAnchorB64 = parseRequiredTrimmedString(
     raw.endAnchorB64 as string | undefined,
     "endAnchorB64",
   );
   if (endAnchorB64 instanceof HttpError) return endAnchorB64;
+  if (endAnchorB64.length > MAX_ANCHOR_LENGTH) {
+    return new HttpError(
+      400,
+      `endAnchorB64 must be at most ${MAX_ANCHOR_LENGTH} characters`,
+    );
+  }
 
   const quotedText = parseRequiredTrimmedString(
     raw.quotedText as string | undefined,
     "quotedText",
   );
   if (quotedText instanceof HttpError) return quotedText;
+  if (quotedText.length > MAX_QUOTED_TEXT_LENGTH) {
+    return new HttpError(
+      400,
+      `quotedText must be at most ${MAX_QUOTED_TEXT_LENGTH} characters`,
+    );
+  }
 
   const body = parseRequiredTrimmedString(
     raw.body as string | undefined,
     "body",
   );
   if (body instanceof HttpError) return body;
+  if (body.length > MAX_COMMENT_BODY_LENGTH) {
+    return new HttpError(
+      400,
+      `body must be at most ${MAX_COMMENT_BODY_LENGTH} characters`,
+    );
+  }
 
   return { startAnchorB64, endAnchorB64, quotedText, body };
 }
@@ -200,6 +230,12 @@ function parseReplyRequest(raw: unknown): ReplyBody | HttpError {
     "body",
   );
   if (body instanceof HttpError) return body;
+  if (body.length > MAX_COMMENT_BODY_LENGTH) {
+    return new HttpError(
+      400,
+      `body must be at most ${MAX_COMMENT_BODY_LENGTH} characters`,
+    );
+  }
 
   return { body };
 }
@@ -219,6 +255,10 @@ function mapCommentError(error: unknown): Error {
 
   if (error instanceof ProjectNotFoundError) {
     return new HttpError(404, "project not found");
+  }
+
+  if (error instanceof ProjectAdminRequiredError) {
+    return new HttpError(403, "admin role required");
   }
 
   if (error instanceof ProjectRoleRequiredError) {

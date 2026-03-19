@@ -1252,10 +1252,12 @@ components:
           type: string
           description: Base64-encoded start anchor of the text selection.
           minLength: 1
+          maxLength: 1024
         endAnchorB64:
           type: string
           description: Base64-encoded end anchor of the text selection.
           minLength: 1
+          maxLength: 1024
         quotedText:
           type: string
           description: The selected text at thread creation time.

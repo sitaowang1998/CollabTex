@@ -75,6 +75,15 @@ describe("comment routes", () => {
         authorId: alice.user.id,
         body: "first comment",
       });
+      expect(response.body.threads[0].createdAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
+      expect(response.body.threads[0].updatedAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
+      expect(response.body.threads[0].comments[0].createdAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
     });
 
     it("returns empty array when no threads exist", async () => {
@@ -193,6 +202,25 @@ describe("comment routes", () => {
         .expect(403)
         .expect({ error: "required project role missing" });
     });
+
+    it("allows commenter role to create a thread", async () => {
+      const { app, projectId, docId, addMembership } =
+        await setupCommentTestApp();
+      const commenterId = randomUUID();
+      addMembership(projectId, commenterId, "commenter");
+      const commenterToken = signToken(commenterId, testConfig.jwtSecret);
+
+      await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${commenterToken}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "from commenter",
+        })
+        .expect(201);
+    });
   });
 
   describe("POST /api/projects/:projectId/threads/:threadId/reply", () => {
@@ -223,6 +251,39 @@ describe("comment routes", () => {
         authorId: alice.user.id,
         body: "reply text",
       });
+    });
+
+    it("reply appears in subsequent GET listing", async () => {
+      const { app, alice, projectId, docId } = await setupCommentTestApp();
+
+      const createResponse = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "initial",
+        })
+        .expect(201);
+
+      const threadId = createResponse.body.thread.id as string;
+
+      await request(app)
+        .post(`/api/projects/${projectId}/threads/${threadId}/reply`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ body: "reply text" })
+        .expect(201);
+
+      const listResponse = await request(app)
+        .get(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .expect(200);
+
+      expect(listResponse.body.threads).toHaveLength(1);
+      expect(listResponse.body.threads[0].comments).toHaveLength(2);
+      expect(listResponse.body.threads[0].comments[0].body).toBe("initial");
+      expect(listResponse.body.threads[0].comments[1].body).toBe("reply text");
     });
 
     it("returns 400 for missing body", async () => {
