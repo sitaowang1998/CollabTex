@@ -14,6 +14,7 @@ import {
   ProjectRoleRequiredError,
   type ProjectService,
 } from "../../services/project.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 
@@ -297,11 +298,24 @@ describe("document routes", () => {
 function createDocumentTestApp(documentService: DocumentService) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    commentService: createStubCommentService(),
     documentService,
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),
     snapshotManagementService: createStubSnapshotManagementService(),
   });
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => [],
+    createThread: async () => {
+      throw new Error("Not implemented for document route tests");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for document route tests");
+    },
+  };
 }
 
 function createStubDocumentService() {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHttpApp } from "../app.js";
 import type { AppConfig } from "../../config/appConfig.js";
 import { signToken, type AuthService } from "../../services/auth.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { ProjectService } from "../../services/project.js";
@@ -145,6 +146,7 @@ function createSnapshotTestApp(
 ) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),
@@ -156,6 +158,18 @@ function createSnapshotManagementService() {
   return {
     listSnapshots: vi.fn<SnapshotManagementService["listSnapshots"]>(),
     restoreSnapshot: vi.fn<SnapshotManagementService["restoreSnapshot"]>(),
+  };
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => [],
+    createThread: async () => {
+      throw new Error("Not implemented for snapshot route tests");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for snapshot route tests");
+    },
   };
 }
 

@@ -17,6 +17,7 @@ import {
   type ProjectRepository,
 } from "../../services/project.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import { type SnapshotService } from "../../services/snapshot.js";
 import { type SnapshotRefreshTrigger } from "../../services/snapshotRefresh.js";
@@ -79,6 +80,7 @@ export function createTestApp() {
 
   return createHttpApp(testConfig, {
     authService,
+    commentService: createStubCommentService(),
     documentService,
     membershipService,
     projectService,
@@ -249,6 +251,18 @@ function createInMemoryProjectRepository(): ProjectRepository {
       });
 
       return;
+    },
+  };
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => [],
+    createThread: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for createTestApp");
     },
   };
 }
