@@ -160,6 +160,8 @@ describe("persistence schema integration", () => {
     `;
 
     expect(rows.map(({ tablename }) => tablename)).toEqual([
+      "Comment",
+      "CommentThread",
       "Document",
       "DocumentTextState",
       "Project",
