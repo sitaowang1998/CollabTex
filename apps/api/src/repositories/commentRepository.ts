@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
-import { lockActiveProject } from "./projectRepositoryUtils.js";
+import {
+  isPrismaKnownRequestLikeError,
+  lockActiveProject,
+} from "./projectRepositoryUtils.js";
 import {
   CommentDocumentNotFoundError,
   CommentThreadNotFoundError,
@@ -35,28 +38,36 @@ export function createCommentRepository(
           throw new CommentDocumentNotFoundError();
         }
 
-        const thread = await tx.commentThread.create({
-          data: {
-            projectId,
-            documentId,
-            startAnchor,
-            endAnchor,
-            quotedText,
-            comments: {
-              create: {
-                authorId,
-                body,
+        try {
+          const thread = await tx.commentThread.create({
+            data: {
+              projectId,
+              documentId,
+              startAnchor,
+              endAnchor,
+              quotedText,
+              comments: {
+                create: {
+                  authorId,
+                  body,
+                },
               },
             },
-          },
-          include: {
-            comments: {
-              orderBy: { createdAt: "asc" },
+            include: {
+              comments: {
+                orderBy: { createdAt: "asc" },
+              },
             },
-          },
-        });
+          });
 
-        return mapThreadWithComments(thread);
+          return mapThreadWithComments(thread);
+        } catch (error) {
+          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+            throw new CommentDocumentNotFoundError();
+          }
+
+          throw error;
+        }
       }),
 
     listThreadsForDocument: async ({ projectId, documentId }) => {
@@ -84,22 +95,32 @@ export function createCommentRepository(
             id: threadId,
             project: { tombstoneAt: null },
           },
-          select: { id: true },
+          select: { id: true, projectId: true },
         });
 
         if (!thread) {
           throw new CommentThreadNotFoundError();
         }
 
-        const comment = await tx.comment.create({
-          data: {
-            threadId,
-            authorId,
-            body,
-          },
-        });
+        await lockActiveProject(tx, thread.projectId);
 
-        return mapComment(comment);
+        try {
+          const comment = await tx.comment.create({
+            data: {
+              threadId,
+              authorId,
+              body,
+            },
+          });
+
+          return mapComment(comment);
+        } catch (error) {
+          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+            throw new CommentThreadNotFoundError();
+          }
+
+          throw error;
+        }
       }),
 
     findThreadById: async (threadId) => {

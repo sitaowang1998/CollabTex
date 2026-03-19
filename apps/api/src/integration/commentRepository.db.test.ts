@@ -8,6 +8,7 @@ import {
   CommentDocumentNotFoundError,
   CommentThreadNotFoundError,
 } from "../services/comment.js";
+import { ProjectNotFoundError } from "../services/projectAccess.js";
 import { createTestDatabaseClient } from "../test/db/createTestDatabaseClient.js";
 
 let db: DatabaseClient | undefined;
@@ -341,7 +342,47 @@ describe("comment repository integration", () => {
         authorId: owner.id,
         body: "comment",
       }),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(ProjectNotFoundError);
+  });
+
+  it("rejects addComment for tombstoned project", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(
+      `comment-tombstone-add-${suffix}@example.com`,
+    );
+    const project = await createProject(
+      owner.id,
+      `Comment Tombstone Add ${suffix}`,
+    );
+    const document = await createTextDocument(
+      project.id,
+      owner.id,
+      "/main.tex",
+    );
+    const repository = createCommentRepository(getDb());
+
+    const thread = await repository.createThread({
+      projectId: project.id,
+      documentId: document.id,
+      startAnchor: "a",
+      endAnchor: "b",
+      quotedText: "text",
+      authorId: owner.id,
+      body: "comment",
+    });
+
+    await getDb().project.update({
+      where: { id: project.id },
+      data: { tombstoneAt: new Date("2026-03-14T12:00:00.000Z") },
+    });
+
+    await expect(
+      repository.addComment({
+        threadId: thread.id,
+        authorId: owner.id,
+        body: "late comment",
+      }),
+    ).rejects.toBeInstanceOf(CommentThreadNotFoundError);
   });
 
   it("rejects addComment for missing thread", async () => {
@@ -406,6 +447,38 @@ describe("comment repository integration", () => {
     });
 
     expect(threadRow).toBeNull();
+  });
+
+  it("returns null for nonexistent thread ID", async () => {
+    const repository = createCommentRepository(getDb());
+
+    const found = await repository.findThreadById(
+      "00000000-0000-0000-0000-000000000000",
+    );
+
+    expect(found).toBeNull();
+  });
+
+  it("returns empty list for document with no threads", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`comment-empty-list-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `Comment Empty List ${suffix}`,
+    );
+    const document = await createTextDocument(
+      project.id,
+      owner.id,
+      "/main.tex",
+    );
+    const repository = createCommentRepository(getDb());
+
+    const threads = await repository.listThreadsForDocument({
+      projectId: project.id,
+      documentId: document.id,
+    });
+
+    expect(threads).toEqual([]);
   });
 });
 
