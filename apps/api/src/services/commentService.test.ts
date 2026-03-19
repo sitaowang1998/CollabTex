@@ -176,6 +176,32 @@ describe("comment service", () => {
       ).rejects.toBeInstanceOf(CommentDocumentNotFoundError);
     });
 
+    it("passes through CommentAuthorNotFoundError from repository", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      projectAccessService.requireProjectRole.mockResolvedValue(
+        createProjectWithRole("editor"),
+      );
+      commentRepository.createThread.mockRejectedValue(
+        new CommentAuthorNotFoundError(),
+      );
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      await expect(
+        service.createThread({
+          projectId: "project-1",
+          documentId: "document-1",
+          actorUserId: "deleted-user",
+          startAnchor: "a",
+          endAnchor: "b",
+          quotedText: "q",
+          body: "body",
+        }),
+      ).rejects.toBeInstanceOf(CommentAuthorNotFoundError);
+    });
+
     it("includes quotedText in created thread response", async () => {
       const { commentRepository, projectAccessService } = createDependencies();
       const created = createThreadWithComments({
@@ -237,6 +263,12 @@ describe("comment service", () => {
         authorId: "user-1",
         body: "reply body",
       });
+      expect(
+        commentRepository.findThreadById.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        projectAccessService.requireProjectRole.mock.invocationCallOrder[0] ??
+          0,
+      );
     });
 
     it("rejects when thread does not exist", async () => {

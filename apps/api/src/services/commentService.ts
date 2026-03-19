@@ -1,4 +1,3 @@
-import type { ProjectRole } from "@collab-tex/shared";
 import type {
   CommentRepository,
   StoredComment,
@@ -7,11 +6,7 @@ import type {
 import { CommentThreadNotFoundError } from "./comment.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 
-const COMMENT_ALLOWED_ROLES: readonly ProjectRole[] = [
-  "admin",
-  "editor",
-  "commenter",
-] as const;
+const COMMENT_ALLOWED_ROLES = ["admin", "editor", "commenter"] as const;
 
 export type CreateThreadInput = {
   projectId: string;
