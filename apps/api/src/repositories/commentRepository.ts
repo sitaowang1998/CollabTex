@@ -63,7 +63,11 @@ export function createCommentRepository(
 
           return mapThreadWithComments(thread);
         } catch (error) {
-          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+          if (
+            isPrismaKnownRequestLikeError(error) &&
+            error.code === "P2003" &&
+            isAuthorFkViolation(error)
+          ) {
             throw new CommentAuthorNotFoundError();
           }
 
@@ -116,7 +120,11 @@ export function createCommentRepository(
 
           return mapComment(comment);
         } catch (error) {
-          if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+          if (
+            isPrismaKnownRequestLikeError(error) &&
+            error.code === "P2003" &&
+            isAuthorFkViolation(error)
+          ) {
             throw new CommentAuthorNotFoundError();
           }
 
@@ -172,4 +180,25 @@ function mapThreadWithComments(
     ...mapThread(row),
     comments: row.comments.map(mapComment),
   };
+}
+
+function isAuthorFkViolation(error: Error & { code: string }): boolean {
+  const meta = (error as Record<string, unknown>).meta as
+    | Record<string, unknown>
+    | undefined;
+  // Prisma exposes FK constraint name in different locations depending on
+  // the adapter.  Check both the legacy `field_name` path and the driver-
+  // adapter path used with @prisma/adapter-pg.
+  const fieldName = meta?.field_name as string | undefined;
+  if (fieldName) return fieldName.includes("authorId");
+
+  const driverCause = (
+    meta?.driverAdapterError as Record<string, unknown> | undefined
+  )?.cause as Record<string, unknown> | undefined;
+  const constraint = (
+    driverCause?.constraint as Record<string, unknown> | undefined
+  )?.index as string | undefined;
+  if (constraint) return constraint.includes("authorId");
+
+  return false;
 }
