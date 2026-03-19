@@ -183,7 +183,7 @@ function mapThreadWithComments(
 }
 
 function isAuthorFkViolation(error: Error & { code: string }): boolean {
-  const meta = (error as Record<string, unknown>).meta as
+  const meta = (error as unknown as Record<string, unknown>).meta as
     | Record<string, unknown>
     | undefined;
   // Prisma exposes FK constraint name in different locations depending on
