@@ -8,6 +8,7 @@ import { createDatabaseClient } from "./infrastructure/db/client.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
+import { createCommentRepository } from "./repositories/commentRepository.js";
 import { createMembershipRepository } from "./repositories/membershipRepository.js";
 import { createProjectStateRepository } from "./repositories/projectStateRepository.js";
 import { createProjectRepository } from "./repositories/projectRepository.js";
@@ -16,6 +17,7 @@ import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefre
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createCollaborationService } from "./services/collaboration.js";
+import { createCommentService } from "./services/commentService.js";
 import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
 import { createMembershipService } from "./services/membership.js";
@@ -129,6 +131,12 @@ async function main() {
     const membershipService = createMembershipService({
       membershipRepository: createMembershipRepository(databaseClient),
       userLookup: userRepository,
+      projectAccessService,
+    });
+    // TODO(#13): pass commentService to createHttpApp once routes are wired
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const commentService = createCommentService({
+      commentRepository: createCommentRepository(databaseClient),
       projectAccessService,
     });
     const snapshotManagementService = createSnapshotManagementService({
