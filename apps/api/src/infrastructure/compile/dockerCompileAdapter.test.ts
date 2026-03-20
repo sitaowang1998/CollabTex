@@ -52,7 +52,7 @@ describe("dockerCompileAdapter writeInputFiles safety", () => {
     ]);
     await expect(
       adapter.compile({ files, mainFile: "main.tex", timeoutMs: 5000 }),
-    ).rejects.toThrow("File path escapes working directory");
+    ).rejects.toThrow("Invalid file path");
   });
 
   it("rejects file map key with absolute path", async () => {
@@ -62,7 +62,7 @@ describe("dockerCompileAdapter writeInputFiles safety", () => {
     ]);
     await expect(
       adapter.compile({ files, mainFile: "main.tex", timeoutMs: 5000 }),
-    ).rejects.toThrow("File path escapes working directory");
+    ).rejects.toThrow("Invalid file path");
   });
 
   it("rejects file map key with nested ../ traversal", async () => {
@@ -72,7 +72,7 @@ describe("dockerCompileAdapter writeInputFiles safety", () => {
     ]);
     await expect(
       adapter.compile({ files, mainFile: "main.tex", timeoutMs: 5000 }),
-    ).rejects.toThrow("File path escapes working directory");
+    ).rejects.toThrow("Invalid file path");
   });
 });
 

@@ -41,7 +41,7 @@ describe("validateCompileInput", () => {
         mainFile: "../escape.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("mainFile path escapes working directory");
+    ).toThrow("mainFile is not a valid relative file path");
   });
 
   it("rejects mainFile with absolute path", () => {
@@ -52,7 +52,7 @@ describe("validateCompileInput", () => {
         mainFile: "/etc/passwd",
         timeoutMs: 5000,
       }),
-    ).toThrow("mainFile path escapes working directory");
+    ).toThrow("mainFile is not a valid relative file path");
   });
 
   it("rejects mainFile not present in files map", () => {
@@ -77,7 +77,7 @@ describe("validateCompileInput", () => {
         mainFile: "main.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("File path escapes working directory");
+    ).toThrow("Invalid file path");
   });
 
   it("rejects file map key with absolute path", () => {
@@ -91,7 +91,7 @@ describe("validateCompileInput", () => {
         mainFile: "main.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("File path escapes working directory");
+    ).toThrow("Invalid file path");
   });
 
   it("rejects mainFile starting with /base/ (synthetic root bypass)", () => {
@@ -102,7 +102,7 @@ describe("validateCompileInput", () => {
         mainFile: "/base/exploit.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("mainFile path escapes working directory");
+    ).toThrow("mainFile is not a valid relative file path");
   });
 
   it("rejects mainFile with nested ../ traversal", () => {
@@ -113,7 +113,7 @@ describe("validateCompileInput", () => {
         mainFile: "sub/../../escape.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("mainFile path escapes working directory");
+    ).toThrow("mainFile is not a valid relative file path");
   });
 
   it("rejects file map key with nested ../ traversal", () => {
@@ -127,7 +127,61 @@ describe("validateCompileInput", () => {
         mainFile: "main.tex",
         timeoutMs: 5000,
       }),
-    ).toThrow("File path escapes working directory");
+    ).toThrow("Invalid file path");
+  });
+
+  it("rejects mainFile of '.'", () => {
+    const files = new Map([[".", "content"]]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: ".", timeoutMs: 5000 }),
+    ).toThrow("mainFile is not a valid relative file path");
+  });
+
+  it("rejects mainFile of '..'", () => {
+    const files = new Map([["..", "content"]]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "..", timeoutMs: 5000 }),
+    ).toThrow("mainFile is not a valid relative file path");
+  });
+
+  it("rejects file map key of '.'", () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      [".", "malicious"],
+    ]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).toThrow("Invalid file path");
+  });
+
+  it("rejects file map key of '..'", () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      ["..", "malicious"],
+    ]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).toThrow("Invalid file path");
+  });
+
+  it("rejects empty file map key", () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      ["", "malicious"],
+    ]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).toThrow("Invalid file path");
+  });
+
+  it("rejects file path ending with separator", () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      ["subdir/", "malicious"],
+    ]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).toThrow("Invalid file path");
   });
 
   it("throws CompileValidationError instances", () => {

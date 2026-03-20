@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   type CompileAdapter,
@@ -37,8 +37,16 @@ async function runCompile(
 
   const containerName = `collabtex-compile-${randomUUID()}`;
 
+  let dockerNotFound = false;
+
   try {
     await writeInputFiles(tmpDir, input.files);
+
+    if (!process.getuid || !process.getgid) {
+      throw new Error(
+        "Docker compilation requires a POSIX environment (process.getuid/getgid unavailable)",
+      );
+    }
 
     const args = [
       "run",
@@ -47,7 +55,7 @@ async function runCompile(
       "--network",
       "none",
       "--user",
-      `${process.getuid!()}:${process.getgid!()}`,
+      `${process.getuid()}:${process.getgid()}`,
       "--memory",
       "512m",
       "--pids-limit",
@@ -79,6 +87,7 @@ async function runCompile(
       }
 
       if (isDockerNotFoundError(error)) {
+        dockerNotFound = true;
         throw new Error("Docker is not installed or not available on PATH", {
           cause: error,
         });
@@ -89,7 +98,9 @@ async function runCompile(
       clearTimeout(timeout);
     }
   } finally {
-    await removeContainer(containerName);
+    if (!dockerNotFound) {
+      await removeContainer(containerName);
+    }
     try {
       await rm(tmpDir, { recursive: true, force: true });
     } catch (cleanupError) {
@@ -111,7 +122,7 @@ async function writeInputFiles(
     if (rel.startsWith("..") || isAbsolute(rel)) {
       throw new Error(`File path escapes working directory: ${relativePath}`);
     }
-    await mkdir(join(filePath, ".."), { recursive: true });
+    await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content, "utf8");
   }
 }

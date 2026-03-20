@@ -30,9 +30,9 @@ export function validateCompileInput(input: CompileInput): void {
     throw new CompileValidationError("mainFile must not be empty");
   }
 
-  if (isEscapingPath(input.mainFile)) {
+  if (isInvalidFilePath(input.mainFile)) {
     throw new CompileValidationError(
-      `mainFile path escapes working directory: ${input.mainFile}`,
+      `mainFile is not a valid relative file path: ${input.mainFile}`,
     );
   }
 
@@ -43,16 +43,16 @@ export function validateCompileInput(input: CompileInput): void {
   }
 
   for (const key of input.files.keys()) {
-    if (isEscapingPath(key)) {
-      throw new CompileValidationError(
-        `File path escapes working directory: ${key}`,
-      );
+    if (isInvalidFilePath(key)) {
+      throw new CompileValidationError(`Invalid file path: ${key}`);
     }
   }
 }
 
-function isEscapingPath(filePath: string): boolean {
+function isInvalidFilePath(filePath: string): boolean {
+  if (!filePath || filePath === "." || filePath === "..") return true;
   if (isAbsolute(filePath)) return true;
+  if (filePath.endsWith("/") || filePath.endsWith("\\")) return true;
   const resolved = resolve("/base", filePath);
   const rel = relative("/base", resolved);
   return rel.startsWith("..") || isAbsolute(rel);
