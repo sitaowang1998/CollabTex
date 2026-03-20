@@ -182,15 +182,21 @@ describe("project service", () => {
       );
     });
 
-    it("returns null and warns when explicit main document was deleted", async () => {
+    it("falls through to /main.tex fallback when explicit main document was deleted", async () => {
       const repository = createProjectRepository();
       const documentLookup = createDocumentLookup();
+      const fallbackDoc = {
+        id: "fallback-doc",
+        path: "/main.tex",
+        kind: "text" as const,
+      };
       repository.findForUser.mockResolvedValue({
         project: createStoredProject(),
         myRole: "reader",
       });
       repository.getMainDocumentId.mockResolvedValue("deleted-doc-id");
       documentLookup.findById.mockResolvedValue(null);
+      documentLookup.findByPath.mockResolvedValue(fallbackDoc);
       const logger = { warn: vi.fn() };
       const service = createProjectService({
         projectRepository: repository,
@@ -200,8 +206,11 @@ describe("project service", () => {
 
       const result = await service.getMainDocument("project-1", "user-1");
 
-      expect(result).toBeNull();
-      expect(documentLookup.findByPath).not.toHaveBeenCalled();
+      expect(result).toEqual(fallbackDoc);
+      expect(documentLookup.findByPath).toHaveBeenCalledWith(
+        "project-1",
+        "/main.tex",
+      );
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Stale mainDocumentId"),
       );

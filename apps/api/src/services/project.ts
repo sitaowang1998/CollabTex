@@ -100,14 +100,17 @@ export class InvalidMainDocumentError extends Error {
 
 export function createProjectService({
   projectRepository,
-  documentLookup,
+  documentLookup = {
+    findById: async () => null,
+    findByPath: async () => null,
+  },
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
   logger = console,
 }: {
   projectRepository: ProjectRepository;
-  documentLookup: DocumentLookup;
+  documentLookup?: DocumentLookup;
   projectAccessService?: ProjectAccessService;
   logger?: { warn: (message: string) => void };
 }): ProjectService {
@@ -147,9 +150,9 @@ export function createProjectService({
           logger.warn(
             `Stale mainDocumentId ${mainDocumentId} on project ${projectId}: document not found`,
           );
-          return null;
+        } else {
+          return doc;
         }
-        return doc;
       }
 
       const fallback = await documentLookup.findByPath(projectId, "/main.tex");
