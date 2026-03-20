@@ -2,7 +2,12 @@ import type { FormEvent } from "react";
 import { ArrowRight } from "lucide-react";
 import type { AuthFormState, AuthMode } from "../app/types";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";

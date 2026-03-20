@@ -1,14 +1,15 @@
 import type { FormEvent } from "react";
-import {
-  FilePlus2,
-  RefreshCw,
-  Undo2,
-} from "lucide-react";
+import { FilePlus2, RefreshCw, Undo2 } from "lucide-react";
 import type { CreateFileState, WorkspaceState } from "../app/types";
 import { TreeView } from "../components/TreeView";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
