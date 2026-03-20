@@ -280,7 +280,7 @@ function mapProjectError(error: unknown): Error {
   }
 
   if (error instanceof InvalidMainDocumentError) {
-    return new HttpError(400, "invalid main document");
+    return new HttpError(400, error.message);
   }
 
   if (error instanceof ProjectOwnerNotFoundError) {

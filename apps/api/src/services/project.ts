@@ -104,10 +104,12 @@ export function createProjectService({
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
+  logger = console,
 }: {
   projectRepository: ProjectRepository;
   documentLookup: DocumentLookup;
   projectAccessService?: ProjectAccessService;
+  logger?: { warn: (message: string) => void };
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -142,7 +144,7 @@ export function createProjectService({
       if (mainDocumentId) {
         const doc = await documentLookup.findById(projectId, mainDocumentId);
         if (!doc) {
-          console.warn(
+          logger.warn(
             `Stale mainDocumentId ${mainDocumentId} on project ${projectId}: document not found`,
           );
           return null;

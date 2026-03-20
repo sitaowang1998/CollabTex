@@ -191,20 +191,20 @@ describe("project service", () => {
       });
       repository.getMainDocumentId.mockResolvedValue("deleted-doc-id");
       documentLookup.findById.mockResolvedValue(null);
+      const logger = { warn: vi.fn() };
       const service = createProjectService({
         projectRepository: repository,
         documentLookup,
+        logger,
       });
 
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const result = await service.getMainDocument("project-1", "user-1");
 
       expect(result).toBeNull();
       expect(documentLookup.findByPath).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Stale mainDocumentId"),
       );
-      warnSpy.mockRestore();
     });
 
     it("returns null when /main.tex fallback is a binary document", async () => {
