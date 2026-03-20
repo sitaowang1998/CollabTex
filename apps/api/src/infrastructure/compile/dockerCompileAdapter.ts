@@ -32,26 +32,13 @@ async function runCompile(
   const tmpDir = join(tmpdir(), `collabtex-compile-${randomUUID()}`);
   await mkdir(tmpDir, { recursive: true });
 
-  try {
-    const resolvedMain = resolve(tmpDir, input.mainFile);
-    const relMain = relative(tmpDir, resolvedMain);
-    if (relMain.startsWith("..") || isAbsolute(relMain)) {
-      throw new Error(
-        `mainFile path escapes working directory: ${input.mainFile}`,
-      );
-    }
-    if (!input.files.has(input.mainFile)) {
-      throw new Error(
-        `mainFile "${input.mainFile}" is not in the provided files`,
-      );
-    }
+  const containerName = `collabtex-compile-${randomUUID()}`;
 
+  try {
     await writeInputFiles(tmpDir, input.files);
 
-    const containerName = `collabtex-compile-${randomUUID()}`;
     const args = [
       "run",
-      "--rm",
       "--name",
       containerName,
       "--network",
@@ -74,11 +61,18 @@ async function runCompile(
         signal: abortController.signal,
       });
 
-      return { success: exitCode === 0, exitCode, logs, timedOut: false };
+      return { outcome: "completed", exitCode, logs };
     } catch (error) {
       if (isAbortError(error)) {
         await killContainer(containerName);
-        return { success: false, exitCode: null, logs: "", timedOut: true };
+        const logs = await getContainerLogs(containerName);
+        return { outcome: "timeout", logs };
+      }
+
+      if (isDockerNotFoundError(error)) {
+        throw new Error("Docker is not installed or not available on PATH", {
+          cause: error,
+        });
       }
 
       throw error;
@@ -86,6 +80,7 @@ async function runCompile(
       clearTimeout(timeout);
     }
   } finally {
+    await removeContainer(containerName);
     try {
       await rm(tmpDir, { recursive: true, force: true });
     } catch (cleanupError) {
@@ -158,25 +153,37 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+function isDockerNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
 async function killContainer(containerName: string): Promise<void> {
   await new Promise<void>((res) => {
-    execFile("docker", ["kill", containerName], (error) => {
-      if (error) {
-        console.error(
-          `Failed to kill container ${containerName}: ${error.message}`,
-        );
-      }
+    execFile("docker", ["kill", containerName], () => {
       res();
     });
   });
+}
 
-  await new Promise<void>((res) => {
-    execFile("docker", ["rm", "-f", containerName], (error) => {
+async function getContainerLogs(containerName: string): Promise<string> {
+  return new Promise<string>((res) => {
+    execFile("docker", ["logs", containerName], (error, stdout, stderr) => {
       if (error) {
-        console.error(
-          `Failed to remove container ${containerName}: ${error.message}`,
-        );
+        res("");
+        return;
       }
+      res(stdout + stderr);
+    });
+  });
+}
+
+async function removeContainer(containerName: string): Promise<void> {
+  await new Promise<void>((res) => {
+    execFile("docker", ["rm", "-f", containerName], () => {
       res();
     });
   });

@@ -23,9 +23,7 @@ Hello, world!
         timeoutMs: 60_000,
       });
 
-      expect(result.success).toBe(true);
-      expect(result.exitCode).toBe(0);
-      expect(result.timedOut).toBe(false);
+      expect(result).toMatchObject({ outcome: "completed", exitCode: 0 });
       expect(result.logs.length).toBeGreaterThan(0);
     },
   );
@@ -49,9 +47,10 @@ Hello, world!
         timeoutMs: 60_000,
       });
 
-      expect(result.success).toBe(false);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.timedOut).toBe(false);
+      expect(result.outcome).toBe("completed");
+      if (result.outcome === "completed") {
+        expect(result.exitCode).not.toBe(0);
+      }
       expect(result.logs.length).toBeGreaterThan(0);
     },
   );
@@ -75,8 +74,7 @@ Hello, world!
         timeoutMs: 5_000,
       });
 
-      expect(result.timedOut).toBe(true);
-      expect(result.success).toBe(false);
+      expect(result.outcome).toBe("timeout");
     },
   );
 });
