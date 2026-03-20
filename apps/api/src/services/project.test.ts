@@ -225,6 +225,7 @@ describe("project service", () => {
       repository.findForUser.mockResolvedValue(null);
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await expect(
@@ -239,6 +240,7 @@ describe("project service", () => {
       repository.findForUser.mockResolvedValue(null);
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await expect(
@@ -254,6 +256,7 @@ describe("project service", () => {
       });
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await expect(
@@ -269,6 +272,7 @@ describe("project service", () => {
       });
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await expect(
@@ -285,6 +289,7 @@ describe("project service", () => {
       repository.setMainDocumentId.mockResolvedValue(undefined);
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await service.setMainDocument("project-1", "user-1", "doc-1");
@@ -304,6 +309,7 @@ describe("project service", () => {
       repository.setMainDocumentId.mockResolvedValue(undefined);
       const service = createProjectService({
         projectRepository: repository,
+        documentLookup: createDocumentLookup(),
       });
 
       await service.setMainDocument("project-1", "user-1", "doc-1");
