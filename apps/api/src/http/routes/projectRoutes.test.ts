@@ -11,7 +11,6 @@ import {
 } from "../../services/auth.js";
 import {
   createProjectService,
-  InvalidMainDocumentError,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
   ProjectRoleRequiredError,
@@ -538,10 +537,7 @@ async function expectProjectNames(
 function createProjectTestApp() {
   const { userRepository, hasUser } = createInMemoryUserRepository();
   const documentLookup = createInMemoryDocumentLookup();
-  const projectRepository = createInMemoryProjectRepository(
-    hasUser,
-    documentLookup,
-  );
+  const projectRepository = createInMemoryProjectRepository(hasUser);
   const app = createHttpApp(testConfig, {
     authService: createAuthService({
       userRepository,
@@ -754,7 +750,6 @@ function createInMemoryDocumentLookup() {
 
 function createInMemoryProjectRepository(
   hasUser: (userId: string) => boolean,
-  documentLookup: ReturnType<typeof createInMemoryDocumentLookup>,
 ): ProjectRepository & {
   addMembership: (
     projectId: string,
@@ -901,14 +896,6 @@ function createInMemoryProjectRepository(
       const project = projectsById.get(projectId);
       if (!project || project.tombstoneAt) {
         throw new ProjectNotFoundError();
-      }
-
-      const doc = await documentLookup.findById(projectId, documentId);
-      if (!doc) {
-        throw new InvalidMainDocumentError("document not found in project");
-      }
-      if (doc.kind !== "text") {
-        throw new InvalidMainDocumentError("main document must be a text file");
       }
 
       projectsById.set(projectId, {

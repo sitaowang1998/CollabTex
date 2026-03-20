@@ -67,6 +67,12 @@ export type ProjectRepository = {
   }) => Promise<void>;
 };
 
+export type SetMainDocumentInput = {
+  projectId: string;
+  userId: string;
+  documentId: string;
+};
+
 export type ProjectService = {
   createProject: (input: CreateProjectInput) => Promise<StoredProject>;
   listProjects: (userId: string) => Promise<ProjectWithRole[]>;
@@ -77,11 +83,7 @@ export type ProjectService = {
     projectId: string,
     userId: string,
   ) => Promise<StoredDocument | null>;
-  setMainDocument: (
-    projectId: string,
-    userId: string,
-    documentId: string,
-  ) => Promise<void>;
+  setMainDocument: (input: SetMainDocumentInput) => Promise<void>;
 };
 
 export class ProjectOwnerNotFoundError extends Error {
@@ -138,17 +140,36 @@ export function createProjectService({
         await projectRepository.getMainDocumentId(projectId);
 
       if (mainDocumentId) {
-        return documentLookup.findById(projectId, mainDocumentId);
+        const doc = await documentLookup.findById(projectId, mainDocumentId);
+        if (!doc) {
+          console.warn(
+            `Stale mainDocumentId ${mainDocumentId} on project ${projectId}: document not found`,
+          );
+          return null;
+        }
+        return doc;
       }
 
-      return documentLookup.findByPath(projectId, "/main.tex");
+      const fallback = await documentLookup.findByPath(projectId, "/main.tex");
+      if (fallback && fallback.kind !== "text") {
+        return null;
+      }
+      return fallback;
     },
-    setMainDocument: async (projectId, userId, documentId) => {
+    setMainDocument: async ({ projectId, userId, documentId }) => {
       await projectAccessService.requireProjectRole(
         projectId,
         userId,
         DOCUMENT_WRITE_ROLES,
       );
+
+      const doc = await documentLookup.findById(projectId, documentId);
+      if (!doc) {
+        throw new InvalidMainDocumentError("document not found in project");
+      }
+      if (doc.kind !== "text") {
+        throw new InvalidMainDocumentError("main document must be a text file");
+      }
 
       await projectRepository.setMainDocumentId({
         projectId,

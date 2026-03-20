@@ -227,11 +227,11 @@ export function createProjectRouter(
           return;
         }
 
-        await projectService.setMainDocument(
+        await projectService.setMainDocument({
           projectId,
-          authenticatedRequest.userId,
+          userId: authenticatedRequest.userId,
           documentId,
-        );
+        });
 
         res.status(204).send();
       } catch (error) {
@@ -280,7 +280,7 @@ function mapProjectError(error: unknown): Error {
   }
 
   if (error instanceof InvalidMainDocumentError) {
-    return new HttpError(400, error.message);
+    return new HttpError(400, "invalid main document");
   }
 
   if (error instanceof ProjectOwnerNotFoundError) {

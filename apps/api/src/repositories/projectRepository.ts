@@ -151,32 +151,23 @@ export function createProjectRepository(
       return project?.mainDocumentId ?? null;
     },
     setMainDocumentId: async ({ projectId, documentId }) => {
-      await databaseClient.$transaction(async (tx) => {
-        await lockActiveProject(tx, projectId);
+      try {
+        await databaseClient.$transaction(async (tx) => {
+          await lockActiveProject(tx, projectId);
 
-        const doc = await tx.document.findFirst({
-          where: {
-            id: documentId,
-            projectId,
-            project: { tombstoneAt: null },
-          },
+          await tx.project.update({
+            where: { id: projectId },
+            data: { mainDocumentId: documentId },
+          });
         });
-
-        if (!doc) {
-          throw new InvalidMainDocumentError("document not found in project");
-        }
-
-        if (doc.kind !== "text") {
+      } catch (error) {
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2002") {
           throw new InvalidMainDocumentError(
-            "main document must be a text file",
+            "document is already the main document of another project",
           );
         }
-
-        await tx.project.update({
-          where: { id: projectId },
-          data: { mainDocumentId: documentId },
-        });
-      });
+        throw error;
+      }
     },
   };
 }
