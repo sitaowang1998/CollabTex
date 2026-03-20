@@ -2835,7 +2835,7 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const errorPayload = await new Promise<{ code: string; message: string }>(
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
       (resolve, reject) => {
         client.once("connect", () => {
           client.emit("doc.update", {
@@ -2867,7 +2867,7 @@ describe("socket server", () => {
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
-    const errorPayload = await new Promise<{ code: string; message: string }>(
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
       (resolve, reject) => {
         client.once("connect", () => {
           client.emit("doc.sync.request", {
