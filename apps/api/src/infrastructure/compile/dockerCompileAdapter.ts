@@ -3,10 +3,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import type {
-  CompileAdapter,
-  CompileInput,
-  CompileResult,
+import {
+  type CompileAdapter,
+  type CompileInput,
+  type CompileResult,
+  validateCompileInput,
 } from "../../services/compile.js";
 
 const DEFAULT_DOCKER_IMAGE = "texlive/texlive:latest-small";
@@ -29,6 +30,8 @@ async function runCompile(
   dockerImage: string,
   input: CompileInput,
 ): Promise<CompileResult> {
+  validateCompileInput(input);
+
   const tmpDir = join(tmpdir(), `collabtex-compile-${randomUUID()}`);
   await mkdir(tmpDir, { recursive: true });
 
@@ -120,6 +123,11 @@ function execFilePromise(
       (error, stdout, stderr) => {
         const logs = stdout + stderr;
 
+        if (options.signal.aborted) {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          return;
+        }
+
         if (error && isAbortError(error)) {
           reject(error);
           return;
@@ -173,7 +181,7 @@ async function getContainerLogs(containerName: string): Promise<string> {
   return new Promise<string>((res) => {
     execFile("docker", ["logs", containerName], (error, stdout, stderr) => {
       if (error) {
-        res("");
+        res("(failed to retrieve container logs)");
         return;
       }
       res(stdout + stderr);
