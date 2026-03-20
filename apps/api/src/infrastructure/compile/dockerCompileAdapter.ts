@@ -119,7 +119,12 @@ async function writeInputFiles(
   for (const [relativePath, content] of files) {
     const filePath = resolve(tmpDir, relativePath);
     const rel = relative(tmpDir, filePath);
-    if (rel.startsWith("..") || isAbsolute(rel)) {
+    if (
+      rel === ".." ||
+      rel.startsWith("../") ||
+      rel.startsWith("..\\") ||
+      isAbsolute(rel)
+    ) {
       throw new Error(`File path escapes working directory: ${relativePath}`);
     }
     await mkdir(dirname(filePath), { recursive: true });

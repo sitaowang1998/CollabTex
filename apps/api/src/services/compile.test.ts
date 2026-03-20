@@ -12,6 +12,13 @@ describe("validateCompileInput", () => {
     expect(() => validateCompileInput(validInput)).not.toThrow();
   });
 
+  it("accepts filenames starting with double dots", () => {
+    const files = new Map([["..notes.tex", "content"]]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "..notes.tex", timeoutMs: 5000 }),
+    ).not.toThrow();
+  });
+
   it("rejects timeoutMs of 0", () => {
     expect(() => validateCompileInput({ ...validInput, timeoutMs: 0 })).toThrow(
       CompileValidationError,
