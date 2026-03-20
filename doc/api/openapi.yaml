@@ -1223,11 +1223,15 @@ components:
           $ref: "#/components/schemas/CommentThreadStatus"
         startAnchor:
           type: string
-          description: Opaque start anchor of the text selection (up to 1024 characters).
+          description: >-
+            Opaque start anchor of the text selection (up to 1024 characters).
+            Same value as startAnchorB64 in the create request.
           maxLength: 1024
         endAnchor:
           type: string
-          description: Opaque end anchor of the text selection (up to 1024 characters).
+          description: >-
+            Opaque end anchor of the text selection (up to 1024 characters).
+            Same value as endAnchorB64 in the create request.
           maxLength: 1024
         quotedText:
           type: string

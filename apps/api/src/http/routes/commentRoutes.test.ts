@@ -204,6 +204,23 @@ describe("comment routes", () => {
         .expect({ error: "required project role missing" });
     });
 
+    it("preserves leading/trailing whitespace in quotedText", async () => {
+      const { app, alice, projectId, docId } = await setupCommentTestApp();
+
+      const response = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "anchor-start",
+          endAnchorB64: "anchor-end",
+          quotedText: "  selected text  ",
+          body: "my comment",
+        })
+        .expect(201);
+
+      expect(response.body.thread.quotedText).toBe("  selected text  ");
+    });
+
     it("allows commenter role to create a thread", async () => {
       const { app, projectId, docId, addMembership } =
         await setupCommentTestApp();

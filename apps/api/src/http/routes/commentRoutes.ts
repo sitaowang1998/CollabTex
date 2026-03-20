@@ -191,17 +191,17 @@ function parseCreateThreadRequest(raw: unknown): CreateThreadBody | HttpError {
     );
   }
 
-  const quotedText = parseRequiredTrimmedString(
-    raw.quotedText as string | undefined,
-    "quotedText",
-  );
-  if (quotedText instanceof HttpError) return quotedText;
-  if (quotedText.length > MAX_QUOTED_TEXT_LENGTH) {
+  const rawQuotedText = raw.quotedText as string | undefined;
+  if (typeof rawQuotedText !== "string" || rawQuotedText.trim().length === 0) {
+    return new HttpError(400, "quotedText is required");
+  }
+  if (rawQuotedText.length > MAX_QUOTED_TEXT_LENGTH) {
     return new HttpError(
       400,
       `quotedText must be at most ${MAX_QUOTED_TEXT_LENGTH} characters`,
     );
   }
+  const quotedText = rawQuotedText;
 
   const body = parseRequiredTrimmedString(
     raw.body as string | undefined,
