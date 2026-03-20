@@ -99,39 +99,6 @@ export async function createTestSocketServer(options?: {
     snapshotManagementService: createStubSnapshotManagementService(),
   });
   const server = http.createServer(app);
-  const workspaceService =
-    options?.workspaceService ??
-    createWorkspaceService({
-      projectAccessService: {
-        requireProjectMember: async (projectId, userId) => {
-          const project = await projectRepository.findForUser(
-            projectId,
-            userId,
-          );
-
-          if (!project) {
-            throw new ProjectNotFoundError();
-          }
-
-          return project;
-        },
-        requireProjectRole: async () => {
-          throw new Error("Not implemented for socket tests");
-        },
-      },
-      documentRepository,
-      currentTextStateService,
-    });
-  const activeDocumentRegistry =
-    options?.activeDocumentRegistry ??
-    createActiveDocumentRegistry({
-      collaborationService,
-      loadInitialDocumentState: createActiveDocumentStateLoader({
-        documentRepository,
-        currentTextStateService,
-      }),
-      persistOnIdle: async () => {},
-    });
   const projectAccessService = {
     requireProjectMember: async (projectId: string, userId: string) => {
       const project = await projectRepository.findForUser(projectId, userId);
@@ -164,6 +131,23 @@ export async function createTestSocketServer(options?: {
   };
   const effectiveProjectAccessService =
     options?.projectAccessService ?? projectAccessService;
+  const workspaceService =
+    options?.workspaceService ??
+    createWorkspaceService({
+      projectAccessService: effectiveProjectAccessService,
+      documentRepository,
+      currentTextStateService,
+    });
+  const activeDocumentRegistry =
+    options?.activeDocumentRegistry ??
+    createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: createActiveDocumentStateLoader({
+        documentRepository,
+        currentTextStateService,
+      }),
+      persistOnIdle: async () => {},
+    });
   const io = createSocketServer(server, testConfig, {
     workspaceService,
     activeDocumentRegistry,
