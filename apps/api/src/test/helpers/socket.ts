@@ -22,6 +22,7 @@ import {
   UnsupportedCurrentTextStateDocumentError,
 } from "../../services/currentTextState.js";
 import type { DocumentService } from "../../services/document.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import {
   createProjectService,
@@ -92,6 +93,7 @@ export async function createTestSocketServer(options?: {
     projectService: createProjectService({
       projectRepository,
     }),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     snapshotManagementService: createStubSnapshotManagementService(),
@@ -208,6 +210,20 @@ export async function createTestSocketServer(options?: {
           resolve();
         });
       });
+    },
+  };
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    createThread: async () => {
+      throw new Error("Not implemented for socket tests");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for socket tests");
     },
   };
 }

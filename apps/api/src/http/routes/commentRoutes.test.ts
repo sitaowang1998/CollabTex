@@ -16,6 +16,7 @@ import type {
   StoredCommentThread,
   StoredCommentThreadWithComments,
 } from "../../services/comment.js";
+import { CommentDocumentNotFoundError } from "../../services/comment.js";
 import { createCommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
@@ -457,7 +458,8 @@ async function setupCommentTestApp() {
     },
   };
 
-  const commentRepository = createInMemoryCommentRepository();
+  const knownDocumentIds = new Set<string>();
+  const commentRepository = createInMemoryCommentRepository(knownDocumentIds);
 
   const projectAccessService = createProjectAccessService({
     projectRepository,
@@ -511,6 +513,7 @@ async function setupCommentTestApp() {
 
   const projectId = projectResponse.body.project.id as string;
   const docId = randomUUID();
+  knownDocumentIds.add(docId);
 
   return {
     app,
@@ -531,12 +534,17 @@ async function setupCommentTestApp() {
   };
 }
 
-function createInMemoryCommentRepository(): CommentRepository {
+function createInMemoryCommentRepository(
+  knownDocumentIds: Set<string>,
+): CommentRepository {
   const threadsById = new Map<string, StoredCommentThread>();
   const commentsByThreadId = new Map<string, StoredComment[]>();
 
   return {
     createThread: async (input) => {
+      if (!knownDocumentIds.has(input.documentId)) {
+        throw new CommentDocumentNotFoundError();
+      }
       const threadId = randomUUID();
       const now = new Date();
       const thread: StoredCommentThread = {
