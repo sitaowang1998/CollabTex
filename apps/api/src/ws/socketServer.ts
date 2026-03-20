@@ -157,6 +157,7 @@ export function createSocketServer(
       void applyDocumentUpdate(socket, dependencies.realtimeDocumentService, {
         request,
         sessionState,
+        userId,
         getActiveTextSession: () => activeTextSession,
       });
     });
@@ -446,6 +447,7 @@ async function applyDocumentUpdate(
   input: {
     request: ParsedDocumentUpdateRequest;
     sessionState: ActiveTextSessionState;
+    userId: string;
     getActiveTextSession: () => ActiveTextSessionState | null;
   },
 ) {
@@ -464,7 +466,7 @@ async function applyDocumentUpdate(
     const result = await realtimeDocumentService.applyUpdate({
       projectId: input.sessionState.projectId,
       documentId: input.request.documentId,
-      userId: socket.data.userId ?? "",
+      userId: input.userId,
       sessionHandle: input.sessionState.handle,
       update: input.request.update,
       isCurrentSession,

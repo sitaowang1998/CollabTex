@@ -388,11 +388,17 @@ describe("socket server", () => {
         reason: "snapshot_restore",
         serverVersion: currentVersion,
       });
-      await resetPromise;
+      const resetEvent = await resetPromise;
+
+      expect(resetEvent).toEqual({
+        documentId: "doc-456",
+        reason: "snapshot_restore",
+        serverVersion: currentVersion,
+      });
 
       const secondSync = await joinAndWaitForSync(secondClient, "doc-456");
 
-      expect(secondSync.serverVersion).toBe(9);
+      expect(secondSync.serverVersion).toBe(currentVersion);
       expect(decodeStateB64(secondSync.stateB64)).toBe("\\section{Restored}");
     } finally {
       firstClient.close();
@@ -2054,6 +2060,123 @@ describe("socket server", () => {
     });
   });
 
+  it("rejects doc.update when socket is not joined to the document", async () => {
+    socketServer = await createTestSocketServer();
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", () => {
+          client.emit("doc.update", {
+            documentId: "doc-other",
+            updateB64: Buffer.from([0]).toString("base64"),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket is not joined to this document",
+    });
+  });
+
+  it("rejects doc.update after membership revocation", async () => {
+    let membershipRevoked = false;
+    const accessCheck = async () => {
+      if (membershipRevoked) {
+        throw new ProjectNotFoundError();
+      }
+
+      return {
+        project: {
+          id: "project-123",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin" as const,
+      };
+    };
+    socketServer = await createTestSocketServer({
+      projectAccessService: {
+        requireProjectMember: accessCheck,
+        requireProjectRole: accessCheck,
+      },
+    });
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      joinSync: DocumentSyncResponseEvent;
+      error: WorkspaceErrorEvent;
+    }>((resolve, reject) => {
+      let joinSync: DocumentSyncResponseEvent | null = null;
+
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      client.once("doc.sync.response", (payload) => {
+        joinSync = payload;
+        membershipRevoked = true;
+        client.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(
+            payload.stateB64,
+            (document) => {
+              document.getText("content").insert(14, " Revoked");
+            },
+          ),
+          clientUpdateId: "client-update-1",
+        });
+      });
+
+      client.once("realtime:error", (payload) => {
+        client.close();
+        if (!joinSync) {
+          reject(new Error("Expected join sync before error"));
+          return;
+        }
+        resolve({ joinSync, error: payload });
+      });
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(result.joinSync.serverVersion).toBe(1);
+    expect(result.error).toEqual({
+      code: "FORBIDDEN",
+      message: "project membership required",
+    });
+  });
+
   it("returns post-commit state for doc.sync.request after accepted updates", async () => {
     socketServer = await createTestSocketServer();
     const sender = socketServer.connect(
@@ -2245,24 +2368,26 @@ describe("socket server", () => {
 
   it("rejects doc.sync.request after membership revocation", async () => {
     let membershipRevoked = false;
+    const accessCheck = async () => {
+      if (membershipRevoked) {
+        throw new ProjectNotFoundError();
+      }
+
+      return {
+        project: {
+          id: "project-123",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin" as const,
+      };
+    };
     socketServer = await createTestSocketServer({
       projectAccessService: {
-        requireProjectMember: async () => {
-          if (membershipRevoked) {
-            throw new ProjectNotFoundError();
-          }
-
-          return {
-            project: {
-              id: "project-123",
-              name: "Project",
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              tombstoneAt: null,
-            },
-            myRole: "admin" as const,
-          };
-        },
+        requireProjectMember: accessCheck,
+        requireProjectRole: accessCheck,
       },
     });
     const client = socketServer.connect(
@@ -2554,6 +2679,22 @@ describe("socket server", () => {
             myRole: "admin" as const,
           };
         },
+        requireProjectRole: async () => {
+          if (membershipRevoked) {
+            throw new ProjectNotFoundError();
+          }
+
+          return {
+            project: {
+              id: "project-123",
+              name: "Project",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              tombstoneAt: null,
+            },
+            myRole: "admin" as const,
+          };
+        },
       },
     });
     const client = socketServer.connect(
@@ -2707,6 +2848,138 @@ describe("socket server", () => {
     expect(result.receiver1Update.serverVersion).toBe(2);
     expect(result.receiver2Update.documentId).toBe("doc-456");
     expect(result.receiver2Update.serverVersion).toBe(2);
+  });
+
+  it("rejects doc.update sent before joining any workspace", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("doc.update", {
+            documentId: "doc-456",
+            updateB64: Buffer.from([0]).toString("base64"),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket is not joined to this document",
+    });
+  });
+
+  it("rejects doc.sync.request sent before joining any workspace", async () => {
+    socketServer = await createTestSocketServer();
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("doc.sync.request", {
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket is not joined to this document",
+    });
+  });
+
+  it("same client gets restored state after rejoin following doc.reset", async () => {
+    const collaborationService = createCollaborationService();
+    let currentText = "\\section{Before}";
+    let currentVersion = 1;
+    const activeDocumentRegistry = createActiveDocumentRegistry({
+      collaborationService,
+      loadInitialDocumentState: async () => ({
+        kind: "yjs-update",
+        update: createStateBytes(currentText),
+        serverVersion: currentVersion,
+      }),
+      persistOnIdle: async () => {},
+    });
+
+    socketServer = await createTestSocketServer({
+      workspaceService: {
+        openDocument: async ({ documentId }) => ({
+          workspace: createWorkspaceOpenedEvent(documentId),
+          initialSync: {
+            documentId,
+            yjsState: createStateBytes(currentText),
+            serverVersion: currentVersion,
+          },
+        }),
+      },
+      activeDocumentRegistry,
+    });
+
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    try {
+      const firstSync = await joinAndWaitForSync(client, "doc-456");
+
+      expect(firstSync.serverVersion).toBe(1);
+      expect(decodeStateB64(firstSync.stateB64)).toBe("\\section{Before}");
+
+      const resetPromise = waitForEvent<{
+        documentId: string;
+        reason: string;
+        serverVersion: number;
+      }>(client, "doc.reset");
+
+      currentText = "\\section{Restored}";
+      currentVersion = 9;
+
+      await socketServer.emitDocumentReset({
+        projectId: "project-123",
+        documentId: "doc-456",
+        reason: "snapshot_restore",
+        serverVersion: currentVersion,
+      });
+      const resetEvent = await resetPromise;
+
+      expect(resetEvent).toEqual({
+        documentId: "doc-456",
+        reason: "snapshot_restore",
+        serverVersion: currentVersion,
+      });
+
+      const secondSync = await joinAndWaitForSync(client, "doc-456");
+
+      expect(secondSync.serverVersion).toBe(currentVersion);
+      expect(decodeStateB64(secondSync.stateB64)).toBe("\\section{Restored}");
+    } finally {
+      client.close();
+    }
   });
 });
 
