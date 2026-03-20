@@ -33,6 +33,19 @@ async function runCompile(
   await mkdir(tmpDir, { recursive: true });
 
   try {
+    const resolvedMain = resolve(tmpDir, input.mainFile);
+    const relMain = relative(tmpDir, resolvedMain);
+    if (relMain.startsWith("..") || isAbsolute(relMain)) {
+      throw new Error(
+        `mainFile path escapes working directory: ${input.mainFile}`,
+      );
+    }
+    if (!input.files.has(input.mainFile)) {
+      throw new Error(
+        `mainFile "${input.mainFile}" is not in the provided files`,
+      );
+    }
+
     await writeInputFiles(tmpDir, input.files);
 
     const containerName = `collabtex-compile-${randomUUID()}`;
@@ -50,7 +63,7 @@ async function runCompile(
       dockerImage,
       "pdflatex",
       "-interaction=nonstopmode",
-      input.mainFile,
+      `./${input.mainFile}`,
     ];
 
     const abortController = new AbortController();
