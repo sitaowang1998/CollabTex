@@ -133,8 +133,6 @@ async function main() {
       userLookup: userRepository,
       projectAccessService,
     });
-    // TODO(#13): pass commentService to createHttpApp once routes are wired
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const commentService = createCommentService({
       commentRepository: createCommentRepository(databaseClient),
       projectAccessService,
@@ -145,6 +143,7 @@ async function main() {
     });
     const app = createHttpApp(config, {
       authService,
+      commentService,
       documentService,
       membershipService,
       projectService,

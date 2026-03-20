@@ -18,6 +18,7 @@ import {
   type ProjectRepository,
 } from "../../services/project.js";
 import type { AuthService } from "../../services/auth.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
@@ -359,6 +360,7 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
@@ -376,6 +378,7 @@ function createProjectTestApp() {
 function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: {
@@ -395,6 +398,18 @@ function createRoleRequiredProjectApp() {
     },
     snapshotManagementService: createStubSnapshotManagementService(),
   });
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => [],
+    createThread: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
 }
 
 function createStubMembershipService(): MembershipService {

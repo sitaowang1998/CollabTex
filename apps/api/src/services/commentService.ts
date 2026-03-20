@@ -19,6 +19,7 @@ export type CreateThreadInput = {
 };
 
 export type ReplyToThreadInput = {
+  projectId: string;
   threadId: string;
   actorUserId: string;
   body: string;
@@ -72,7 +73,7 @@ export function createCommentService({
     replyToThread: async (input) => {
       const thread = await commentRepository.findThreadById(input.threadId);
 
-      if (!thread) {
+      if (!thread || thread.projectId !== input.projectId) {
         throw new CommentThreadNotFoundError();
       }
 

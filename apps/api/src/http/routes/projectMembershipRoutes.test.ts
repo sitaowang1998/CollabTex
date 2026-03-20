@@ -27,6 +27,7 @@ import {
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { CommentService } from "../../services/commentService.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import { signToken, type AuthService } from "../../services/auth.js";
 import {
@@ -664,6 +665,7 @@ function createMembershipTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: createMembershipService({
       membershipRepository,
@@ -694,6 +696,7 @@ function createMembershipTestApp() {
 function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    commentService: createStubCommentService(),
     documentService: createStubDocumentService(),
     membershipService: {
       listMembers: async () => [],
@@ -710,6 +713,18 @@ function createRoleRequiredMembershipApp() {
     projectService: createStubProjectService(),
     snapshotManagementService: createStubSnapshotManagementService(),
   });
+}
+
+function createStubCommentService(): CommentService {
+  return {
+    listThreads: async () => [],
+    createThread: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+    replyToThread: async () => {
+      throw new Error("Not implemented for membership route tests");
+    },
+  };
 }
 
 function createStubDocumentService(): DocumentService {
