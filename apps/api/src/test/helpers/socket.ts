@@ -67,7 +67,7 @@ export async function createTestSocketServer(options?: {
   activeDocumentRegistry?: ActiveDocumentRegistry;
   projectAccessService?: Pick<
     import("../../services/projectAccess.js").ProjectAccessService,
-    "requireProjectMember"
+    "requireProjectMember" | "requireProjectRole"
   >;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
@@ -172,7 +172,7 @@ export async function createTestSocketServer(options?: {
       options?.realtimeDocumentService ??
       createRealtimeDocumentService({
         collaborationService,
-        projectAccessService,
+        projectAccessService: effectiveProjectAccessService,
         documentRepository,
         currentTextStateService,
       }),

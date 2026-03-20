@@ -393,12 +393,12 @@ describe("socket server", () => {
       expect(resetEvent).toEqual({
         documentId: "doc-456",
         reason: "snapshot_restore",
-        serverVersion: 9,
+        serverVersion: currentVersion,
       });
 
       const secondSync = await joinAndWaitForSync(secondClient, "doc-456");
 
-      expect(secondSync.serverVersion).toBe(9);
+      expect(secondSync.serverVersion).toBe(currentVersion);
       expect(decodeStateB64(secondSync.stateB64)).toBe("\\section{Restored}");
     } finally {
       firstClient.close();
@@ -2102,24 +2102,26 @@ describe("socket server", () => {
 
   it("rejects doc.update after membership revocation", async () => {
     let membershipRevoked = false;
+    const accessCheck = async () => {
+      if (membershipRevoked) {
+        throw new ProjectNotFoundError();
+      }
+
+      return {
+        project: {
+          id: "project-123",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin" as const,
+      };
+    };
     socketServer = await createTestSocketServer({
       projectAccessService: {
-        requireProjectMember: async () => {
-          if (membershipRevoked) {
-            throw new ProjectNotFoundError();
-          }
-
-          return {
-            project: {
-              id: "project-123",
-              name: "Project",
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              tombstoneAt: null,
-            },
-            myRole: "admin" as const,
-          };
-        },
+        requireProjectMember: accessCheck,
+        requireProjectRole: accessCheck,
       },
     });
     const client = socketServer.connect(
@@ -2366,24 +2368,26 @@ describe("socket server", () => {
 
   it("rejects doc.sync.request after membership revocation", async () => {
     let membershipRevoked = false;
+    const accessCheck = async () => {
+      if (membershipRevoked) {
+        throw new ProjectNotFoundError();
+      }
+
+      return {
+        project: {
+          id: "project-123",
+          name: "Project",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          tombstoneAt: null,
+        },
+        myRole: "admin" as const,
+      };
+    };
     socketServer = await createTestSocketServer({
       projectAccessService: {
-        requireProjectMember: async () => {
-          if (membershipRevoked) {
-            throw new ProjectNotFoundError();
-          }
-
-          return {
-            project: {
-              id: "project-123",
-              name: "Project",
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              tombstoneAt: null,
-            },
-            myRole: "admin" as const,
-          };
-        },
+        requireProjectMember: accessCheck,
+        requireProjectRole: accessCheck,
       },
     });
     const client = socketServer.connect(
@@ -2660,6 +2664,22 @@ describe("socket server", () => {
       },
       projectAccessService: {
         requireProjectMember: async () => {
+          if (membershipRevoked) {
+            throw new ProjectNotFoundError();
+          }
+
+          return {
+            project: {
+              id: "project-123",
+              name: "Project",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              tombstoneAt: null,
+            },
+            myRole: "admin" as const,
+          };
+        },
+        requireProjectRole: async () => {
           if (membershipRevoked) {
             throw new ProjectNotFoundError();
           }

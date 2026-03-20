@@ -154,17 +154,12 @@ export function createSocketServer(
         return;
       }
 
-      void applyDocumentUpdate(
-        socket,
-        dependencies.realtimeDocumentService,
-        dependencies.projectAccessService,
-        {
-          request,
-          sessionState,
-          userId,
-          getActiveTextSession: () => activeTextSession,
-        },
-      );
+      void applyDocumentUpdate(socket, dependencies.realtimeDocumentService, {
+        request,
+        sessionState,
+        userId,
+        getActiveTextSession: () => activeTextSession,
+      });
     });
 
     socket.on("doc.sync.request", (payload) => {
@@ -449,7 +444,6 @@ export async function openWorkspace(
 async function applyDocumentUpdate(
   socket: WorkspaceSocket,
   realtimeDocumentService: RealtimeDocumentService,
-  projectAccessService: Pick<ProjectAccessService, "requireProjectMember">,
   input: {
     request: ParsedDocumentUpdateRequest;
     sessionState: ActiveTextSessionState;
@@ -469,11 +463,6 @@ async function applyDocumentUpdate(
   };
 
   try {
-    await projectAccessService.requireProjectMember(
-      input.sessionState.projectId,
-      input.userId,
-    );
-
     const result = await realtimeDocumentService.applyUpdate({
       projectId: input.sessionState.projectId,
       documentId: input.request.documentId,
