@@ -171,7 +171,10 @@ function isDockerNotFoundError(error: unknown): boolean {
 
 async function killContainer(containerName: string): Promise<void> {
   await new Promise<void>((res) => {
-    execFile("docker", ["kill", containerName], () => {
+    execFile("docker", ["kill", containerName], (error) => {
+      if (error) {
+        console.error(`Failed to kill container ${containerName}:`, error);
+      }
       res();
     });
   });
@@ -191,7 +194,10 @@ async function getContainerLogs(containerName: string): Promise<string> {
 
 async function removeContainer(containerName: string): Promise<void> {
   await new Promise<void>((res) => {
-    execFile("docker", ["rm", "-f", containerName], () => {
+    execFile("docker", ["rm", "-f", containerName], (error) => {
+      if (error) {
+        console.error(`Failed to remove container ${containerName}:`, error);
+      }
       res();
     });
   });
