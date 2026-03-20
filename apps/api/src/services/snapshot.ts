@@ -242,8 +242,8 @@ export function createSnapshotService({
 }
 
 export async function loadLatestProjectSnapshotState(
-  snapshotRepository: SnapshotRepository,
-  snapshotStore: SnapshotStore,
+  snapshotRepository: Pick<SnapshotRepository, "listForProject">,
+  snapshotStore: Pick<SnapshotStore, "readProjectSnapshot">,
   projectId: string,
 ): Promise<ProjectSnapshotState> {
   const snapshots = await snapshotRepository.listForProject(projectId);
