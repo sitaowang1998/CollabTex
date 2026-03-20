@@ -120,6 +120,8 @@ async function writeInputFiles(
     const filePath = resolve(tmpDir, relativePath);
     const rel = relative(tmpDir, filePath);
     if (
+      rel === "" ||
+      rel === "." ||
       rel === ".." ||
       rel.startsWith("../") ||
       rel.startsWith("..\\") ||

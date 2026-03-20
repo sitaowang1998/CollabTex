@@ -56,6 +56,8 @@ function isInvalidFilePath(filePath: string): boolean {
   const resolved = resolve("/base", filePath);
   const rel = relative("/base", resolved);
   return (
+    rel === "" ||
+    rel === "." ||
     rel === ".." ||
     rel.startsWith("../") ||
     rel.startsWith("..\\") ||

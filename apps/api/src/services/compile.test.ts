@@ -181,6 +181,23 @@ describe("validateCompileInput", () => {
     ).toThrow("Invalid file path");
   });
 
+  it("rejects file key that normalizes to root directory", () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      ["sub/..", "malicious"],
+    ]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).toThrow("Invalid file path");
+  });
+
+  it("rejects mainFile that normalizes to root directory", () => {
+    const files = new Map([["sub/..", "content"]]);
+    expect(() =>
+      validateCompileInput({ files, mainFile: "sub/..", timeoutMs: 5000 }),
+    ).toThrow("mainFile is not a valid relative file path");
+  });
+
   it("rejects file path ending with separator", () => {
     const files = new Map([
       ["main.tex", "content"],
