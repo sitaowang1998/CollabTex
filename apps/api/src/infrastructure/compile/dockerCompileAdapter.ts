@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type {
   CompileAdapter,
@@ -73,7 +73,14 @@ async function runCompile(
       clearTimeout(timeout);
     }
   } finally {
-    await rm(tmpDir, { recursive: true, force: true });
+    try {
+      await rm(tmpDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      console.error(
+        `Failed to clean up temp directory ${tmpDir}:`,
+        cleanupError,
+      );
+    }
   }
 }
 
@@ -82,7 +89,11 @@ async function writeInputFiles(
   files: Map<string, string>,
 ): Promise<void> {
   for (const [relativePath, content] of files) {
-    const filePath = join(tmpDir, relativePath);
+    const filePath = resolve(tmpDir, relativePath);
+    const rel = relative(tmpDir, filePath);
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      throw new Error(`File path escapes working directory: ${relativePath}`);
+    }
     await mkdir(join(filePath, ".."), { recursive: true });
     await writeFile(filePath, content, "utf8");
   }
@@ -135,23 +146,25 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function killContainer(containerName: string): Promise<void> {
-  try {
-    await new Promise<void>((resolve) => {
-      execFile("docker", ["kill", containerName], () => {
-        resolve();
-      });
+  await new Promise<void>((res) => {
+    execFile("docker", ["kill", containerName], (error) => {
+      if (error) {
+        console.error(
+          `Failed to kill container ${containerName}: ${error.message}`,
+        );
+      }
+      res();
     });
-  } catch {
-    // Best-effort cleanup
-  }
+  });
 
-  try {
-    await new Promise<void>((resolve) => {
-      execFile("docker", ["rm", "-f", containerName], () => {
-        resolve();
-      });
+  await new Promise<void>((res) => {
+    execFile("docker", ["rm", "-f", containerName], (error) => {
+      if (error) {
+        console.error(
+          `Failed to remove container ${containerName}: ${error.message}`,
+        );
+      }
+      res();
     });
-  } catch {
-    // Best-effort cleanup
-  }
+  });
 }
