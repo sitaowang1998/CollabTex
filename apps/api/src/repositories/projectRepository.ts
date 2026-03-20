@@ -166,6 +166,9 @@ export function createProjectRepository(
             "document is already the main document of another project",
           );
         }
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+          throw new InvalidMainDocumentError("document no longer exists");
+        }
         throw error;
       }
     },
