@@ -2970,12 +2970,12 @@ describe("socket server", () => {
       expect(resetEvent).toEqual({
         documentId: "doc-456",
         reason: "snapshot_restore",
-        serverVersion: 9,
+        serverVersion: currentVersion,
       });
 
       const secondSync = await joinAndWaitForSync(client, "doc-456");
 
-      expect(secondSync.serverVersion).toBe(9);
+      expect(secondSync.serverVersion).toBe(currentVersion);
       expect(decodeStateB64(secondSync.stateB64)).toBe("\\section{Restored}");
     } finally {
       client.close();
