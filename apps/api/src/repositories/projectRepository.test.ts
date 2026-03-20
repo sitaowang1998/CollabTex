@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
-import { ProjectOwnerNotFoundError } from "../services/project.js";
+import {
+  InvalidMainDocumentError,
+  ProjectOwnerNotFoundError,
+} from "../services/project.js";
 import { createProjectRepository } from "./projectRepository.js";
 
 describe("project repository", () => {
@@ -15,6 +18,32 @@ describe("project repository", () => {
         name: "Project",
       }),
     ).rejects.toBeInstanceOf(ProjectOwnerNotFoundError);
+  });
+
+  it("maps P2002 on setMainDocumentId to InvalidMainDocumentError", async () => {
+    const repository = createProjectRepository(
+      createDatabaseClientThatRejects(createKnownRequestLikeError("P2002")),
+    );
+
+    await expect(
+      repository.setMainDocumentId({
+        projectId: "project-1",
+        documentId: "doc-1",
+      }),
+    ).rejects.toBeInstanceOf(InvalidMainDocumentError);
+  });
+
+  it("maps P2003 on setMainDocumentId to InvalidMainDocumentError", async () => {
+    const repository = createProjectRepository(
+      createDatabaseClientThatRejects(createKnownRequestLikeError("P2003")),
+    );
+
+    await expect(
+      repository.setMainDocumentId({
+        projectId: "project-1",
+        documentId: "doc-1",
+      }),
+    ).rejects.toBeInstanceOf(InvalidMainDocumentError);
   });
 
   it("rethrows non-P2003 create errors", async () => {

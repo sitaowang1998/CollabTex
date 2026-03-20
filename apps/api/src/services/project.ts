@@ -5,6 +5,18 @@ import {
   type ProjectWithRole,
   type StoredProject,
 } from "./projectAccess.js";
+import { DOCUMENT_WRITE_ROLES, type StoredDocument } from "./document.js";
+
+export type DocumentLookup = {
+  findById: (
+    projectId: string,
+    documentId: string,
+  ) => Promise<StoredDocument | null>;
+  findByPath: (
+    projectId: string,
+    path: string,
+  ) => Promise<StoredDocument | null>;
+};
 
 export {
   ProjectAdminRequiredError,
@@ -48,6 +60,17 @@ export type ProjectRepository = {
     actorUserId: string;
     deletedAt: Date;
   }) => Promise<void>;
+  getMainDocumentId: (projectId: string) => Promise<string | null>;
+  setMainDocumentId: (input: {
+    projectId: string;
+    documentId: string;
+  }) => Promise<void>;
+};
+
+export type SetMainDocumentInput = {
+  projectId: string;
+  userId: string;
+  documentId: string;
 };
 
 export type ProjectService = {
@@ -56,6 +79,11 @@ export type ProjectService = {
   getProject: (projectId: string, userId: string) => Promise<ProjectWithRole>;
   updateProject: (input: UpdateProjectInput) => Promise<StoredProject>;
   deleteProject: (input: DeleteProjectInput) => Promise<void>;
+  getMainDocument: (
+    projectId: string,
+    userId: string,
+  ) => Promise<StoredDocument | null>;
+  setMainDocument: (input: SetMainDocumentInput) => Promise<void>;
 };
 
 export class ProjectOwnerNotFoundError extends Error {
@@ -64,14 +92,27 @@ export class ProjectOwnerNotFoundError extends Error {
   }
 }
 
+export class InvalidMainDocumentError extends Error {
+  constructor(reason: string) {
+    super(`Invalid main document: ${reason}`);
+  }
+}
+
 export function createProjectService({
   projectRepository,
+  documentLookup = {
+    findById: async () => null,
+    findByPath: async () => null,
+  },
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
+  logger = console,
 }: {
   projectRepository: ProjectRepository;
+  documentLookup?: DocumentLookup;
   projectAccessService?: ProjectAccessService;
+  logger?: { warn: (message: string) => void };
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -95,6 +136,53 @@ export function createProjectService({
         projectId: input.projectId,
         actorUserId: input.userId,
         deletedAt: new Date(),
+      });
+    },
+    getMainDocument: async (projectId, userId) => {
+      await projectAccessService.requireProjectMember(projectId, userId);
+
+      const mainDocumentId =
+        await projectRepository.getMainDocumentId(projectId);
+
+      if (mainDocumentId) {
+        const doc = await documentLookup.findById(projectId, mainDocumentId);
+        if (!doc) {
+          logger.warn(
+            `Stale mainDocumentId ${mainDocumentId} on project ${projectId}: document not found`,
+          );
+        } else if (doc.kind !== "text") {
+          logger.warn(
+            `mainDocumentId ${mainDocumentId} on project ${projectId} is not a text document`,
+          );
+        } else {
+          return doc;
+        }
+      }
+
+      const fallback = await documentLookup.findByPath(projectId, "/main.tex");
+      if (fallback && fallback.kind !== "text") {
+        return null;
+      }
+      return fallback;
+    },
+    setMainDocument: async ({ projectId, userId, documentId }) => {
+      await projectAccessService.requireProjectRole(
+        projectId,
+        userId,
+        DOCUMENT_WRITE_ROLES,
+      );
+
+      const doc = await documentLookup.findById(projectId, documentId);
+      if (!doc) {
+        throw new InvalidMainDocumentError("document not found in project");
+      }
+      if (doc.kind !== "text") {
+        throw new InvalidMainDocumentError("main document must be a text file");
+      }
+
+      await projectRepository.setMainDocumentId({
+        projectId,
+        documentId,
       });
     },
   };

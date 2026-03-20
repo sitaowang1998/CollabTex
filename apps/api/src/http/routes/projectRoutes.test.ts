@@ -17,6 +17,7 @@ import {
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { StoredDocument } from "../../services/document.js";
 import type { AuthService } from "../../services/auth.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
@@ -309,6 +310,189 @@ describe("project routes", () => {
       .expect(403)
       .expect({ error: "required project role missing" });
   });
+
+  describe("main document routes", () => {
+    it("GET returns null when no main document and no /main.tex", async () => {
+      const { app } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Empty Project" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+
+      const response = await request(app)
+        .get(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .expect(200);
+
+      expect(response.body).toEqual({ mainDocument: null });
+    });
+
+    it("GET returns /main.tex fallback when no explicit main document set", async () => {
+      const { app, addDocument } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+      const docId = randomUUID();
+      addDocument(projectId, {
+        id: docId,
+        path: "/main.tex",
+        kind: "text",
+        mime: "application/x-tex",
+      });
+
+      const response = await request(app)
+        .get(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .expect(200);
+
+      expect(response.body.mainDocument).toEqual(
+        expect.objectContaining({
+          id: docId,
+          path: "/main.tex",
+          kind: "text",
+        }),
+      );
+    });
+
+    it("PUT sets main document successfully for admin", async () => {
+      const { app, addDocument } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+      const docId = randomUUID();
+      addDocument(projectId, {
+        id: docId,
+        path: "/intro.tex",
+        kind: "text",
+        mime: "application/x-tex",
+      });
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ documentId: docId })
+        .expect(204);
+
+      const response = await request(app)
+        .get(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .expect(200);
+
+      expect(response.body.mainDocument).toEqual(
+        expect.objectContaining({
+          id: docId,
+          path: "/intro.tex",
+        }),
+      );
+    });
+
+    it("PUT rejects non-admin/editor with 403", async () => {
+      const { app, addMembership } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const bob = await registerUser(app, "bob@example.com", "Bob");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+      addMembership(projectId, bob.user.id, "reader");
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${bob.token}`)
+        .send({ documentId: randomUUID() })
+        .expect(403);
+    });
+
+    it("PUT rejects invalid documentId with 400", async () => {
+      const { app } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ documentId: "not-a-uuid" })
+        .expect(400)
+        .expect({ error: "documentId must be a valid UUID" });
+    });
+
+    it("PUT rejects binary document with 400", async () => {
+      const { app, addDocument } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+      const docId = randomUUID();
+      addDocument(projectId, {
+        id: docId,
+        path: "/figure.png",
+        kind: "binary",
+        mime: "image/png",
+      });
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ documentId: docId })
+        .expect(400);
+    });
+
+    it("PUT rejects missing documentId with 400", async () => {
+      const { app } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({})
+        .expect(400)
+        .expect({ error: "documentId is required" });
+    });
+
+    it("PUT rejects non-existent document with 400", async () => {
+      const { app } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ documentId: randomUUID() })
+        .expect(400);
+    });
+  });
 });
 
 async function registerUser(
@@ -352,6 +536,7 @@ async function expectProjectNames(
 
 function createProjectTestApp() {
   const { userRepository, hasUser } = createInMemoryUserRepository();
+  const documentLookup = createInMemoryDocumentLookup();
   const projectRepository = createInMemoryProjectRepository(hasUser);
   const app = createHttpApp(testConfig, {
     authService: createAuthService({
@@ -365,6 +550,7 @@ function createProjectTestApp() {
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
       projectRepository,
+      documentLookup,
     }),
     snapshotManagementService: createStubSnapshotManagementService(),
   });
@@ -372,6 +558,7 @@ function createProjectTestApp() {
   return {
     app,
     addMembership: projectRepository.addMembership,
+    addDocument: documentLookup.addDocument,
   };
 }
 
@@ -393,6 +580,12 @@ function createRoleRequiredProjectApp() {
         throw new ProjectRoleRequiredError(["editor", "admin"]);
       },
       deleteProject: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      getMainDocument: async () => {
+        throw new Error("Not implemented for role-required route test");
+      },
+      setMainDocument: async () => {
         throw new Error("Not implemented for role-required route test");
       },
     },
@@ -516,6 +709,45 @@ function createInMemoryUserRepository(): {
   };
 }
 
+function createInMemoryDocumentLookup() {
+  const documentsByProject = new Map<string, StoredDocument[]>();
+
+  return {
+    findById: async (projectId: string, documentId: string) => {
+      const docs = documentsByProject.get(projectId) ?? [];
+      return docs.find((d) => d.id === documentId) ?? null;
+    },
+    findByPath: async (projectId: string, path: string) => {
+      const docs = documentsByProject.get(projectId) ?? [];
+      return docs.find((d) => d.path === path) ?? null;
+    },
+    addDocument: (
+      projectId: string,
+      doc: {
+        id: string;
+        path: string;
+        kind: "text" | "binary";
+        mime: string | null;
+      },
+    ) => {
+      const now = new Date();
+      const stored: StoredDocument = {
+        id: doc.id,
+        projectId,
+        path: doc.path,
+        kind: doc.kind,
+        mime: doc.mime,
+        contentHash: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const docs = documentsByProject.get(projectId) ?? [];
+      docs.push(stored);
+      documentsByProject.set(projectId, docs);
+    },
+  };
+}
+
 function createInMemoryProjectRepository(
   hasUser: (userId: string) => boolean,
 ): ProjectRepository & {
@@ -533,6 +765,7 @@ function createInMemoryProjectRepository(
       createdAt: Date;
       updatedAt: Date;
       tombstoneAt: Date | null;
+      mainDocumentId: string | null;
     }
   >();
   const membershipsByProjectId = new Map<
@@ -552,6 +785,7 @@ function createInMemoryProjectRepository(
         createdAt: now,
         updatedAt: now,
         tombstoneAt: null,
+        mainDocumentId: null,
       };
 
       projectsById.set(project.id, project);
@@ -652,6 +886,22 @@ function createInMemoryProjectRepository(
       });
 
       return;
+    },
+    getMainDocumentId: async (projectId) => {
+      const project = projectsById.get(projectId);
+      if (!project || project.tombstoneAt) return null;
+      return project.mainDocumentId;
+    },
+    setMainDocumentId: async ({ projectId, documentId }) => {
+      const project = projectsById.get(projectId);
+      if (!project || project.tombstoneAt) {
+        throw new ProjectNotFoundError();
+      }
+
+      projectsById.set(projectId, {
+        ...project,
+        mainDocumentId: documentId,
+      });
     },
     addMembership: (projectId, userId, role) => {
       const memberships = membershipsByProjectId.get(projectId);

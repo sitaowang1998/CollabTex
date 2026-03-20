@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  InvalidMainDocumentError,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
+  ProjectRoleRequiredError,
   createProjectService,
+  type DocumentLookup,
   type ProjectRepository,
   type StoredProject,
 } from "./project.js";
+import type { StoredDocument } from "./document.js";
 
 describe("project service", () => {
   it("normalizes project names on create", async () => {
@@ -14,6 +18,7 @@ describe("project service", () => {
     repository.createForOwner.mockResolvedValue(createdProject);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     const result = await service.createProject({
@@ -39,6 +44,7 @@ describe("project service", () => {
     repository.listForUser.mockResolvedValue(projects);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(service.listProjects("user-1")).resolves.toBe(projects);
@@ -49,6 +55,7 @@ describe("project service", () => {
     repository.findForUser.mockResolvedValue(null);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -61,6 +68,7 @@ describe("project service", () => {
     repository.updateName.mockRejectedValue(new ProjectAdminRequiredError());
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -86,6 +94,7 @@ describe("project service", () => {
     repository.updateName.mockResolvedValue(updatedProject);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     const result = await service.updateProject({
@@ -107,6 +116,7 @@ describe("project service", () => {
     repository.softDelete.mockRejectedValue(new ProjectNotFoundError());
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -122,6 +132,367 @@ describe("project service", () => {
       deletedAt: expect.any(Date),
     });
   });
+
+  describe("getMainDocument", () => {
+    it("returns explicit document when set", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      const doc = createStoredDocument();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue("doc-1");
+      documentLookup.findById.mockResolvedValue(doc);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toBe(doc);
+      expect(documentLookup.findById).toHaveBeenCalledWith(
+        "project-1",
+        "doc-1",
+      );
+    });
+
+    it("falls back to /main.tex when no explicit main document", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      const doc = createStoredDocument({ path: "/main.tex" });
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue(null);
+      documentLookup.findByPath.mockResolvedValue(doc);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toBe(doc);
+      expect(documentLookup.findByPath).toHaveBeenCalledWith(
+        "project-1",
+        "/main.tex",
+      );
+    });
+
+    it("falls through to /main.tex fallback when explicit main document was deleted", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      const fallbackDoc = {
+        id: "fallback-doc",
+        path: "/main.tex",
+        kind: "text" as const,
+      };
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue("deleted-doc-id");
+      documentLookup.findById.mockResolvedValue(null);
+      documentLookup.findByPath.mockResolvedValue(fallbackDoc);
+      const logger = { warn: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+        logger,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toEqual(fallbackDoc);
+      expect(documentLookup.findByPath).toHaveBeenCalledWith(
+        "project-1",
+        "/main.tex",
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Stale mainDocumentId"),
+      );
+    });
+
+    it("falls through to fallback when explicit main document is not text", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      const binaryDoc = createStoredDocument({
+        id: "binary-doc-id",
+        kind: "binary",
+      });
+      const fallbackDoc = createStoredDocument({
+        id: "fallback-doc-id",
+        path: "/main.tex",
+        kind: "text",
+      });
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue("binary-doc-id");
+      documentLookup.findById.mockResolvedValue(binaryDoc);
+      documentLookup.findByPath.mockResolvedValue(fallbackDoc);
+      const logger = { warn: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+        logger,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toEqual(fallbackDoc);
+      expect(documentLookup.findByPath).toHaveBeenCalledWith(
+        "project-1",
+        "/main.tex",
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("is not a text document"),
+      );
+    });
+
+    it("returns null when /main.tex fallback is a binary document", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue(null);
+      documentLookup.findByPath.mockResolvedValue(
+        createStoredDocument({ kind: "binary", path: "/main.tex" }),
+      );
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when neither explicit nor /main.tex exists", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue(null);
+      documentLookup.findByPath.mockResolvedValue(null);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toBeNull();
+    });
+
+    it("rejects non-members", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue(null);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup: createDocumentLookup(),
+      });
+
+      await expect(
+        service.getMainDocument("project-1", "user-1"),
+      ).rejects.toBeInstanceOf(ProjectNotFoundError);
+    });
+  });
+
+  describe("setMainDocument", () => {
+    it("rejects non-member", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue(null);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup: createDocumentLookup(),
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(ProjectNotFoundError);
+    });
+
+    it("rejects reader role", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup: createDocumentLookup(),
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
+    });
+
+    it("rejects commenter role", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "commenter",
+      });
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup: createDocumentLookup(),
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
+    });
+
+    it("rejects document not found in project", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "editor",
+      });
+      documentLookup.findById.mockResolvedValue(null);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(InvalidMainDocumentError);
+      expect(repository.setMainDocumentId).not.toHaveBeenCalled();
+    });
+
+    it("rejects binary document", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "editor",
+      });
+      documentLookup.findById.mockResolvedValue(
+        createStoredDocument({ kind: "binary", path: "/image.png" }),
+      );
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(InvalidMainDocumentError);
+      expect(repository.setMainDocumentId).not.toHaveBeenCalled();
+    });
+
+    it("succeeds for editor with valid text document", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "editor",
+      });
+      documentLookup.findById.mockResolvedValue(createStoredDocument());
+      repository.setMainDocumentId.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      await service.setMainDocument({
+        projectId: "project-1",
+        userId: "user-1",
+        documentId: "doc-1",
+      });
+
+      expect(repository.setMainDocumentId).toHaveBeenCalledWith({
+        projectId: "project-1",
+        documentId: "doc-1",
+      });
+    });
+
+    it("succeeds for admin with valid text document", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      documentLookup.findById.mockResolvedValue(createStoredDocument());
+      repository.setMainDocumentId.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      await service.setMainDocument({
+        projectId: "project-1",
+        userId: "user-1",
+        documentId: "doc-1",
+      });
+
+      expect(repository.setMainDocumentId).toHaveBeenCalledWith({
+        projectId: "project-1",
+        documentId: "doc-1",
+      });
+    });
+
+    it("propagates InvalidMainDocumentError from repository", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "editor",
+      });
+      documentLookup.findById.mockResolvedValue(createStoredDocument());
+      repository.setMainDocumentId.mockRejectedValue(
+        new InvalidMainDocumentError(
+          "document is already the main document of another project",
+        ),
+      );
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      await expect(
+        service.setMainDocument({
+          projectId: "project-1",
+          userId: "user-1",
+          documentId: "doc-1",
+        }),
+      ).rejects.toBeInstanceOf(InvalidMainDocumentError);
+    });
+  });
 });
 
 function createProjectRepository() {
@@ -132,6 +503,31 @@ function createProjectRepository() {
     findForUser: vi.fn<ProjectRepository["findForUser"]>(),
     updateName: vi.fn<ProjectRepository["updateName"]>(),
     softDelete: vi.fn<ProjectRepository["softDelete"]>(),
+    getMainDocumentId: vi.fn<ProjectRepository["getMainDocumentId"]>(),
+    setMainDocumentId: vi.fn<ProjectRepository["setMainDocumentId"]>(),
+  };
+}
+
+function createDocumentLookup() {
+  return {
+    findById: vi.fn<DocumentLookup["findById"]>(),
+    findByPath: vi.fn<DocumentLookup["findByPath"]>(),
+  };
+}
+
+function createStoredDocument(
+  overrides: Partial<StoredDocument> = {},
+): StoredDocument {
+  return {
+    id: "doc-1",
+    projectId: "project-1",
+    path: "/main.tex",
+    kind: "text",
+    mime: "application/x-tex",
+    contentHash: null,
+    createdAt: new Date("2026-03-01T12:00:00.000Z"),
+    updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+    ...overrides,
   };
 }
 

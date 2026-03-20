@@ -47,9 +47,11 @@ model User {
 model Project {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String               @db.VarChar(160)
+  mainDocumentId      String?              @unique @db.Uuid
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @default(now()) @updatedAt
   tombstoneAt         DateTime?
+  mainDocument        Document?            @relation("ProjectMainDocument", fields: [mainDocumentId], references: [id], onDelete: SetNull)
   memberships         ProjectMembership[]
   documents           Document[]
   snapshots           Snapshot[]
@@ -78,9 +80,10 @@ model Document {
   contentHash String?            @db.VarChar(128)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @default(now()) @updatedAt
-  project        Project            @relation(fields: [projectId], references: [id])
-  textState      DocumentTextState?
-  commentThreads CommentThread[]
+  project               Project            @relation(fields: [projectId], references: [id])
+  mainDocumentOfProject Project?           @relation("ProjectMainDocument")
+  textState             DocumentTextState?
+  commentThreads        CommentThread[]
 
   @@unique([projectId, path])
 }

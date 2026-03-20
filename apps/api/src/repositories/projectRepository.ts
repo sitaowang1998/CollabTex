@@ -8,7 +8,10 @@ import type {
   CreateProjectInput,
   ProjectRepository,
 } from "../services/project.js";
-import { ProjectOwnerNotFoundError } from "../services/project.js";
+import {
+  InvalidMainDocumentError,
+  ProjectOwnerNotFoundError,
+} from "../services/project.js";
 import type {
   ProjectWithRole,
   StoredProject,
@@ -139,6 +142,35 @@ export function createProjectRepository(
           },
         });
       });
+    },
+    getMainDocumentId: async (projectId) => {
+      const project = await databaseClient.project.findFirst({
+        where: { id: projectId, tombstoneAt: null },
+        select: { mainDocumentId: true },
+      });
+      return project?.mainDocumentId ?? null;
+    },
+    setMainDocumentId: async ({ projectId, documentId }) => {
+      try {
+        await databaseClient.$transaction(async (tx) => {
+          await lockActiveProject(tx, projectId);
+
+          await tx.project.update({
+            where: { id: projectId },
+            data: { mainDocumentId: documentId },
+          });
+        });
+      } catch (error) {
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2002") {
+          throw new InvalidMainDocumentError(
+            "document is already the main document of another project",
+          );
+        }
+        if (isPrismaKnownRequestLikeError(error) && error.code === "P2003") {
+          throw new InvalidMainDocumentError("document no longer exists");
+        }
+        throw error;
+      }
     },
   };
 }
