@@ -10,6 +10,8 @@ import type {
   StoredSnapshot,
 } from "./snapshot.js";
 import { createWorkspaceExportService } from "./workspaceExport.js";
+import { createLocalWorkspaceWriter } from "../infrastructure/workspace/localWorkspaceWriter.js";
+import type { WorkspaceWriter } from "../infrastructure/workspace/localWorkspaceWriter.js";
 
 describe("workspace export service", () => {
   it("exports text files with content from DocumentTextState", async () => {
@@ -193,6 +195,37 @@ describe("workspace export service", () => {
       await result.cleanup();
     }
   });
+
+  it("rejects documents with path traversal attempts", async () => {
+    const { service, documentRepository } = createTestService();
+    documentRepository.listForProject.mockResolvedValue([
+      createStoredDocument({
+        id: "doc-1",
+        path: "/../../etc/passwd",
+      }),
+    ]);
+
+    await expect(service.exportWorkspace("project-1")).rejects.toThrow(
+      /escapes export directory/,
+    );
+  });
+
+  it("cleans up temp directory when writing fails", async () => {
+    const failingWriter: WorkspaceWriter = {
+      writeWorkspace: vi.fn().mockRejectedValue(new Error("disk full")),
+    };
+    const service = createWorkspaceExportService({
+      documentRepository: createDocumentRepository(),
+      documentTextStateRepository: createDocumentTextStateRepository(),
+      snapshotRepository: createSnapshotRepository(),
+      snapshotStore: createSnapshotStore(),
+      workspaceWriter: failingWriter,
+    });
+
+    await expect(service.exportWorkspace("project-1")).rejects.toThrow(
+      "disk full",
+    );
+  });
 });
 
 function createTestService() {
@@ -206,6 +239,7 @@ function createTestService() {
     documentTextStateRepository,
     snapshotRepository,
     snapshotStore,
+    workspaceWriter: createLocalWorkspaceWriter(),
   });
 
   return {

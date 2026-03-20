@@ -1,7 +1,3 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import {
@@ -10,11 +6,13 @@ import {
   type SnapshotRepository,
   type SnapshotStore,
 } from "./snapshot.js";
+import type {
+  ExportedFile,
+  WorkspaceWriteResult,
+  WorkspaceWriter,
+} from "../infrastructure/workspace/localWorkspaceWriter.js";
 
-export type WorkspaceExportResult = {
-  directory: string;
-  cleanup: () => Promise<void>;
-};
+export type WorkspaceExportResult = WorkspaceWriteResult;
 
 export type WorkspaceExportService = {
   exportWorkspace: (projectId: string) => Promise<WorkspaceExportResult>;
@@ -25,6 +23,7 @@ export function createWorkspaceExportService({
   documentTextStateRepository,
   snapshotRepository,
   snapshotStore,
+  workspaceWriter,
 }: {
   documentRepository: Pick<DocumentRepository, "listForProject">;
   documentTextStateRepository: Pick<
@@ -33,6 +32,7 @@ export function createWorkspaceExportService({
   >;
   snapshotRepository: Pick<SnapshotRepository, "listForProject">;
   snapshotStore: Pick<SnapshotStore, "readProjectSnapshot">;
+  workspaceWriter: WorkspaceWriter;
 }): WorkspaceExportService {
   return {
     exportWorkspace: async (projectId) => {
@@ -50,28 +50,12 @@ export function createWorkspaceExportService({
         ),
       ]);
 
-      const directory = join(tmpdir(), `collabtex-workspace-${randomUUID()}`);
-      await mkdir(directory, { recursive: true });
+      const files: ExportedFile[] = [
+        ...assembleTextFiles(textDocuments, textStateMap, snapshotState),
+        ...assembleBinaryFiles(binaryDocuments, snapshotState),
+      ];
 
-      try {
-        await writeTextFiles(
-          directory,
-          textDocuments,
-          textStateMap,
-          snapshotState,
-        );
-        await writeBinaryFiles(directory, binaryDocuments, snapshotState);
-      } catch (error) {
-        await rm(directory, { recursive: true, force: true }).catch(() => {});
-        throw error;
-      }
-
-      return {
-        directory,
-        cleanup: async () => {
-          await rm(directory, { recursive: true, force: true });
-        },
-      };
+      return workspaceWriter.writeWorkspace(files);
     },
   };
 }
@@ -98,54 +82,41 @@ function toRelativePath(canonicalPath: string): string {
   return canonicalPath.startsWith("/") ? canonicalPath.slice(1) : canonicalPath;
 }
 
-function resolveExportPath(directory: string, relativePath: string): string {
-  const filePath = resolve(directory, relativePath);
-  const rel = relative(directory, filePath);
-
-  if (
-    !rel ||
-    rel === "." ||
-    rel === ".." ||
-    rel.startsWith("../") ||
-    rel.startsWith("..\\") ||
-    isAbsolute(rel)
-  ) {
-    throw new Error(`File path escapes export directory: ${relativePath}`);
-  }
-
-  return filePath;
-}
-
-async function writeTextFiles(
-  directory: string,
+function assembleTextFiles(
   textDocuments: StoredDocument[],
   textStateMap: Map<string, string>,
   snapshotState: ProjectSnapshotState,
-): Promise<void> {
-  for (const document of textDocuments) {
-    const relativePath = toRelativePath(document.path);
-    const filePath = resolveExportPath(directory, relativePath);
-
+): ExportedFile[] {
+  return textDocuments.map((document) => {
     let content = textStateMap.get(document.id);
 
     if (typeof content !== "string") {
       const snapshotDoc = snapshotState.documents[document.id];
-      content =
-        snapshotDoc && snapshotDoc.kind === "text"
-          ? snapshotDoc.textContent
-          : "";
+
+      if (snapshotDoc && snapshotDoc.kind === "text") {
+        content = snapshotDoc.textContent;
+      } else {
+        console.warn(
+          `Workspace export: text document "${document.path}" (${document.id}) has no content, exporting as empty file`,
+        );
+        content = "";
+      }
     }
 
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf8");
-  }
+    return {
+      relativePath: toRelativePath(document.path),
+      kind: "text" as const,
+      content,
+    };
+  });
 }
 
-async function writeBinaryFiles(
-  directory: string,
+function assembleBinaryFiles(
   binaryDocuments: StoredDocument[],
   snapshotState: ProjectSnapshotState,
-): Promise<void> {
+): ExportedFile[] {
+  const files: ExportedFile[] = [];
+
   for (const document of binaryDocuments) {
     const snapshotDoc = snapshotState.documents[document.id];
 
@@ -154,14 +125,18 @@ async function writeBinaryFiles(
       snapshotDoc.kind !== "binary" ||
       !snapshotDoc.binaryContentBase64
     ) {
+      console.warn(
+        `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
+      );
       continue;
     }
 
-    const relativePath = toRelativePath(document.path);
-    const filePath = resolveExportPath(directory, relativePath);
-    const bytes = Buffer.from(snapshotDoc.binaryContentBase64, "base64");
-
-    await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, bytes);
+    files.push({
+      relativePath: toRelativePath(document.path),
+      kind: "binary" as const,
+      content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
+    });
   }
+
+  return files;
 }
