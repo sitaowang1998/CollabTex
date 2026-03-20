@@ -44,4 +44,25 @@ describe("dockerCompileAdapter input validation", () => {
       adapter.compile({ files, mainFile: "main.tex", timeoutMs: 5000 }),
     ).rejects.toThrow("File path escapes working directory");
   });
+
+  it("rejects mainFile with nested ../ traversal", async () => {
+    const files = new Map([["sub/../../escape.tex", "content"]]);
+    await expect(
+      adapter.compile({
+        files,
+        mainFile: "sub/../../escape.tex",
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow("mainFile path escapes working directory");
+  });
+
+  it("rejects file map key with nested ../ traversal", async () => {
+    const files = new Map([
+      ["main.tex", "content"],
+      ["sub/../../outside.tex", "malicious"],
+    ]);
+    await expect(
+      adapter.compile({ files, mainFile: "main.tex", timeoutMs: 5000 }),
+    ).rejects.toThrow("File path escapes working directory");
+  });
 });
