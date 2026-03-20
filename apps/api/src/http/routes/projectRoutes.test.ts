@@ -435,6 +435,48 @@ describe("project routes", () => {
         .expect({ error: "documentId must be a valid UUID" });
     });
 
+    it("PUT rejects binary document with 400", async () => {
+      const { app, addDocument } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+      const docId = randomUUID();
+      addDocument(projectId, {
+        id: docId,
+        path: "/figure.png",
+        kind: "binary",
+        mime: "image/png",
+      });
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ documentId: docId })
+        .expect(400);
+    });
+
+    it("PUT rejects missing documentId with 400", async () => {
+      const { app } = createProjectTestApp();
+      const alice = await registerUser(app, "alice@example.com", "Alice");
+      const createResponse = await request(app)
+        .post("/api/projects")
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ name: "Thesis" })
+        .expect(201);
+      const projectId = createResponse.body.project.id as string;
+
+      await request(app)
+        .put(`/api/projects/${projectId}/main-document`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({})
+        .expect(400)
+        .expect({ error: "documentId is required" });
+    });
+
     it("PUT rejects non-existent document with 400", async () => {
       const { app } = createProjectTestApp();
       const alice = await registerUser(app, "alice@example.com", "Alice");
@@ -866,9 +908,7 @@ function createInMemoryProjectRepository(
         throw new InvalidMainDocumentError("document not found in project");
       }
       if (doc.kind !== "text") {
-        throw new InvalidMainDocumentError(
-          "main document must be a text file",
-        );
+        throw new InvalidMainDocumentError("main document must be a text file");
       }
 
       projectsById.set(projectId, {
