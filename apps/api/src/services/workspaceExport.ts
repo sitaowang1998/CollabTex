@@ -6,13 +6,19 @@ import {
   type SnapshotRepository,
   type SnapshotStore,
 } from "./snapshot.js";
-import type {
-  ExportedFile,
-  WorkspaceWriteResult,
-  WorkspaceWriter,
-} from "../infrastructure/workspace/localWorkspaceWriter.js";
 
-export type WorkspaceExportResult = WorkspaceWriteResult;
+export type ExportedFile =
+  | { relativePath: string; kind: "text"; content: string }
+  | { relativePath: string; kind: "binary"; content: Buffer };
+
+export type WorkspaceExportResult = {
+  directory: string;
+  cleanup: () => Promise<void>;
+};
+
+export type WorkspaceWriter = {
+  writeWorkspace: (files: ExportedFile[]) => Promise<WorkspaceExportResult>;
+};
 
 export type WorkspaceExportService = {
   exportWorkspace: (projectId: string) => Promise<WorkspaceExportResult>;

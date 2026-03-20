@@ -9,9 +9,11 @@ import type {
   SnapshotStore,
   StoredSnapshot,
 } from "./snapshot.js";
-import { createWorkspaceExportService } from "./workspaceExport.js";
+import {
+  createWorkspaceExportService,
+  type WorkspaceWriter,
+} from "./workspaceExport.js";
 import { createLocalWorkspaceWriter } from "../infrastructure/workspace/localWorkspaceWriter.js";
-import type { WorkspaceWriter } from "../infrastructure/workspace/localWorkspaceWriter.js";
 
 describe("workspace export service", () => {
   it("exports text files with content from DocumentTextState", async () => {

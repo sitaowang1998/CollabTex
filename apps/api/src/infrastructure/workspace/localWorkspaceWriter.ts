@@ -2,19 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-
-export type ExportedFile =
-  | { relativePath: string; kind: "text"; content: string }
-  | { relativePath: string; kind: "binary"; content: Buffer };
-
-export type WorkspaceWriteResult = {
-  directory: string;
-  cleanup: () => Promise<void>;
-};
-
-export type WorkspaceWriter = {
-  writeWorkspace: (files: ExportedFile[]) => Promise<WorkspaceWriteResult>;
-};
+import type { WorkspaceWriter } from "../../services/workspaceExport.js";
 
 export function createLocalWorkspaceWriter(): WorkspaceWriter {
   return {
@@ -49,7 +37,14 @@ export function createLocalWorkspaceWriter(): WorkspaceWriter {
       return {
         directory,
         cleanup: async () => {
-          await rm(directory, { recursive: true, force: true });
+          await rm(directory, { recursive: true, force: true }).catch(
+            (cleanupError) => {
+              console.error(
+                `Failed to clean up workspace directory ${directory}:`,
+                cleanupError,
+              );
+            },
+          );
         },
       };
     },
