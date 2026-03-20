@@ -96,6 +96,14 @@ export type ProjectDocumentContentResponse = {
   content: string | null;
 };
 
+export type SetMainDocumentRequest = {
+  documentId: string;
+};
+
+export type MainDocumentResponse = {
+  mainDocument: ProjectDocument | null;
+};
+
 export type Project = {
   id: string;
   name: string;

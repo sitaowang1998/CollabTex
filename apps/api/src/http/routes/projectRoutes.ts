@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type {
   CreateProjectRequest,
+  MainDocumentResponse,
   Project,
   ProjectSummary,
   UpdateProjectRequest,
@@ -10,6 +11,7 @@ import type { AuthenticatedRequest } from "../../types/express.js";
 import { createRequireAuth } from "../middleware/requireAuth.js";
 import { isObject, parseUuidParam } from "../validation/requestValidation.js";
 import {
+  InvalidMainDocumentError,
   ProjectOwnerNotFoundError,
   ProjectAdminRequiredError,
   ProjectNotFoundError,
@@ -157,6 +159,87 @@ export function createProjectRouter(
     },
   );
 
+  router.get(
+    "/api/projects/:projectId/main-document",
+    requireAuth,
+    async (req, res, next) => {
+      try {
+        const authenticatedRequest = req as AuthenticatedRequest;
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+
+        if (projectId instanceof HttpError) {
+          next(projectId);
+          return;
+        }
+
+        const mainDocument = await projectService.getMainDocument(
+          projectId,
+          authenticatedRequest.userId,
+        );
+
+        const response: MainDocumentResponse = {
+          mainDocument: mainDocument
+            ? {
+                id: mainDocument.id,
+                path: mainDocument.path,
+                kind: mainDocument.kind,
+                mime: mainDocument.mime,
+                createdAt: mainDocument.createdAt.toISOString(),
+                updatedAt: mainDocument.updatedAt.toISOString(),
+              }
+            : null,
+        };
+
+        res.json(response);
+      } catch (error) {
+        next(mapProjectError(error));
+      }
+    },
+  );
+
+  router.put(
+    "/api/projects/:projectId/main-document",
+    requireAuth,
+    async (req, res, next) => {
+      try {
+        const authenticatedRequest = req as AuthenticatedRequest;
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+
+        if (projectId instanceof HttpError) {
+          next(projectId);
+          return;
+        }
+
+        if (!isObject(req.body)) {
+          next(new HttpError(400, "request body must be an object"));
+          return;
+        }
+
+        const documentId = parseUuidParam(
+          typeof req.body.documentId === "string"
+            ? req.body.documentId
+            : undefined,
+          "documentId",
+        );
+
+        if (documentId instanceof HttpError) {
+          next(documentId);
+          return;
+        }
+
+        await projectService.setMainDocument(
+          projectId,
+          authenticatedRequest.userId,
+          documentId,
+        );
+
+        res.status(204).send();
+      } catch (error) {
+        next(mapProjectError(error));
+      }
+    },
+  );
+
   return router;
 }
 
@@ -194,6 +277,10 @@ function mapProjectError(error: unknown): Error {
 
   if (error instanceof ProjectRoleRequiredError) {
     return new HttpError(403, "required project role missing");
+  }
+
+  if (error instanceof InvalidMainDocumentError) {
+    return new HttpError(400, error.message);
   }
 
   if (error instanceof ProjectOwnerNotFoundError) {

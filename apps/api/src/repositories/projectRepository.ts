@@ -8,7 +8,15 @@ import type {
   CreateProjectInput,
   ProjectRepository,
 } from "../services/project.js";
-import { ProjectOwnerNotFoundError } from "../services/project.js";
+import {
+  InvalidMainDocumentError,
+  ProjectOwnerNotFoundError,
+} from "../services/project.js";
+import {
+  ProjectNotFoundError,
+  ProjectRoleRequiredError,
+} from "../services/projectAccess.js";
+import { DOCUMENT_WRITE_ROLES } from "../services/document.js";
 import type {
   ProjectWithRole,
   StoredProject,
@@ -137,6 +145,60 @@ export function createProjectRepository(
           data: {
             tombstoneAt: deletedAt,
           },
+        });
+      });
+    },
+    getMainDocumentId: async (projectId) => {
+      const project = await databaseClient.project.findFirst({
+        where: { id: projectId, tombstoneAt: null },
+        select: { mainDocumentId: true },
+      });
+      return project?.mainDocumentId ?? null;
+    },
+    setMainDocumentId: async ({ projectId, actorUserId, documentId }) => {
+      await databaseClient.$transaction(async (tx) => {
+        await lockActiveProject(tx, projectId);
+
+        const membership = await tx.projectMembership.findUnique({
+          where: {
+            projectId_userId: { projectId, userId: actorUserId },
+          },
+          select: { role: true },
+        });
+
+        if (!membership) {
+          throw new ProjectNotFoundError();
+        }
+
+        if (
+          !DOCUMENT_WRITE_ROLES.some(
+            (allowedRole) => allowedRole === membership.role,
+          )
+        ) {
+          throw new ProjectRoleRequiredError(DOCUMENT_WRITE_ROLES);
+        }
+
+        const doc = await tx.document.findFirst({
+          where: {
+            id: documentId,
+            projectId,
+            project: { tombstoneAt: null },
+          },
+        });
+
+        if (!doc) {
+          throw new InvalidMainDocumentError("document not found in project");
+        }
+
+        if (doc.kind !== "text") {
+          throw new InvalidMainDocumentError(
+            "main document must be a text file",
+          );
+        }
+
+        await tx.project.update({
+          where: { id: projectId },
+          data: { mainDocumentId: documentId },
         });
       });
     },

@@ -5,6 +5,18 @@ import {
   type ProjectWithRole,
   type StoredProject,
 } from "./projectAccess.js";
+import { DOCUMENT_WRITE_ROLES, type StoredDocument } from "./document.js";
+
+export type DocumentLookup = {
+  findById: (
+    projectId: string,
+    documentId: string,
+  ) => Promise<StoredDocument | null>;
+  findByPath: (
+    projectId: string,
+    path: string,
+  ) => Promise<StoredDocument | null>;
+};
 
 export {
   ProjectAdminRequiredError,
@@ -48,6 +60,12 @@ export type ProjectRepository = {
     actorUserId: string;
     deletedAt: Date;
   }) => Promise<void>;
+  getMainDocumentId: (projectId: string) => Promise<string | null>;
+  setMainDocumentId: (input: {
+    projectId: string;
+    actorUserId: string;
+    documentId: string;
+  }) => Promise<void>;
 };
 
 export type ProjectService = {
@@ -56,6 +74,15 @@ export type ProjectService = {
   getProject: (projectId: string, userId: string) => Promise<ProjectWithRole>;
   updateProject: (input: UpdateProjectInput) => Promise<StoredProject>;
   deleteProject: (input: DeleteProjectInput) => Promise<void>;
+  getMainDocument: (
+    projectId: string,
+    userId: string,
+  ) => Promise<StoredDocument | null>;
+  setMainDocument: (
+    projectId: string,
+    userId: string,
+    documentId: string,
+  ) => Promise<void>;
 };
 
 export class ProjectOwnerNotFoundError extends Error {
@@ -64,13 +91,21 @@ export class ProjectOwnerNotFoundError extends Error {
   }
 }
 
+export class InvalidMainDocumentError extends Error {
+  constructor(reason: string) {
+    super(`Invalid main document: ${reason}`);
+  }
+}
+
 export function createProjectService({
   projectRepository,
+  documentLookup,
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
 }: {
   projectRepository: ProjectRepository;
+  documentLookup?: DocumentLookup;
   projectAccessService?: ProjectAccessService;
 }): ProjectService {
   return {
@@ -95,6 +130,36 @@ export function createProjectService({
         projectId: input.projectId,
         actorUserId: input.userId,
         deletedAt: new Date(),
+      });
+    },
+    getMainDocument: async (projectId, userId) => {
+      await projectAccessService.requireProjectMember(projectId, userId);
+
+      const mainDocumentId =
+        await projectRepository.getMainDocumentId(projectId);
+
+      if (mainDocumentId && documentLookup) {
+        const doc = await documentLookup.findById(projectId, mainDocumentId);
+        if (doc) return doc;
+      }
+
+      if (documentLookup) {
+        return documentLookup.findByPath(projectId, "/main.tex");
+      }
+
+      return null;
+    },
+    setMainDocument: async (projectId, userId, documentId) => {
+      await projectAccessService.requireProjectRole(
+        projectId,
+        userId,
+        DOCUMENT_WRITE_ROLES,
+      );
+
+      await projectRepository.setMainDocumentId({
+        projectId,
+        actorUserId: userId,
+        documentId,
       });
     },
   };
