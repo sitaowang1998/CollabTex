@@ -105,6 +105,11 @@ describe("dockerCompileAdapter successful compilation", () => {
     expect(dockerArgs).toContain("run");
     expect(dockerArgs).toContain("--network");
     expect(dockerArgs).toContain("none");
+    expect(dockerArgs).toContain("--user");
+    expect(dockerArgs).toContain("--memory");
+    expect(dockerArgs).toContain("512m");
+    expect(dockerArgs).toContain("--pids-limit");
+    expect(dockerArgs).toContain("100");
     expect(dockerArgs).toContain("-v");
     expect(dockerArgs).toContain("-w");
     expect(dockerArgs).toContain("/work");
