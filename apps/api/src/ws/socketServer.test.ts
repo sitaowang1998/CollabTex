@@ -2060,6 +2060,121 @@ describe("socket server", () => {
     });
   });
 
+  it("rejects doc.update when socket is not joined to the document", async () => {
+    socketServer = await createTestSocketServer();
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const errorPayload = await new Promise<WorkspaceErrorEvent>(
+      (resolve, reject) => {
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
+        });
+
+        client.once("doc.sync.response", () => {
+          client.emit("doc.update", {
+            documentId: "doc-other",
+            updateB64: Buffer.from([0]).toString("base64"),
+            clientUpdateId: "client-update-1",
+          });
+        });
+
+        client.once("realtime:error", (payload) => {
+          client.close();
+          resolve(payload);
+        });
+        client.once("connect_error", (error) => {
+          client.close();
+          reject(error);
+        });
+      },
+    );
+
+    expect(errorPayload).toEqual({
+      code: "INVALID_REQUEST",
+      message: "socket is not joined to this document",
+    });
+  });
+
+  it("rejects doc.update after membership revocation", async () => {
+    let membershipRevoked = false;
+    socketServer = await createTestSocketServer({
+      projectAccessService: {
+        requireProjectMember: async () => {
+          if (membershipRevoked) {
+            throw new ProjectNotFoundError();
+          }
+
+          return {
+            project: {
+              id: "project-123",
+              name: "Project",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              tombstoneAt: null,
+            },
+            myRole: "admin" as const,
+          };
+        },
+      },
+    });
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    const result = await new Promise<{
+      joinSync: DocumentSyncResponseEvent;
+      error: WorkspaceErrorEvent;
+    }>((resolve, reject) => {
+      let joinSync: DocumentSyncResponseEvent | null = null;
+
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+
+      client.once("doc.sync.response", (payload) => {
+        joinSync = payload;
+        membershipRevoked = true;
+        client.emit("doc.update", {
+          documentId: "doc-456",
+          updateB64: createIncrementalUpdateB64(
+            payload.stateB64,
+            (document) => {
+              document.getText("content").insert(14, " Revoked");
+            },
+          ),
+          clientUpdateId: "client-update-1",
+        });
+      });
+
+      client.once("realtime:error", (payload) => {
+        client.close();
+        if (!joinSync) {
+          reject(new Error("Expected join sync before error"));
+          return;
+        }
+        resolve({ joinSync, error: payload });
+      });
+      client.once("connect_error", (error) => {
+        client.close();
+        reject(error);
+      });
+    });
+
+    expect(result.joinSync.serverVersion).toBe(1);
+    expect(result.error).toEqual({
+      code: "FORBIDDEN",
+      message: "project membership required",
+    });
+  });
+
   it("returns post-commit state for doc.sync.request after accepted updates", async () => {
     socketServer = await createTestSocketServer();
     const sender = socketServer.connect(
