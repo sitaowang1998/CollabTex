@@ -63,7 +63,6 @@ export type ProjectRepository = {
   getMainDocumentId: (projectId: string) => Promise<string | null>;
   setMainDocumentId: (input: {
     projectId: string;
-    actorUserId: string;
     documentId: string;
   }) => Promise<void>;
 };
@@ -105,7 +104,7 @@ export function createProjectService({
   }),
 }: {
   projectRepository: ProjectRepository;
-  documentLookup?: DocumentLookup;
+  documentLookup: DocumentLookup;
   projectAccessService?: ProjectAccessService;
 }): ProjectService {
   return {
@@ -138,16 +137,11 @@ export function createProjectService({
       const mainDocumentId =
         await projectRepository.getMainDocumentId(projectId);
 
-      if (mainDocumentId && documentLookup) {
-        const doc = await documentLookup.findById(projectId, mainDocumentId);
-        if (doc) return doc;
+      if (mainDocumentId) {
+        return documentLookup.findById(projectId, mainDocumentId);
       }
 
-      if (documentLookup) {
-        return documentLookup.findByPath(projectId, "/main.tex");
-      }
-
-      return null;
+      return documentLookup.findByPath(projectId, "/main.tex");
     },
     setMainDocument: async (projectId, userId, documentId) => {
       await projectAccessService.requireProjectRole(
@@ -158,7 +152,6 @@ export function createProjectService({
 
       await projectRepository.setMainDocumentId({
         projectId,
-        actorUserId: userId,
         documentId,
       });
     },

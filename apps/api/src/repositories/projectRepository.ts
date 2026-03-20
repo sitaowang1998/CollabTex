@@ -12,11 +12,6 @@ import {
   InvalidMainDocumentError,
   ProjectOwnerNotFoundError,
 } from "../services/project.js";
-import {
-  ProjectNotFoundError,
-  ProjectRoleRequiredError,
-} from "../services/projectAccess.js";
-import { DOCUMENT_WRITE_ROLES } from "../services/document.js";
 import type {
   ProjectWithRole,
   StoredProject,
@@ -155,28 +150,9 @@ export function createProjectRepository(
       });
       return project?.mainDocumentId ?? null;
     },
-    setMainDocumentId: async ({ projectId, actorUserId, documentId }) => {
+    setMainDocumentId: async ({ projectId, documentId }) => {
       await databaseClient.$transaction(async (tx) => {
         await lockActiveProject(tx, projectId);
-
-        const membership = await tx.projectMembership.findUnique({
-          where: {
-            projectId_userId: { projectId, userId: actorUserId },
-          },
-          select: { role: true },
-        });
-
-        if (!membership) {
-          throw new ProjectNotFoundError();
-        }
-
-        if (
-          !DOCUMENT_WRITE_ROLES.some(
-            (allowedRole) => allowedRole === membership.role,
-          )
-        ) {
-          throw new ProjectRoleRequiredError(DOCUMENT_WRITE_ROLES);
-        }
 
         const doc = await tx.document.findFirst({
           where: {

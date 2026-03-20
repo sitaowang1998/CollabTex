@@ -712,7 +712,7 @@ function createInMemoryDocumentLookup() {
 
 function createInMemoryProjectRepository(
   hasUser: (userId: string) => boolean,
-  documentLookup?: ReturnType<typeof createInMemoryDocumentLookup>,
+  documentLookup: ReturnType<typeof createInMemoryDocumentLookup>,
 ): ProjectRepository & {
   addMembership: (
     projectId: string,
@@ -855,31 +855,20 @@ function createInMemoryProjectRepository(
       if (!project || project.tombstoneAt) return null;
       return project.mainDocumentId;
     },
-    setMainDocumentId: async ({ projectId, actorUserId, documentId }) => {
+    setMainDocumentId: async ({ projectId, documentId }) => {
       const project = projectsById.get(projectId);
       if (!project || project.tombstoneAt) {
         throw new ProjectNotFoundError();
       }
 
-      const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);
-      if (!actorRole) {
-        throw new ProjectNotFoundError();
+      const doc = await documentLookup.findById(projectId, documentId);
+      if (!doc) {
+        throw new InvalidMainDocumentError("document not found in project");
       }
-
-      if (actorRole !== "admin" && actorRole !== "editor") {
-        throw new ProjectRoleRequiredError(["admin", "editor"]);
-      }
-
-      if (documentLookup) {
-        const doc = await documentLookup.findById(projectId, documentId);
-        if (!doc) {
-          throw new InvalidMainDocumentError("document not found in project");
-        }
-        if (doc.kind !== "text") {
-          throw new InvalidMainDocumentError(
-            "main document must be a text file",
-          );
-        }
+      if (doc.kind !== "text") {
+        throw new InvalidMainDocumentError(
+          "main document must be a text file",
+        );
       }
 
       projectsById.set(projectId, {

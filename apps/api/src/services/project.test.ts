@@ -17,6 +17,7 @@ describe("project service", () => {
     repository.createForOwner.mockResolvedValue(createdProject);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     const result = await service.createProject({
@@ -42,6 +43,7 @@ describe("project service", () => {
     repository.listForUser.mockResolvedValue(projects);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(service.listProjects("user-1")).resolves.toBe(projects);
@@ -52,6 +54,7 @@ describe("project service", () => {
     repository.findForUser.mockResolvedValue(null);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -64,6 +67,7 @@ describe("project service", () => {
     repository.updateName.mockRejectedValue(new ProjectAdminRequiredError());
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -89,6 +93,7 @@ describe("project service", () => {
     repository.updateName.mockResolvedValue(updatedProject);
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     const result = await service.updateProject({
@@ -110,6 +115,7 @@ describe("project service", () => {
     repository.softDelete.mockRejectedValue(new ProjectNotFoundError());
     const service = createProjectService({
       projectRepository: repository,
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -173,6 +179,26 @@ describe("project service", () => {
         "project-1",
         "/main.tex",
       );
+    });
+
+    it("returns null when explicit main document was deleted", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue("deleted-doc-id");
+      documentLookup.findById.mockResolvedValue(null);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toBeNull();
+      expect(documentLookup.findByPath).not.toHaveBeenCalled();
     });
 
     it("returns null when neither explicit nor /main.tex exists", async () => {
@@ -265,7 +291,6 @@ describe("project service", () => {
 
       expect(repository.setMainDocumentId).toHaveBeenCalledWith({
         projectId: "project-1",
-        actorUserId: "user-1",
         documentId: "doc-1",
       });
     });
@@ -285,7 +310,6 @@ describe("project service", () => {
 
       expect(repository.setMainDocumentId).toHaveBeenCalledWith({
         projectId: "project-1",
-        actorUserId: "user-1",
         documentId: "doc-1",
       });
     });
