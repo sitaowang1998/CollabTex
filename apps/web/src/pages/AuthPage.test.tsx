@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { FormEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AuthPage } from "./AuthPage";
-import type { AuthFormState, AuthMode } from "../app/types";
+import type { AuthFormState } from "../app/types";
 
 describe("auth page", () => {
   it("renders the login form by default", () => {
