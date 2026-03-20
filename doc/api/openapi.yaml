@@ -191,6 +191,57 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/main-document:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Projects
+      summary: Get the main document for a project
+      description: >-
+        Returns the explicitly set main document. If none is set, falls back to
+        `/main.tex` in the project tree. Returns null when neither exists.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Main document or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MainDocumentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Projects
+      summary: Set the main document for a project
+      description: >-
+        Sets the compile entrypoint document. The document must exist in the
+        project and be of kind `text`. Requires admin or editor role.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMainDocumentRequest"
+      responses:
+        "204":
+          description: Main document set successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{projectId}/members:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -892,6 +943,26 @@ components:
           description: Leading and trailing whitespace is trimmed; whitespace-only values are rejected.
           minLength: 1
           maxLength: 160
+    SetMainDocumentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - documentId
+      properties:
+        documentId:
+          type: string
+          format: uuid
+          description: The document to set as the main compile entrypoint.
+    MainDocumentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - mainDocument
+      properties:
+        mainDocument:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectDocument"
+            - type: "null"
     ProjectMutationResponse:
       type: object
       additionalProperties: false
