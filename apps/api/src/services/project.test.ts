@@ -216,6 +216,44 @@ describe("project service", () => {
       );
     });
 
+    it("falls through to fallback when explicit main document is not text", async () => {
+      const repository = createProjectRepository();
+      const documentLookup = createDocumentLookup();
+      const binaryDoc = createStoredDocument({
+        id: "binary-doc-id",
+        kind: "binary",
+      });
+      const fallbackDoc = createStoredDocument({
+        id: "fallback-doc-id",
+        path: "/main.tex",
+        kind: "text",
+      });
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "reader",
+      });
+      repository.getMainDocumentId.mockResolvedValue("binary-doc-id");
+      documentLookup.findById.mockResolvedValue(binaryDoc);
+      documentLookup.findByPath.mockResolvedValue(fallbackDoc);
+      const logger = { warn: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentLookup,
+        logger,
+      });
+
+      const result = await service.getMainDocument("project-1", "user-1");
+
+      expect(result).toEqual(fallbackDoc);
+      expect(documentLookup.findByPath).toHaveBeenCalledWith(
+        "project-1",
+        "/main.tex",
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("is not a text document"),
+      );
+    });
+
     it("returns null when /main.tex fallback is a binary document", async () => {
       const repository = createProjectRepository();
       const documentLookup = createDocumentLookup();

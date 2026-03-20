@@ -150,6 +150,10 @@ export function createProjectService({
           logger.warn(
             `Stale mainDocumentId ${mainDocumentId} on project ${projectId}: document not found`,
           );
+        } else if (doc.kind !== "text") {
+          logger.warn(
+            `mainDocumentId ${mainDocumentId} on project ${projectId} is not a text document`,
+          );
         } else {
           return doc;
         }
