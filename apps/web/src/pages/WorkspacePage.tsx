@@ -1,10 +1,6 @@
 import type { FormEvent } from "react";
 import {
-  FileImage,
   FilePlus2,
-  Files,
-  FolderTree,
-  MessageSquareText,
   RefreshCw,
   Undo2,
 } from "lucide-react";
@@ -12,13 +8,7 @@ import type { CreateFileState, WorkspaceState } from "../app/types";
 import { TreeView } from "../components/TreeView";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -64,25 +54,12 @@ export function WorkspacePage({
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary" className="gap-1">
-              <FolderTree className="h-3.5 w-3.5" />
-              Workspace shell
-            </Badge>
-            <Badge variant="outline">Role: {workspace.role ?? "unknown"}</Badge>
-            {workspaceBusy ? <Badge variant="outline">Refreshing</Badge> : null}
-          </div>
-          <div className="space-y-2">
-            <h2 className="font-serif text-3xl font-semibold text-slate-950">
-              {projectTitle}
-            </h2>
-            <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              Browse the file tree, preview a read-only editor shell, and show
-              where PDF preview and comments will live in the collaborative
-              workspace.
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="font-serif text-3xl font-semibold text-slate-950">
+            {projectTitle}
+          </h2>
+          <Badge variant="outline">Role: {workspace.role ?? "unknown"}</Badge>
+          {workspaceBusy ? <Badge variant="outline">Refreshing</Badge> : null}
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -109,15 +86,8 @@ export function WorkspacePage({
         <div className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div className="space-y-1.5">
-                <Badge variant="secondary" className="w-fit gap-1">
-                  <Files className="h-3.5 w-3.5" />
-                  File tree
-                </Badge>
+              <div>
                 <CardTitle>Project files</CardTitle>
-                <CardDescription>
-                  Select a file to populate the editor shell.
-                </CardDescription>
               </div>
               <Badge variant={canEditFiles ? "default" : "outline"}>
                 {canEditFiles ? "Editable" : "Read only"}
@@ -127,7 +97,7 @@ export function WorkspacePage({
               <div className="max-h-[460px] overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
                 {workspace.tree.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-600">
-                    Add a file to create the first folder structure.
+                    No files yet.
                   </div>
                 ) : (
                   <TreeView
@@ -143,9 +113,6 @@ export function WorkspacePage({
           <Card>
             <CardHeader>
               <CardTitle>Project info</CardTitle>
-              <CardDescription>
-                Members currently visible in the workspace shell.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -181,15 +148,8 @@ export function WorkspacePage({
 
         <Card className="min-h-[640px]">
           <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1.5">
-              <Badge variant="secondary" className="w-fit">
-                Editor
-              </Badge>
+            <div>
               <CardTitle>Source editor</CardTitle>
-              <CardDescription>
-                The current milestone keeps the editor read-only while we shape
-                the workspace UI and file selection flow.
-              </CardDescription>
             </div>
             <Badge variant="outline">{selectedFileLabel}</Badge>
           </CardHeader>
@@ -209,52 +169,29 @@ export function WorkspacePage({
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <Badge variant="secondary" className="w-fit gap-1">
-                <FileImage className="h-3.5 w-3.5" />
-                PDF preview
-              </Badge>
               <CardTitle>Preview panel</CardTitle>
-              <CardDescription>
-                Placeholder for rendered document preview in a future iteration.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid min-h-[280px] place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm leading-6 text-slate-600">
                 {workspace.selectedPath
-                  ? "Preview rendering is intentionally omitted in this UI-only milestone."
-                  : "Select a file to preview where rendered output will appear."}
+                  ? "Preview unavailable."
+                  : "Select a file to preview."}
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <Badge variant="secondary" className="w-fit gap-1">
-                <MessageSquareText className="h-3.5 w-3.5" />
-                Comments
-              </Badge>
               <CardTitle>Discussion sidebar</CardTitle>
-              <CardDescription>
-                A lightweight placeholder showing where collaborative feedback
-                threads will surface.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-sm font-medium text-slate-900">
                   {workspace.members[0]?.name ?? "Reviewer"}
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Workspace comments will eventually attach to document ranges
-                  and discussion threads here.
-                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-sky-50 p-4">
                 <p className="text-sm font-medium text-slate-900">You</p>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  This sidebar is present to demonstrate the responsive
-                  workspace layout requested in the frontend milestone.
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -272,10 +209,7 @@ export function WorkspacePage({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add a new file to the tree</DialogTitle>
-            <DialogDescription>
-              Use an absolute path like <code>/sections/intro.tex</code>. New
-              folders will be created automatically from the path.
-            </DialogDescription>
+            <DialogDescription>Example: /sections/intro.tex</DialogDescription>
           </DialogHeader>
 
           <form className="space-y-4" onSubmit={onCreateFileSubmit}>

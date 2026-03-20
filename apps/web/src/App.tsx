@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { LayoutDashboard, LogOut, Sparkles } from "lucide-react";
+import { LogOut } from "lucide-react";
 import type {
   AuthResponse,
   AuthUser,
@@ -19,7 +19,6 @@ import {
   type WorkspaceState,
 } from "./app/types";
 import { Banner } from "./components/Banner";
-import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { apiFetch, getErrorMessage } from "./lib/api";
 import { AuthPage } from "./pages/AuthPage";
@@ -326,9 +325,7 @@ function App() {
         kind: "text",
         mime: "text/plain",
       });
-      setNotice(
-        "File created. Tip: folders are created automatically from the file path, for example /sections/intro.tex.",
-      );
+      setNotice("File created.");
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -357,16 +354,9 @@ function App() {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <section className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white/95 p-8 shadow-lg">
-          <div className="mb-4 flex items-center gap-2">
-            <Badge variant="secondary">CollabTex</Badge>
-            <Badge variant="outline">Loading</Badge>
-          </div>
           <h1 className="font-serif text-3xl font-semibold text-slate-950">
             Loading workspace...
           </h1>
-          <p className="mt-3 text-sm text-slate-600">
-            We are checking whether you already have a signed-in session.
-          </p>
         </section>
       </main>
     );
@@ -375,58 +365,22 @@ function App() {
   return (
     <main className="min-h-screen">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <header className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge>CollabTex</Badge>
-                <Badge variant="secondary">
-                  <Sparkles className="mr-1 h-3.5 w-3.5" />
-                  React + Tailwind + shadcn/ui
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <h1 className="font-serif text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-                  Collaborative LaTeX workspace shell
-                </h1>
-                <p className="max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
-                  Auth, projects, and workspace UI for CollabTex. This branch
-                  focuses on a responsive web interface without backend socket
-                  changes.
-                </p>
-              </div>
-            </div>
-
+        {user ? (
+          <div className="flex justify-end">
             <div className="flex flex-wrap items-center justify-end gap-3">
-              <Badge variant="outline" className="gap-1">
-                <LayoutDashboard className="h-3.5 w-3.5" />
-                {screen.name === "auth"
-                  ? "Auth"
-                  : screen.name === "projects"
-                    ? "Projects"
-                    : "Workspace"}
-              </Badge>
-              {user ? (
-                <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
-                    <p className="text-sm font-medium text-slate-900">
-                      {user.name}
-                    </p>
-                    <p className="text-xs text-slate-500">{user.email}</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={clearSession}
-                    type="button"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </Button>
-                </>
-              ) : null}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                <p className="text-sm font-medium text-slate-900">
+                  {user.name}
+                </p>
+                <p className="text-xs text-slate-500">{user.email}</p>
+              </div>
+              <Button variant="outline" onClick={clearSession} type="button">
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </Button>
             </div>
           </div>
-        </header>
+        ) : null}
 
         {error ? <Banner tone="error" message={error} /> : null}
         {notice ? <Banner tone="success" message={notice} /> : null}

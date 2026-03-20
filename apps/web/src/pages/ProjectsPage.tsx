@@ -1,16 +1,10 @@
 import type { FormEvent } from "react";
-import { ArrowRight, FolderKanban, PlusCircle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { ProjectSummary } from "../../../../packages/shared/src/index";
 import type { CreateProjectState } from "../app/types";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
@@ -33,15 +27,7 @@ export function ProjectsPage({
     <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <Card>
         <CardHeader>
-          <Badge variant="secondary" className="w-fit gap-1">
-            <PlusCircle className="h-3.5 w-3.5" />
-            Project setup
-          </Badge>
           <CardTitle>Create a project</CardTitle>
-          <CardDescription>
-            Add a project shell first, then enter the workspace to organize
-            files and preview the editor layout.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={onCreateProjectSubmit}>
@@ -67,16 +53,8 @@ export function ProjectsPage({
 
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1.5">
-            <Badge variant="secondary" className="w-fit gap-1">
-              <FolderKanban className="h-3.5 w-3.5" />
-              Project dashboard
-            </Badge>
+          <div>
             <CardTitle>Your projects</CardTitle>
-            <CardDescription>
-              Browse the projects you can access and jump straight into the
-              workspace shell.
-            </CardDescription>
           </div>
           <Badge variant="outline">{projects.length} total</Badge>
         </CardHeader>
@@ -86,10 +64,6 @@ export function ProjectsPage({
               <h3 className="font-serif text-xl font-semibold text-slate-900">
                 No projects yet
               </h3>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                Create your first project on the left. Once it exists, you can
-                open the workspace and start adding files.
-              </p>
             </div>
           ) : (
             <div className="space-y-3">
