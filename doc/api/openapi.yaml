@@ -200,7 +200,8 @@ paths:
       summary: Get the main document for a project
       description: >-
         Returns the explicitly set main document. If none is set, falls back to
-        `/main.tex` in the project tree. Returns null when neither exists.
+        `/main.tex` in the project tree. The fallback is only used when
+        `/main.tex` is a text document. Returns null when neither exists.
       security:
         - BearerAuth: []
       responses:
