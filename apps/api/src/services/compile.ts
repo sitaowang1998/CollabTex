@@ -52,6 +52,7 @@ export function validateCompileInput(input: CompileInput): void {
 }
 
 function isEscapingPath(filePath: string): boolean {
+  if (isAbsolute(filePath)) return true;
   const resolved = resolve("/base", filePath);
   const rel = relative("/base", resolved);
   return rel.startsWith("..") || isAbsolute(rel);

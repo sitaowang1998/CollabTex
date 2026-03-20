@@ -184,6 +184,10 @@ async function getContainerLogs(containerName: string): Promise<string> {
   return new Promise<string>((res) => {
     execFile("docker", ["logs", containerName], (error, stdout, stderr) => {
       if (error) {
+        console.error(
+          `Failed to retrieve logs for container ${containerName}:`,
+          error,
+        );
         res("(failed to retrieve container logs)");
         return;
       }

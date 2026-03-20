@@ -94,6 +94,17 @@ describe("validateCompileInput", () => {
     ).toThrow("File path escapes working directory");
   });
 
+  it("rejects mainFile starting with /base/ (synthetic root bypass)", () => {
+    const files = new Map([["/base/exploit.tex", "content"]]);
+    expect(() =>
+      validateCompileInput({
+        files,
+        mainFile: "/base/exploit.tex",
+        timeoutMs: 5000,
+      }),
+    ).toThrow("mainFile path escapes working directory");
+  });
+
   it("rejects mainFile with nested ../ traversal", () => {
     const files = new Map([["sub/../../escape.tex", "content"]]);
     expect(() =>
