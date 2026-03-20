@@ -388,7 +388,13 @@ describe("socket server", () => {
         reason: "snapshot_restore",
         serverVersion: currentVersion,
       });
-      await resetPromise;
+      const resetEvent = await resetPromise;
+
+      expect(resetEvent).toEqual({
+        documentId: "doc-456",
+        reason: "snapshot_restore",
+        serverVersion: 9,
+      });
 
       const secondSync = await joinAndWaitForSync(secondClient, "doc-456");
 
