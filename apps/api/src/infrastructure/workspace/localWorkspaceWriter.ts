@@ -6,9 +6,7 @@ import type { WorkspaceWriter } from "../../services/workspaceExport.js";
 export function createLocalWorkspaceWriter(): WorkspaceWriter {
   return {
     writeWorkspace: async (files) => {
-      const directory = await mkdtemp(
-        join(tmpdir(), "collabtex-workspace-"),
-      );
+      const directory = await mkdtemp(join(tmpdir(), "collabtex-workspace-"));
 
       try {
         for (const file of files) {
