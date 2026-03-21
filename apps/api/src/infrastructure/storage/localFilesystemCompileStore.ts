@@ -47,7 +47,9 @@ function resolveStoragePath(
   const relativePath = path.relative(rootDirectory, candidatePath);
 
   if (
-    relativePath.startsWith("..") ||
+    relativePath === ".." ||
+    relativePath.startsWith("../") ||
+    relativePath.startsWith("..\\") ||
     path.isAbsolute(relativePath) ||
     relativePath === ""
   ) {
