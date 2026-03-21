@@ -20,6 +20,7 @@ import {
 import type { StoredDocument } from "../../services/document.js";
 import type { AuthService } from "../../services/auth.js";
 import type { CommentService } from "../../services/commentService.js";
+import type { CompileDispatchService } from "../../services/compileDispatch.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
@@ -36,6 +37,9 @@ const testConfig: AppConfig = {
   databaseUrl:
     "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
+  compileStorageRoot: "/tmp/collabtex-test-compiles",
+  compileTimeoutMs: 60000,
+  shutdownDrainTimeoutMs: 5000,
 };
 
 describe("project routes", () => {
@@ -546,6 +550,7 @@ function createProjectTestApp() {
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
     commentService: createStubCommentService(),
+    compileDispatchService: createStubCompileDispatchService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
@@ -566,6 +571,7 @@ function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
+    compileDispatchService: createStubCompileDispatchService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: {
@@ -636,6 +642,14 @@ function createStubDocumentService(): DocumentService {
       throw new Error("Not implemented for project route tests");
     },
     getFileContent: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubCompileDispatchService(): CompileDispatchService {
+  return {
+    compile: async () => {
       throw new Error("Not implemented for project route tests");
     },
   };

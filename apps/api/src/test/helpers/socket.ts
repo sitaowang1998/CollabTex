@@ -94,6 +94,11 @@ export async function createTestSocketServer(options?: {
       projectRepository,
     }),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     snapshotManagementService: createStubSnapshotManagementService(),

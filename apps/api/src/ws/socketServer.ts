@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
 import type {
   ClientToServerEvents,
+  CompileDoneEvent,
   ServerToClientEvents,
   ClientDocumentUpdateEvent,
   WorkspaceErrorEvent,
@@ -270,6 +271,20 @@ export function createSocketDocumentResetPublisher(
   };
 }
 
+export function createCompileDonePublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitCompileDone: (projectId: string, event: CompileDoneEvent) => {
+      try {
+        io.to(createProjectRoomName(projectId)).emit("compile:done", event);
+      } catch (error) {
+        console.error("Failed to broadcast compile:done", { projectId }, error);
+      }
+    },
+  };
+}
+
 export async function openWorkspace(
   socket: WorkspaceSocket,
   workspaceService: WorkspaceService,
@@ -385,6 +400,9 @@ export async function openWorkspace(
         });
         joinedSessionHandle = null;
         input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+        await socket.join(
+          createProjectRoomName(input.workspaceOpenInput.projectId),
+        );
         socket.emit("workspace:opened", openedWorkspace.workspace);
         socket.emit("doc.sync.response", syncResponse);
 
@@ -397,6 +415,9 @@ export async function openWorkspace(
 
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+      await socket.join(
+        createProjectRoomName(input.workspaceOpenInput.projectId),
+      );
       socket.emit("workspace:opened", openedWorkspace.workspace);
 
       if (previousSession) {
@@ -758,6 +779,10 @@ function parseSyncRequest(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function createProjectRoomName(projectId: string): string {
+  return `project:${projectId}`;
 }
 
 export function createWorkspaceRoomName(

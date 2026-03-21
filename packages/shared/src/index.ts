@@ -221,6 +221,12 @@ export type WorkspaceErrorEvent = {
   message: string;
 };
 
+export type CompileDoneEvent = {
+  projectId: string;
+  status: "success" | "failure";
+  logs: string;
+};
+
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
@@ -228,6 +234,7 @@ export type ServerToClientEvents = {
   "doc.update": (data: ServerDocumentUpdateEvent) => void;
   "doc.update.ack": (data: DocumentUpdateAckEvent) => void;
   "doc.reset": (data: DocumentResetEvent) => void;
+  "compile:done": (data: CompileDoneEvent) => void;
 };
 
 export type ClientToServerEvents = {

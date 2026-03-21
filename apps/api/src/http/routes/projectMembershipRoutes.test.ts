@@ -43,6 +43,9 @@ const testConfig: AppConfig = {
   databaseUrl:
     "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
+  compileStorageRoot: "/tmp/collabtex-test-compiles",
+  compileTimeoutMs: 60000,
+  shutdownDrainTimeoutMs: 5000,
 };
 
 describe("project membership routes", () => {
@@ -666,6 +669,11 @@ function createMembershipTestApp() {
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createMembershipService({
       membershipRepository,
@@ -697,6 +705,11 @@ function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: {
       listMembers: async () => [],

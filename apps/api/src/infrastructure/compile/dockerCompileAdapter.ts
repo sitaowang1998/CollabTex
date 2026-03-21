@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -78,7 +78,9 @@ async function runCompile(
         signal: abortController.signal,
       });
 
-      return { outcome: "completed", exitCode, logs };
+      const pdfContent = await tryReadPdf(tmpDir, input.mainFile);
+
+      return { outcome: "completed", exitCode, logs, pdfContent };
     } catch (error) {
       if (isAbortError(error)) {
         await killContainer(containerName);
@@ -229,4 +231,21 @@ async function removeContainer(containerName: string): Promise<void> {
       res();
     });
   });
+}
+
+function derivePdfPath(mainFile: string): string {
+  return mainFile.replace(/\.tex$/i, ".pdf");
+}
+
+async function tryReadPdf(
+  tmpDir: string,
+  mainFile: string,
+): Promise<Buffer | undefined> {
+  const pdfPath = join(tmpDir, derivePdfPath(mainFile));
+
+  try {
+    return await readFile(pdfPath);
+  } catch {
+    return undefined;
+  }
 }

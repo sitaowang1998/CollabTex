@@ -7,7 +7,12 @@ export type CompileInput = {
 };
 
 export type CompileResult =
-  | { outcome: "completed"; exitCode: number; logs: string }
+  | {
+      outcome: "completed";
+      exitCode: number;
+      logs: string;
+      pdfContent?: Buffer;
+    }
   | { outcome: "timeout"; logs: string };
 
 export type CompileAdapter = {

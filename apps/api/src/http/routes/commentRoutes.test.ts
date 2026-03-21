@@ -39,6 +39,9 @@ const testConfig: AppConfig = {
   databaseUrl:
     "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
+  compileStorageRoot: "/tmp/collabtex-test-compiles",
+  compileTimeoutMs: 60000,
+  shutdownDrainTimeoutMs: 5000,
 };
 
 describe("comment routes", () => {
@@ -502,6 +505,11 @@ async function setupCommentTestApp() {
   const app = createHttpApp(testConfig, {
     authService,
     commentService,
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService,

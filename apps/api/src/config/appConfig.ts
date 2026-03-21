@@ -9,6 +9,8 @@ export type AppConfig = {
   clientOrigin: string;
   databaseUrl: string;
   snapshotStorageRoot: string;
+  compileStorageRoot: string;
+  compileTimeoutMs: number;
   shutdownDrainTimeoutMs: number;
 };
 
@@ -63,6 +65,29 @@ function parseSnapshotStorageRoot(
   return value ? value : "var/snapshots";
 }
 
+const DEFAULT_COMPILE_STORAGE_ROOT = "var/compiles";
+const DEFAULT_COMPILE_TIMEOUT_MS = 60000;
+
+function parseCompileStorageRoot(rawValue: string | undefined): string {
+  const value = rawValue?.trim();
+
+  return value ? value : DEFAULT_COMPILE_STORAGE_ROOT;
+}
+
+function parseCompileTimeoutMs(rawValue: string | undefined): number {
+  const trimmed = rawValue?.trim();
+  if (trimmed === undefined || trimmed === "") {
+    return DEFAULT_COMPILE_TIMEOUT_MS;
+  }
+
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("COMPILE_TIMEOUT_MS must be a positive integer");
+  }
+
+  return value;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnv(env.NODE_ENV);
 
@@ -73,6 +98,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
     databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
     snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
+    compileStorageRoot: parseCompileStorageRoot(env.COMPILE_STORAGE_ROOT),
+    compileTimeoutMs: parseCompileTimeoutMs(env.COMPILE_TIMEOUT_MS),
     shutdownDrainTimeoutMs: parseShutdownDrainTimeoutMs(
       env.SHUTDOWN_DRAIN_TIMEOUT_MS,
     ),

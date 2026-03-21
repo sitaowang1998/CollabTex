@@ -5,6 +5,8 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createDockerCompileAdapter } from "./infrastructure/compile/dockerCompileAdapter.js";
+import { createLocalFilesystemCompileStore } from "./infrastructure/storage/localFilesystemCompileStore.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
@@ -17,6 +19,7 @@ import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefre
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createCollaborationService } from "./services/collaboration.js";
+import { createCompileDispatchService } from "./services/compileDispatch.js";
 import { createCommentService } from "./services/commentService.js";
 import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
@@ -38,6 +41,7 @@ import {
 } from "./services/snapshotRefresh.js";
 import { createWorkspaceService } from "./services/workspace.js";
 import {
+  createCompileDonePublisher,
   createSocketDocumentResetPublisher,
   createSocketServer,
 } from "./ws/socketServer.js";
@@ -142,9 +146,33 @@ async function main() {
       projectAccessService,
       snapshotService,
     });
+    const compileArtifactStore = createLocalFilesystemCompileStore(
+      config.compileStorageRoot,
+    );
+    const compileAdapter = createDockerCompileAdapter();
+    let compileDoneNotifier: (
+      projectId: string,
+      event: import("@collab-tex/shared").CompileDoneEvent,
+    ) => void = () => {};
+    const compileDispatchService = createCompileDispatchService({
+      projectAccessService,
+      projectService,
+      fileAssemblyDeps: {
+        documentRepository,
+        documentTextStateRepository,
+        snapshotRepository,
+        snapshotStore,
+      },
+      compileAdapter,
+      compileArtifactStore,
+      compileTimeoutMs: config.compileTimeoutMs,
+      notifyCompileDone: (projectId, event) =>
+        compileDoneNotifier(projectId, event),
+    });
     const app = createHttpApp(config, {
       authService,
       commentService,
+      compileDispatchService,
       documentService,
       membershipService,
       projectService,
@@ -170,6 +198,8 @@ async function main() {
       io,
       activeDocumentRegistry,
     );
+    const compileDonePublisher = createCompileDonePublisher(io);
+    compileDoneNotifier = compileDonePublisher.emitCompileDone;
 
     installShutdownHandlers({
       server,
