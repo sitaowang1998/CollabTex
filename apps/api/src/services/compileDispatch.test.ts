@@ -213,6 +213,35 @@ describe("compile dispatch service", () => {
     });
   });
 
+  it("still returns success when saveLatestBuildPath fails", async () => {
+    const {
+      service,
+      compileAdapter,
+      compileArtifactStore,
+      compileBuildRepository,
+      notifyCompileDone,
+    } = createTestService();
+    compileAdapter.compile.mockResolvedValue({
+      outcome: "completed",
+      exitCode: 0,
+      logs: "OK",
+      pdfContent: Buffer.from("pdf"),
+    });
+    compileBuildRepository.saveLatestBuildPath.mockRejectedValue(
+      new Error("database connection lost"),
+    );
+
+    const result = await service.compile("project-1", "user-1");
+
+    expect(result.status).toBe("success");
+    expect(compileArtifactStore.writePdf).toHaveBeenCalled();
+    expect(notifyCompileDone).toHaveBeenCalledWith({
+      projectId: "project-1",
+      status: "success",
+      logs: expect.any(String),
+    });
+  });
+
   it("builds file map from text files only", async () => {
     const { service, compileAdapter, fileAssemblyDeps } = createTestService();
 

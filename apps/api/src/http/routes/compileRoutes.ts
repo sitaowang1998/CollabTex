@@ -117,6 +117,10 @@ function mapRetrievalError(error: unknown): Error {
     return new HttpError(404, "project not found");
   }
 
+  if (error instanceof ProjectRoleRequiredError) {
+    return new HttpError(403, "required project role missing");
+  }
+
   if (error instanceof Error) {
     return error;
   }

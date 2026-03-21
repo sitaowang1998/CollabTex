@@ -203,6 +203,21 @@ describe("GET /api/projects/:projectId/compile/pdf", () => {
       .expect({ error: "project not found" });
   });
 
+  it("returns 403 when role is insufficient", async () => {
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockRejectedValue(
+      new ProjectRoleRequiredError(["admin", "editor"]),
+    );
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(403)
+      .expect({ error: "required project role missing" });
+  });
+
   it("returns 400 for invalid projectId", async () => {
     const app = createCompileTestApp({});
     const token = signToken("user-1", testConfig.jwtSecret);

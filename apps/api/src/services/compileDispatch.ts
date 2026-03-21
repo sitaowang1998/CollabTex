@@ -109,10 +109,18 @@ export function createCompileDispatchService({
             storagePath,
             compileResult.pdfContent,
           );
-          await compileBuildRepository.saveLatestBuildPath(
-            projectId,
-            storagePath,
-          );
+          try {
+            await compileBuildRepository.saveLatestBuildPath(
+              projectId,
+              storagePath,
+            );
+          } catch (persistError) {
+            console.error(
+              "Failed to persist build path after successful compile",
+              { projectId, storagePath },
+              persistError,
+            );
+          }
         } else {
           status = "failure";
 
