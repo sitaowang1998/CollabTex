@@ -3,7 +3,6 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import type { ProjectRole } from "@collab-tex/shared";
 import { createHttpApp } from "../app.js";
-import type { AppConfig } from "../../config/appConfig.js";
 import {
   createAuthService,
   DuplicateEmailError,
@@ -34,16 +33,7 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-
-const testConfig: AppConfig = {
-  nodeEnv: "test",
-  port: 0,
-  jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173",
-  databaseUrl:
-    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
-  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
-};
+import { testConfig } from "../../test/helpers/appFactory.js";
 
 describe("project membership routes", () => {
   it("lists members for any project member", async () => {
@@ -666,6 +656,11 @@ function createMembershipTestApp() {
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createMembershipService({
       membershipRepository,
@@ -697,6 +692,11 @@ function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: {
       listMembers: async () => [],

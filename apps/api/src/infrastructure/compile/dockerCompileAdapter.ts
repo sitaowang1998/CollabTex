@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   type CompileAdapter,
@@ -78,7 +85,14 @@ async function runCompile(
         signal: abortController.signal,
       });
 
-      return { outcome: "completed", exitCode, logs };
+      const pdfContent = await tryReadPdf(tmpDir, input.mainFile);
+
+      return {
+        outcome: "completed" as const,
+        exitCode,
+        logs,
+        ...(pdfContent != null ? { pdfContent } : {}),
+      };
     } catch (error) {
       if (isAbortError(error)) {
         await killContainer(containerName);
@@ -229,4 +243,33 @@ async function removeContainer(containerName: string): Promise<void> {
       res();
     });
   });
+}
+
+function derivePdfPath(mainFile: string): string {
+  const base = basename(mainFile);
+  const lastDot = base.lastIndexOf(".");
+  if (lastDot === -1) return base + ".pdf";
+
+  return base.slice(0, lastDot) + ".pdf";
+}
+
+async function tryReadPdf(
+  tmpDir: string,
+  mainFile: string,
+): Promise<Buffer | undefined> {
+  const pdfPath = join(tmpDir, derivePdfPath(mainFile));
+
+  try {
+    return await readFile(pdfPath);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return undefined;
+    }
+
+    throw error;
+  }
 }

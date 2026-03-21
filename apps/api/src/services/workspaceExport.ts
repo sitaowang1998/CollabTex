@@ -24,13 +24,7 @@ export type WorkspaceExportService = {
   exportWorkspace: (projectId: string) => Promise<WorkspaceExportResult>;
 };
 
-export function createWorkspaceExportService({
-  documentRepository,
-  documentTextStateRepository,
-  snapshotRepository,
-  snapshotStore,
-  workspaceWriter,
-}: {
+export type FileAssemblyDependencies = {
   documentRepository: Pick<DocumentRepository, "listForProject">;
   documentTextStateRepository: Pick<
     DocumentTextStateRepository,
@@ -38,28 +32,52 @@ export function createWorkspaceExportService({
   >;
   snapshotRepository: Pick<SnapshotRepository, "listForProject">;
   snapshotStore: Pick<SnapshotStore, "readProjectSnapshot">;
+};
+
+export async function assembleProjectFiles(
+  deps: FileAssemblyDependencies,
+  projectId: string,
+): Promise<ExportedFile[]> {
+  const documents = await deps.documentRepository.listForProject(projectId);
+
+  const textDocuments = documents.filter((d) => d.kind === "text");
+  const binaryDocuments = documents.filter((d) => d.kind === "binary");
+
+  const [textStateMap, snapshotState] = await Promise.all([
+    loadTextStateMap(deps.documentTextStateRepository, textDocuments),
+    loadLatestProjectSnapshotState(
+      deps.snapshotRepository,
+      deps.snapshotStore,
+      projectId,
+    ),
+  ]);
+
+  return [
+    ...assembleTextFiles(textDocuments, textStateMap, snapshotState),
+    ...assembleBinaryFiles(binaryDocuments, snapshotState),
+  ];
+}
+
+export function createWorkspaceExportService({
+  documentRepository,
+  documentTextStateRepository,
+  snapshotRepository,
+  snapshotStore,
+  workspaceWriter,
+}: FileAssemblyDependencies & {
   workspaceWriter: WorkspaceWriter;
 }): WorkspaceExportService {
   return {
     exportWorkspace: async (projectId) => {
-      const documents = await documentRepository.listForProject(projectId);
-
-      const textDocuments = documents.filter((d) => d.kind === "text");
-      const binaryDocuments = documents.filter((d) => d.kind === "binary");
-
-      const [textStateMap, snapshotState] = await Promise.all([
-        loadTextStateMap(documentTextStateRepository, textDocuments),
-        loadLatestProjectSnapshotState(
+      const files = await assembleProjectFiles(
+        {
+          documentRepository,
+          documentTextStateRepository,
           snapshotRepository,
           snapshotStore,
-          projectId,
-        ),
-      ]);
-
-      const files: ExportedFile[] = [
-        ...assembleTextFiles(textDocuments, textStateMap, snapshotState),
-        ...assembleBinaryFiles(binaryDocuments, snapshotState),
-      ];
+        },
+        projectId,
+      );
 
       return workspaceWriter.writeWorkspace(files);
     },

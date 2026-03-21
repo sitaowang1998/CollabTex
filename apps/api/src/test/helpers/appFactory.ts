@@ -36,6 +36,10 @@ export const testConfig: AppConfig = {
   clientOrigin: "http://localhost:5173",
   databaseUrl: INVALID_TEST_DATABASE_URL,
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
+  compileStorageRoot: "/tmp/collabtex-test-compiles",
+  compileTimeoutMs: 60000,
+  compileDockerImage: "texlive/texlive:latest-small",
+  shutdownDrainTimeoutMs: 5000,
 };
 
 export function createTestApp() {
@@ -81,6 +85,11 @@ export function createTestApp() {
   return createHttpApp(testConfig, {
     authService,
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService,
     membershipService,
     projectService,

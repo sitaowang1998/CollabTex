@@ -19,6 +19,9 @@ describe("loadConfig", () => {
       clientOrigin: "http://localhost:5173",
       databaseUrl: INVALID_TEST_DATABASE_URL,
       snapshotStorageRoot: "var/snapshots",
+      compileStorageRoot: "var/compiles",
+      compileTimeoutMs: 60000,
+      compileDockerImage: "texlive/texlive:latest-small",
       shutdownDrainTimeoutMs: 5000,
     });
   });
@@ -32,6 +35,9 @@ describe("loadConfig", () => {
         CLIENT_ORIGIN: "http://localhost:4000",
         DATABASE_URL: INVALID_TEST_DATABASE_URL,
         SNAPSHOT_STORAGE_ROOT: "tmp/snapshots",
+        COMPILE_STORAGE_ROOT: "tmp/compiles",
+        COMPILE_TIMEOUT_MS: "120000",
+        COMPILE_DOCKER_IMAGE: "texlive/texlive:2024",
         SHUTDOWN_DRAIN_TIMEOUT_MS: "10000",
       }),
     ).toEqual({
@@ -41,6 +47,9 @@ describe("loadConfig", () => {
       clientOrigin: "http://localhost:4000",
       databaseUrl: INVALID_TEST_DATABASE_URL,
       snapshotStorageRoot: "tmp/snapshots",
+      compileStorageRoot: "tmp/compiles",
+      compileTimeoutMs: 120000,
+      compileDockerImage: "texlive/texlive:2024",
       shutdownDrainTimeoutMs: 10000,
     });
   });

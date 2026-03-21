@@ -7,12 +7,29 @@ export type CompileInput = {
 };
 
 export type CompileResult =
-  | { outcome: "completed"; exitCode: number; logs: string }
+  | {
+      outcome: "completed";
+      exitCode: number;
+      logs: string;
+      pdfContent?: Buffer;
+    }
   | { outcome: "timeout"; logs: string };
 
 export type CompileAdapter = {
   compile(input: CompileInput): Promise<CompileResult>;
 };
+
+export type CompileArtifactStore = {
+  writePdf(storagePath: string, content: Buffer): Promise<void>;
+  readPdf(storagePath: string): Promise<Buffer>;
+};
+
+export class CompileArtifactNotFoundError extends Error {
+  constructor() {
+    super("Compile artifact not found");
+    this.name = "CompileArtifactNotFoundError";
+  }
+}
 
 export class CompileValidationError extends Error {
   constructor(message: string) {

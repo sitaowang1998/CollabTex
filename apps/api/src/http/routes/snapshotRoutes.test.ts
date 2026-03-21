@@ -1,7 +1,6 @@
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpApp } from "../app.js";
-import type { AppConfig } from "../../config/appConfig.js";
 import { signToken, type AuthService } from "../../services/auth.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
@@ -17,16 +16,7 @@ import {
   InvalidSnapshotDataError,
   SnapshotDataNotFoundError,
 } from "../../services/snapshot.js";
-
-const testConfig: AppConfig = {
-  nodeEnv: "test",
-  port: 0,
-  jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173",
-  databaseUrl:
-    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
-  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
-};
+import { testConfig } from "../../test/helpers/appFactory.js";
 
 describe("snapshot routes", () => {
   it("lists snapshots for an authenticated project member", async () => {
@@ -147,6 +137,11 @@ function createSnapshotTestApp(
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),

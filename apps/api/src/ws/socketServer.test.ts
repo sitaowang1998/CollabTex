@@ -667,11 +667,16 @@ describe("socket server", () => {
         serverVersion: 1,
       },
     });
+    let activeProjectRoomName: string | null = null;
     const sharedOpenInput = {
       activeDocumentRegistry,
       getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
       setActiveWorkspaceRoomName: (roomName: string) => {
         activeWorkspaceRoomName = roomName;
+      },
+      getActiveProjectRoomName: () => activeProjectRoomName,
+      setActiveProjectRoomName: (roomName: string) => {
+        activeProjectRoomName = roomName;
       },
       getActiveTextSession: () => activeTextSession,
       swapActiveTextSession: (nextSession: typeof activeTextSession | null) => {
