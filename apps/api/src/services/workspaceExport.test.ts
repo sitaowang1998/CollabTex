@@ -212,7 +212,7 @@ describe("workspace export service", () => {
     );
   });
 
-  it("cleans up temp directory when writing fails", async () => {
+  it("propagates writer errors to caller", async () => {
     const failingWriter: WorkspaceWriter = {
       writeWorkspace: vi.fn().mockRejectedValue(new Error("disk full")),
     };

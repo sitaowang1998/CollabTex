@@ -1,14 +1,14 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { WorkspaceWriter } from "../../services/workspaceExport.js";
 
 export function createLocalWorkspaceWriter(): WorkspaceWriter {
   return {
     writeWorkspace: async (files) => {
-      const directory = join(tmpdir(), `collabtex-workspace-${randomUUID()}`);
-      await mkdir(directory, { recursive: true });
+      const directory = await mkdtemp(
+        join(tmpdir(), "collabtex-workspace-"),
+      );
 
       try {
         for (const file of files) {
