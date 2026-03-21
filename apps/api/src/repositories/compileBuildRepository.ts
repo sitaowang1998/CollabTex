@@ -10,7 +10,7 @@ export function createCompileBuildRepository(
 ): CompileBuildRepository {
   return {
     saveLatestBuildPath: async (projectId, storagePath) => {
-      await databaseClient.project.update({
+      await databaseClient.project.updateMany({
         where: { id: projectId },
         data: { latestCompileArtifactPath: storagePath },
       });
