@@ -1,6 +1,10 @@
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
+import {
   loadLatestProjectSnapshotState,
   type ProjectSnapshotState,
   type SnapshotRepository,
@@ -32,6 +36,7 @@ export type FileAssemblyDependencies = {
   >;
   snapshotRepository: Pick<SnapshotRepository, "listForProject">;
   snapshotStore: Pick<SnapshotStore, "readProjectSnapshot">;
+  binaryContentStore: Pick<BinaryContentStore, "get">;
 };
 
 export async function assembleProjectFiles(
@@ -54,7 +59,12 @@ export async function assembleProjectFiles(
 
   return [
     ...assembleTextFiles(textDocuments, textStateMap, snapshotState),
-    ...assembleBinaryFiles(binaryDocuments, snapshotState),
+    ...(await assembleBinaryFiles(
+      binaryDocuments,
+      deps.binaryContentStore,
+      projectId,
+      snapshotState,
+    )),
   ];
 }
 
@@ -63,6 +73,7 @@ export function createWorkspaceExportService({
   documentTextStateRepository,
   snapshotRepository,
   snapshotStore,
+  binaryContentStore,
   workspaceWriter,
 }: FileAssemblyDependencies & {
   workspaceWriter: WorkspaceWriter;
@@ -75,6 +86,7 @@ export function createWorkspaceExportService({
           documentTextStateRepository,
           snapshotRepository,
           snapshotStore,
+          binaryContentStore,
         },
         projectId,
       );
@@ -135,13 +147,31 @@ function assembleTextFiles(
   });
 }
 
-function assembleBinaryFiles(
+async function assembleBinaryFiles(
   binaryDocuments: StoredDocument[],
+  binaryContentStore: Pick<BinaryContentStore, "get">,
+  projectId: string,
   snapshotState: ProjectSnapshotState,
-): ExportedFile[] {
+): Promise<ExportedFile[]> {
   const files: ExportedFile[] = [];
 
   for (const document of binaryDocuments) {
+    const storagePath = `${projectId}/${document.id}`;
+
+    try {
+      const content = await binaryContentStore.get(storagePath);
+      files.push({
+        relativePath: toRelativePath(document.path),
+        kind: "binary" as const,
+        content,
+      });
+      continue;
+    } catch (error) {
+      if (!(error instanceof BinaryContentNotFoundError)) {
+        throw error;
+      }
+    }
+
     const snapshotDoc = snapshotState.documents[document.id];
 
     if (

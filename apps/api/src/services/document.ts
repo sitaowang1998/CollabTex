@@ -5,6 +5,7 @@ import type {
   ProjectDocument,
   ProjectDocumentContentResponse,
 } from "@collab-tex/shared";
+import type { BinaryContentStore } from "./binaryContent.js";
 import { type ProjectAccessService } from "./projectAccess.js";
 import type { SnapshotService } from "./snapshot.js";
 import type { SnapshotRefreshTrigger } from "./snapshotRefresh.js";
@@ -83,7 +84,7 @@ export type DocumentRepository = {
     projectId: string;
     actorUserId: string;
     path: string;
-  }) => Promise<boolean>;
+  }) => Promise<StoredDocument[]>;
 };
 
 export type DocumentService = {
@@ -120,11 +121,13 @@ export function createDocumentService({
   projectAccessService,
   snapshotService,
   snapshotRefreshTrigger,
+  binaryContentStore,
 }: {
   documentRepository: DocumentRepository;
   projectAccessService: ProjectAccessService;
   snapshotService: SnapshotService;
   snapshotRefreshTrigger: SnapshotRefreshTrigger;
+  binaryContentStore: Pick<BinaryContentStore, "delete">;
 }): DocumentService {
   return {
     getTree: async (projectId, userId) => {
@@ -214,15 +217,24 @@ export function createDocumentService({
         input.actorUserId,
       );
 
-      const deleted = await documentRepository.deleteNode({
+      const deletedDocuments = await documentRepository.deleteNode({
         projectId: input.projectId,
         actorUserId: input.actorUserId,
         path: normalizeDocumentPath(input.path),
       });
 
-      if (!deleted) {
+      if (deletedDocuments.length === 0) {
         throw new DocumentNotFoundError();
       }
+
+      await Promise.all(
+        deletedDocuments
+          .filter((document) => document.kind === "binary")
+          .map((document) =>
+            binaryContentStore.delete(`${input.projectId}/${document.id}`),
+          ),
+      );
+
       snapshotRefreshTrigger.kick();
     },
     getFileContent: async (input) => {

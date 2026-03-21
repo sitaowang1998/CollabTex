@@ -3,10 +3,15 @@ import type { CollaborationService } from "./collaboration.js";
 import {
   InvalidDocumentPathError,
   normalizeDocumentPath,
+  type DocumentRepository,
   type StoredDocument,
 } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
+import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
 
 export type StoredSnapshot = {
   id: string;
@@ -123,6 +128,8 @@ export function createSnapshotService({
   documentTextStateRepository,
   collaborationService,
   projectStateRepository,
+  binaryContentStore,
+  documentLookup,
   getResetPublisher = () => noopResetPublisher,
 }: {
   snapshotRepository: SnapshotRepository;
@@ -130,6 +137,8 @@ export function createSnapshotService({
   documentTextStateRepository: DocumentTextStateRepository;
   collaborationService: CollaborationService;
   projectStateRepository: ProjectStateRepository;
+  binaryContentStore: Pick<BinaryContentStore, "get" | "put" | "delete">;
+  documentLookup: Pick<DocumentRepository, "listForProject">;
   getResetPublisher?: () => SnapshotResetPublisher;
 }): SnapshotService {
   return {
@@ -171,9 +180,11 @@ export function createSnapshotService({
         projectId,
       );
       const nextState = await buildProjectSnapshotState({
+        projectId,
         documents,
         previousState,
         documentTextStateRepository,
+        binaryContentStore,
       });
       const storagePath = createSnapshotStoragePath(projectId);
 
@@ -198,9 +209,10 @@ export function createSnapshotService({
         throw new SnapshotNotFoundError();
       }
 
-      const targetState = await snapshotStore.readProjectSnapshot(
-        targetSnapshot.storagePath,
-      );
+      const [targetState, currentDocuments] = await Promise.all([
+        snapshotStore.readProjectSnapshot(targetSnapshot.storagePath),
+        documentLookup.listForProject(projectId),
+      ]);
       const restoredDocuments = buildRestoredProjectDocumentStates({
         snapshotState: targetState,
         collaborationService,
@@ -222,6 +234,14 @@ export function createSnapshotService({
           authorId: actorUserId,
         },
       });
+
+      await syncBinaryContentStore({
+        binaryContentStore,
+        projectId,
+        currentDocuments,
+        restoredState: targetState,
+      });
+
       const resetPublisher = getResetPublisher();
 
       await Promise.all(
@@ -264,53 +284,53 @@ export async function loadLatestProjectSnapshotState(
 }
 
 export async function buildProjectSnapshotState({
+  projectId,
   documents,
   previousState,
   documentTextStateRepository,
+  binaryContentStore,
 }: {
+  projectId: string;
   documents: StoredDocument[];
   previousState: ProjectSnapshotState;
   documentTextStateRepository: Pick<
     DocumentTextStateRepository,
     "findByDocumentIds"
   >;
+  binaryContentStore: Pick<BinaryContentStore, "get">;
 }): Promise<ProjectSnapshotState> {
   const currentTextStates = await loadCurrentTextStateMap(
     documents,
     documentTextStateRepository,
   );
-  const nextDocuments = Object.fromEntries(
-    documents.map((document) => {
-      if (document.kind === "text") {
-        return [
-          document.id,
-          {
-            path: document.path,
-            kind: "text",
-            mime: document.mime,
-            textContent: loadTextDocumentContent({
-              documentId: document.id,
-              previousState,
-              currentTextStates,
-            }),
-          } satisfies SnapshotTextDocumentState,
-        ] as const;
-      }
+  const nextDocuments: Record<string, SnapshotDocumentState> = {};
 
-      return [
-        document.id,
-        {
-          path: document.path,
-          kind: "binary",
-          mime: document.mime,
-          binaryContentBase64: loadBinaryDocumentContent(
-            previousState,
-            document.id,
-          ),
-        } satisfies SnapshotBinaryDocumentState,
-      ] as const;
-    }),
-  );
+  for (const document of documents) {
+    if (document.kind === "text") {
+      nextDocuments[document.id] = {
+        path: document.path,
+        kind: "text",
+        mime: document.mime,
+        textContent: loadTextDocumentContent({
+          documentId: document.id,
+          previousState,
+          currentTextStates,
+        }),
+      } satisfies SnapshotTextDocumentState;
+    } else {
+      nextDocuments[document.id] = {
+        path: document.path,
+        kind: "binary",
+        mime: document.mime,
+        binaryContentBase64: await loadBinaryDocumentContent(
+          binaryContentStore,
+          projectId,
+          document.id,
+          previousState,
+        ),
+      } satisfies SnapshotBinaryDocumentState;
+    }
+  }
 
   return {
     version: 2,
@@ -455,6 +475,47 @@ function buildRestoredProjectDocumentStates({
   );
 }
 
+async function syncBinaryContentStore({
+  binaryContentStore,
+  projectId,
+  currentDocuments,
+  restoredState,
+}: {
+  binaryContentStore: Pick<BinaryContentStore, "put" | "delete">;
+  projectId: string;
+  currentDocuments: StoredDocument[];
+  restoredState: ProjectSnapshotState;
+}): Promise<void> {
+  const restoredDocumentIds = new Set(Object.keys(restoredState.documents));
+
+  const removedBinaryDocuments = currentDocuments.filter(
+    (document) =>
+      document.kind === "binary" && !restoredDocumentIds.has(document.id),
+  );
+
+  await Promise.all(
+    removedBinaryDocuments.map((document) =>
+      binaryContentStore.delete(`${projectId}/${document.id}`),
+    ),
+  );
+
+  const restoredBinaryDocuments = Object.entries(restoredState.documents)
+    .filter(([, doc]) => doc.kind === "binary")
+    .map(([id, doc]) => ({
+      id,
+      doc: doc as SnapshotBinaryDocumentState,
+    }));
+
+  await Promise.all(
+    restoredBinaryDocuments.map(({ id, doc }) =>
+      binaryContentStore.put(
+        `${projectId}/${id}`,
+        Buffer.from(doc.binaryContentBase64, "base64"),
+      ),
+    ),
+  );
+}
+
 async function loadCurrentTextStateMap(
   documents: StoredDocument[],
   documentTextStateRepository: Pick<
@@ -508,17 +569,30 @@ function loadTextDocumentFallback(
   return snapshotDocument.textContent;
 }
 
-function loadBinaryDocumentContent(
-  previousState: ProjectSnapshotState,
+async function loadBinaryDocumentContent(
+  binaryContentStore: Pick<BinaryContentStore, "get">,
+  projectId: string,
   documentId: string,
-): string {
-  const snapshotDocument = previousState.documents[documentId];
+  previousState: ProjectSnapshotState,
+): Promise<string> {
+  const storagePath = `${projectId}/${documentId}`;
 
-  if (!snapshotDocument || snapshotDocument.kind !== "binary") {
-    return "";
+  try {
+    const buffer = await binaryContentStore.get(storagePath);
+    return buffer.toString("base64");
+  } catch (error) {
+    if (error instanceof BinaryContentNotFoundError) {
+      const snapshotDocument = previousState.documents[documentId];
+
+      if (snapshotDocument && snapshotDocument.kind === "binary") {
+        return snapshotDocument.binaryContentBase64;
+      }
+
+      return "";
+    }
+
+    throw error;
   }
-
-  return snapshotDocument.binaryContentBase64;
 }
 
 function parseSnapshotDocumentPath(value: unknown): string {

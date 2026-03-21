@@ -335,13 +335,18 @@ describe("document repository integration", () => {
         mime: null,
       }),
     ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
-    await expect(
-      repository.deleteNode({
-        projectId: project.id,
-        actorUserId: owner.id,
-        path: "/drafts",
-      }),
-    ).resolves.toBe(true);
+    const deleted = await repository.deleteNode({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/drafts",
+    });
+    expect(deleted).toHaveLength(2);
+    expect(deleted).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/drafts/intro.tex" }),
+        expect.objectContaining({ path: "/drafts/figures/plot.png" }),
+      ]),
+    );
     await expect(repository.listForProject(project.id)).resolves.toEqual([
       expect.objectContaining({
         path: "/drafts-2/keep.tex",

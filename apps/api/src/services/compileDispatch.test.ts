@@ -12,6 +12,7 @@ import {
 } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
 import type { CompileBuildRepository } from "../repositories/compileBuildRepository.js";
+import { BinaryContentNotFoundError } from "./binaryContent.js";
 import type { FileAssemblyDependencies } from "./workspaceExport.js";
 import {
   CompileAlreadyInProgressError,
@@ -368,6 +369,9 @@ function createTestService() {
     },
     snapshotStore: {
       readProjectSnapshot: vi.fn(),
+    },
+    binaryContentStore: {
+      get: vi.fn().mockRejectedValue(new BinaryContentNotFoundError()),
     },
   };
 

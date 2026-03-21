@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BinaryContentStore } from "./binaryContent.js";
 import {
   DocumentNotFoundError,
   InvalidDocumentPathError,
@@ -84,6 +85,7 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
 
     repository.createDocument.mockResolvedValue(
@@ -128,6 +130,7 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
 
     await expect(
@@ -174,6 +177,7 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
     const longName = "a".repeat(1024);
     const longParentPath = `/${"p".repeat(1023)}`;
@@ -205,10 +209,11 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
 
     repository.moveNode.mockResolvedValue(false);
-    repository.deleteNode.mockResolvedValue(false);
+    repository.deleteNode.mockResolvedValue([]);
     repository.findByPath.mockResolvedValue(null);
 
     await expect(
@@ -250,6 +255,7 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
 
     repository.moveNode.mockResolvedValue(true);
@@ -298,6 +304,7 @@ describe("document service", () => {
       projectAccessService: createProjectAccessService(),
       snapshotService,
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
     const document = createStoredDocument({
       path: "/docs/main.tex",
@@ -337,6 +344,7 @@ describe("document service", () => {
       projectAccessService,
       snapshotService: createSnapshotService(),
       snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore: createBinaryContentStoreMock(),
     });
 
     await expect(
@@ -418,6 +426,12 @@ function createProjectAccessService() {
         },
         myRole: "admin",
       }),
+  };
+}
+
+function createBinaryContentStoreMock() {
+  return {
+    delete: vi.fn<BinaryContentStore["delete"]>(),
   };
 }
 

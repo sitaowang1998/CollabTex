@@ -150,9 +150,6 @@ export function createDocumentRepository(
             projectId,
             path,
           },
-          select: {
-            id: true,
-          },
         });
 
         if (exactDocument) {
@@ -166,10 +163,10 @@ export function createDocumentRepository(
             requestedByUserId: actorUserId,
           });
 
-          return true;
+          return [exactDocument];
         }
 
-        const deletedDescendants = await tx.document.deleteMany({
+        const descendantDocuments = await tx.document.findMany({
           where: {
             projectId,
             path: {
@@ -181,14 +178,21 @@ export function createDocumentRepository(
           },
         });
 
-        if (deletedDescendants.count > 0) {
+        if (descendantDocuments.length > 0) {
+          await tx.document.deleteMany({
+            where: {
+              id: {
+                in: descendantDocuments.map((d) => d.id),
+              },
+            },
+          });
           await queueSnapshotRefreshJob(tx, {
             projectId,
             requestedByUserId: actorUserId,
           });
         }
 
-        return deletedDescendants.count > 0;
+        return descendantDocuments;
       });
     },
   };
