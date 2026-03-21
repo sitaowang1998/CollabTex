@@ -56,20 +56,20 @@ describe("localFilesystemCompileStore", () => {
     );
   });
 
-  it("rejects path traversal on write", () => {
+  it("rejects path traversal on write", async () => {
     const root = createTestRoot();
     const store = createLocalFilesystemCompileStore(root);
 
-    expect(
+    await expect(
       store.writePdf("../../etc/passwd", Buffer.from("bad")),
     ).rejects.toThrow(/must stay within the storage root/);
   });
 
-  it("rejects path traversal on read", () => {
+  it("rejects path traversal on read", async () => {
     const root = createTestRoot();
     const store = createLocalFilesystemCompileStore(root);
 
-    expect(store.readPdf("../../../etc/passwd")).rejects.toThrow(
+    await expect(store.readPdf("../../../etc/passwd")).rejects.toThrow(
       /must stay within the storage root/,
     );
   });

@@ -271,7 +271,9 @@ Behavior:
 - sockets join the project room automatically during `workspace:join`
 - `status` is `"success"` when pdflatex produces a PDF (exit code 0), or
   `"failure"` on compile error or timeout
-- `logs` contains the combined stdout/stderr from the LaTeX compiler
+- `logs` contains the combined stdout/stderr from the LaTeX compiler when
+  available, or a descriptive failure message when compilation could not
+  produce logs (e.g., no main document found, internal error)
 - this event is a notification for connected clients; the HTTP endpoint that
   triggered the compile also returns the result synchronously
 

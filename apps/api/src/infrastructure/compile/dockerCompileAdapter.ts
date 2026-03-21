@@ -80,7 +80,12 @@ async function runCompile(
 
       const pdfContent = await tryReadPdf(tmpDir, input.mainFile);
 
-      return { outcome: "completed", exitCode, logs, pdfContent };
+      return {
+        outcome: "completed" as const,
+        exitCode,
+        logs,
+        ...(pdfContent != null ? { pdfContent } : {}),
+      };
     } catch (error) {
       if (isAbortError(error)) {
         await killContainer(containerName);

@@ -15,6 +15,8 @@ vi.mock("node:fs/promises", () => ({
 
 const { execFile } = await import("node:child_process");
 const mockedExecFile = vi.mocked(execFile);
+const { readFile } = await import("node:fs/promises");
+const mockedReadFile = vi.mocked(readFile);
 
 function validInput() {
   return {
@@ -81,6 +83,9 @@ describe("dockerCompileAdapter successful compilation", () => {
   const adapter = createDockerCompileAdapter();
 
   it("returns completed with exit code 0 on success", async () => {
+    const pdfBuffer = Buffer.from("%PDF-1.4\n");
+    mockedReadFile.mockResolvedValueOnce(pdfBuffer as never);
+
     mockedExecFile.mockImplementation((...args: unknown[]) => {
       const cb = getCallback(args);
       const cmd = args[1] as string[];
@@ -98,6 +103,7 @@ describe("dockerCompileAdapter successful compilation", () => {
       outcome: "completed",
       exitCode: 0,
       logs: "pdflatex outputpdflatex stderr",
+      pdfContent: pdfBuffer,
     });
 
     // Verify the docker run args on the first call (the "run" invocation)

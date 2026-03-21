@@ -120,10 +120,15 @@ export function createCompileDispatchService({
         return { status, logs };
       } catch (error) {
         try {
+          const logs =
+            error instanceof CompileMainDocumentNotFoundError
+              ? "No main document found for this project."
+              : "An internal error occurred during compilation.";
+
           notifyCompileDone(projectId, {
             projectId,
             status: "failure",
-            logs: "An internal error occurred during compilation.",
+            logs,
           });
         } catch {
           // Don't let notification failure mask the original error.

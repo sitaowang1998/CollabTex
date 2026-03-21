@@ -407,18 +407,16 @@ export async function openWorkspace(
         });
         joinedSessionHandle = null;
         input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-        const nextProjectRoomName = createProjectRoomName(
+
+        const projectRoomJoined = await joinProjectRoom(
+          socket,
+          input,
           input.workspaceOpenInput.projectId,
         );
-        const previousProjectRoomName = input.getActiveProjectRoomName();
-        if (
-          previousProjectRoomName &&
-          previousProjectRoomName !== nextProjectRoomName
-        ) {
-          await socket.leave(previousProjectRoomName);
+        if (!projectRoomJoined) {
+          return;
         }
-        await socket.join(nextProjectRoomName);
-        input.setActiveProjectRoomName(nextProjectRoomName);
+
         socket.emit("workspace:opened", openedWorkspace.workspace);
         socket.emit("doc.sync.response", syncResponse);
 
@@ -431,18 +429,16 @@ export async function openWorkspace(
 
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-      const nextProjectRoomName2 = createProjectRoomName(
+
+      const projectRoomJoined2 = await joinProjectRoom(
+        socket,
+        input,
         input.workspaceOpenInput.projectId,
       );
-      const previousProjectRoomName2 = input.getActiveProjectRoomName();
-      if (
-        previousProjectRoomName2 &&
-        previousProjectRoomName2 !== nextProjectRoomName2
-      ) {
-        await socket.leave(previousProjectRoomName2);
+      if (!projectRoomJoined2) {
+        return;
       }
-      await socket.join(nextProjectRoomName2);
-      input.setActiveProjectRoomName(nextProjectRoomName2);
+
       socket.emit("workspace:opened", openedWorkspace.workspace);
 
       if (previousSession) {
@@ -977,6 +973,39 @@ function shouldSuppressStaleSessionFailure(
   }
 
   return !input.isCurrentSession();
+}
+
+async function joinProjectRoom(
+  socket: WorkspaceSocket,
+  input: {
+    isLatestJoin: () => boolean;
+    getActiveProjectRoomName: () => string | null;
+    setActiveProjectRoomName: (roomName: string) => void;
+  },
+  projectId: string,
+): Promise<boolean> {
+  const nextProjectRoomName = createProjectRoomName(projectId);
+  const previousProjectRoomName = input.getActiveProjectRoomName();
+
+  if (
+    previousProjectRoomName &&
+    previousProjectRoomName !== nextProjectRoomName
+  ) {
+    await socket.leave(previousProjectRoomName);
+
+    if (!input.isLatestJoin()) {
+      return false;
+    }
+  }
+
+  await socket.join(nextProjectRoomName);
+
+  if (!input.isLatestJoin()) {
+    return false;
+  }
+
+  input.setActiveProjectRoomName(nextProjectRoomName);
+  return true;
 }
 
 async function leaveJoinedRoomIfNeeded(
