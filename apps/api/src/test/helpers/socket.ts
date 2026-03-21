@@ -99,6 +99,11 @@ export async function createTestSocketServer(options?: {
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     snapshotManagementService: createStubSnapshotManagementService(),

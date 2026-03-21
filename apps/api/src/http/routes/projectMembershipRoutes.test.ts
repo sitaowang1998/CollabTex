@@ -661,6 +661,11 @@ function createMembershipTestApp() {
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createMembershipService({
       membershipRepository,
@@ -694,6 +699,11 @@ function createRoleRequiredMembershipApp() {
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
+        throw new Error("stub");
+      },
+    },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
         throw new Error("stub");
       },
     },

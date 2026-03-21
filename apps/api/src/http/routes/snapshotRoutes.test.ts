@@ -142,6 +142,11 @@ function createSnapshotTestApp(
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),
