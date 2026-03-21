@@ -136,6 +136,11 @@ function createSnapshotTestApp(
 ) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

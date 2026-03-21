@@ -491,6 +491,11 @@ async function setupCommentTestApp() {
 
   const app = createHttpApp(testConfig, {
     authService,
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService,
     compileDispatchService: {
       compile: async () => {

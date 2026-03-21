@@ -537,6 +537,11 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
     compileRetrievalService: createStubCompileRetrievalService(),
@@ -559,6 +564,11 @@ function createProjectTestApp() {
 function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
     compileRetrievalService: createStubCompileRetrievalService(),

@@ -93,6 +93,11 @@ export async function createTestSocketServer(options?: {
     projectService: createProjectService({
       projectRepository,
     }),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

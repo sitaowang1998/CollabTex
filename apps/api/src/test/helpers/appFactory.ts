@@ -16,6 +16,7 @@ import {
   ProjectNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
+import type { BinaryContentService } from "../../services/binaryContent.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
@@ -37,6 +38,7 @@ export const testConfig: AppConfig = {
   databaseUrl: INVALID_TEST_DATABASE_URL,
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
   compileStorageRoot: "/tmp/collabtex-test-compiles",
+  binaryContentStorageRoot: "/tmp/collabtex-test-binary-content",
   compileTimeoutMs: 60000,
   compileDockerImage: "texlive/texlive:latest-small",
   shutdownDrainTimeoutMs: 5000,
@@ -84,6 +86,7 @@ export function createTestApp() {
 
   return createHttpApp(testConfig, {
     authService,
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
@@ -474,6 +477,14 @@ function createInMemorySnapshotService(): SnapshotService {
       }
 
       return snapshot;
+    },
+  };
+}
+
+function createStubBinaryContentService(): BinaryContentService {
+  return {
+    uploadContent: async () => {
+      throw new Error("Not implemented for createTestApp");
     },
   };
 }

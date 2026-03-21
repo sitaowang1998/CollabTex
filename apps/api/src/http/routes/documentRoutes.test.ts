@@ -13,6 +13,7 @@ import {
   ProjectRoleRequiredError,
   type ProjectService,
 } from "../../services/project.js";
+import type { BinaryContentService } from "../../services/binaryContent.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
@@ -288,6 +289,7 @@ describe("document routes", () => {
 function createDocumentTestApp(documentService: DocumentService) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
@@ -304,6 +306,14 @@ function createDocumentTestApp(documentService: DocumentService) {
     projectService: createStubProjectService(),
     snapshotManagementService: createStubSnapshotManagementService(),
   });
+}
+
+function createStubBinaryContentService(): BinaryContentService {
+  return {
+    uploadContent: async () => {
+      throw new Error("Not implemented for document route tests");
+    },
+  };
 }
 
 function createStubCommentService(): CommentService {

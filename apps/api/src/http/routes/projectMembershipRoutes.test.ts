@@ -655,6 +655,11 @@ function createMembershipTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
@@ -696,6 +701,11 @@ function createMembershipTestApp() {
 function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: {
+      uploadContent: async () => {
+        throw new Error("stub");
+      },
+    },
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

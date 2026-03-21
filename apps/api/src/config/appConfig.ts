@@ -10,6 +10,7 @@ export type AppConfig = {
   databaseUrl: string;
   snapshotStorageRoot: string;
   compileStorageRoot: string;
+  binaryContentStorageRoot: string;
   compileTimeoutMs: number;
   compileDockerImage: string;
   shutdownDrainTimeoutMs: number;
@@ -66,9 +67,16 @@ function parseSnapshotStorageRoot(
   return value ? value : "var/snapshots";
 }
 
+const DEFAULT_BINARY_CONTENT_STORAGE_ROOT = "var/binary-content";
 const DEFAULT_COMPILE_STORAGE_ROOT = "var/compiles";
 const DEFAULT_COMPILE_TIMEOUT_MS = 60000;
 const DEFAULT_COMPILE_DOCKER_IMAGE = "texlive/texlive:latest-small";
+
+function parseBinaryContentStorageRoot(rawValue: string | undefined): string {
+  const value = rawValue?.trim();
+
+  return value ? value : DEFAULT_BINARY_CONTENT_STORAGE_ROOT;
+}
 
 function parseCompileStorageRoot(rawValue: string | undefined): string {
   const value = rawValue?.trim();
@@ -107,6 +115,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
     snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
     compileStorageRoot: parseCompileStorageRoot(env.COMPILE_STORAGE_ROOT),
+    binaryContentStorageRoot: parseBinaryContentStorageRoot(
+      env.BINARY_CONTENT_STORAGE_ROOT,
+    ),
     compileTimeoutMs: parseCompileTimeoutMs(env.COMPILE_TIMEOUT_MS),
     compileDockerImage: parseCompileDockerImage(env.COMPILE_DOCKER_IMAGE),
     shutdownDrainTimeoutMs: parseShutdownDrainTimeoutMs(
