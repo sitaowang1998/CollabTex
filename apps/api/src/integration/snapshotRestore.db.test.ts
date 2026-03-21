@@ -123,6 +123,8 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: createDocumentRepository(getDb()),
       getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
       }),
@@ -267,6 +269,8 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: createDocumentRepository(getDb()),
       getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
       }),
@@ -355,6 +359,8 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: createDocumentRepository(getDb()),
       getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
       }),
@@ -445,6 +451,8 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: createDocumentRepository(getDb()),
       getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
       }),
@@ -536,6 +544,8 @@ describe("snapshot restore integration", () => {
       documentTextStateRepository: textStateRepository,
       collaborationService,
       projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: createDocumentRepository(getDb()),
       getResetPublisher: () => ({
         emitDocumentReset: vi.fn(),
       }),
@@ -602,6 +612,14 @@ function createStoredTextState(
   } finally {
     document.destroy();
   }
+}
+
+function createNoopBinaryContentStore() {
+  return {
+    get: async () => Buffer.alloc(0),
+    put: async () => {},
+    delete: async () => {},
+  };
 }
 
 function createPathOfLength(totalLength: number, character: string) {
