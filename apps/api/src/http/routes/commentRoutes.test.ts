@@ -497,6 +497,11 @@ async function setupCommentTestApp() {
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService,

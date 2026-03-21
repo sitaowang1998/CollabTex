@@ -7,6 +7,11 @@ import {
   CompileMainDocumentNotFoundError,
   type CompileDispatchService,
 } from "../../services/compileDispatch.js";
+import { CompileArtifactNotFoundError } from "../../services/compile.js";
+import {
+  NoBuildExistsError,
+  type CompileRetrievalService,
+} from "../../services/compileRetrieval.js";
 import {
   ProjectNotFoundError,
   ProjectRoleRequiredError,
@@ -28,7 +33,7 @@ describe("compile routes", () => {
       status: "success",
       logs: "Output written on main.pdf",
     });
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     const response = await request(app)
@@ -48,7 +53,7 @@ describe("compile routes", () => {
       status: "failure",
       logs: "! LaTeX Error",
     });
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     const response = await request(app)
@@ -64,7 +69,7 @@ describe("compile routes", () => {
     compileDispatchService.compile.mockRejectedValue(
       new CompileAlreadyInProgressError(),
     );
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     await request(app)
@@ -79,7 +84,7 @@ describe("compile routes", () => {
     compileDispatchService.compile.mockRejectedValue(
       new CompileMainDocumentNotFoundError(),
     );
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     await request(app)
@@ -94,7 +99,7 @@ describe("compile routes", () => {
     compileDispatchService.compile.mockRejectedValue(
       new ProjectNotFoundError(),
     );
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     await request(app)
@@ -109,7 +114,7 @@ describe("compile routes", () => {
     compileDispatchService.compile.mockRejectedValue(
       new ProjectRoleRequiredError(["admin", "editor"]),
     );
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({ compileDispatchService });
     const token = signToken("user-1", testConfig.jwtSecret);
 
     await request(app)
@@ -120,8 +125,7 @@ describe("compile routes", () => {
   });
 
   it("returns 400 for invalid projectId", async () => {
-    const compileDispatchService = createMockCompileDispatchService();
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({});
     const token = signToken("user-1", testConfig.jwtSecret);
 
     await request(app)
@@ -131,10 +135,105 @@ describe("compile routes", () => {
   });
 
   it("returns 401 without auth token", async () => {
-    const compileDispatchService = createMockCompileDispatchService();
-    const app = createCompileTestApp(compileDispatchService);
+    const app = createCompileTestApp({});
 
     await request(app).post(`/api/projects/${PROJECT_ID}/compile`).expect(401);
+  });
+});
+
+describe("GET /api/projects/:projectId/compile/pdf", () => {
+  it("returns 200 with PDF content and correct content-type", async () => {
+    const pdfContent = Buffer.from("%PDF-1.4 test content");
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockResolvedValue(pdfContent);
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    const response = await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect("content-type", /application\/pdf/);
+
+    expect(Buffer.from(response.body)).toEqual(pdfContent);
+  });
+
+  it("returns 404 when no successful build exists", async () => {
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockRejectedValue(
+      new NoBuildExistsError(),
+    );
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(404)
+      .expect({ error: "no successful build exists" });
+  });
+
+  it("returns 404 when artifact is missing from storage", async () => {
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockRejectedValue(
+      new CompileArtifactNotFoundError(),
+    );
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(404)
+      .expect({ error: "compiled PDF not found" });
+  });
+
+  it("returns 404 when project not found", async () => {
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockRejectedValue(
+      new ProjectNotFoundError(),
+    );
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(404)
+      .expect({ error: "project not found" });
+  });
+
+  it("returns 403 when role is insufficient", async () => {
+    const compileRetrievalService = createMockCompileRetrievalService();
+    compileRetrievalService.getLatestPdf.mockRejectedValue(
+      new ProjectRoleRequiredError(["admin", "editor"]),
+    );
+    const app = createCompileTestApp({ compileRetrievalService });
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .set("authorization", `Bearer ${token}`)
+      .expect(403)
+      .expect({ error: "required project role missing" });
+  });
+
+  it("returns 400 for invalid projectId", async () => {
+    const app = createCompileTestApp({});
+    const token = signToken("user-1", testConfig.jwtSecret);
+
+    await request(app)
+      .get("/api/projects/not-a-uuid/compile/pdf")
+      .set("authorization", `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it("returns 401 without auth token", async () => {
+    const app = createCompileTestApp({});
+
+    await request(app)
+      .get(`/api/projects/${PROJECT_ID}/compile/pdf`)
+      .expect(401);
   });
 });
 
@@ -144,11 +243,26 @@ function createMockCompileDispatchService() {
   };
 }
 
-function createCompileTestApp(compileDispatchService: CompileDispatchService) {
+function createMockCompileRetrievalService() {
+  return {
+    getLatestPdf: vi.fn<CompileRetrievalService["getLatestPdf"]>(),
+  };
+}
+
+function createCompileTestApp({
+  compileDispatchService,
+  compileRetrievalService,
+}: {
+  compileDispatchService?: CompileDispatchService;
+  compileRetrievalService?: CompileRetrievalService;
+}) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
-    compileDispatchService,
+    compileDispatchService:
+      compileDispatchService ?? createMockCompileDispatchService(),
+    compileRetrievalService:
+      compileRetrievalService ?? createMockCompileRetrievalService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),

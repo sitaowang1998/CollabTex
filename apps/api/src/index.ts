@@ -8,6 +8,7 @@ import { createDatabaseClient } from "./infrastructure/db/client.js";
 import { createDockerCompileAdapter } from "./infrastructure/compile/dockerCompileAdapter.js";
 import { createLocalFilesystemCompileStore } from "./infrastructure/storage/localFilesystemCompileStore.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
+import { createCompileBuildRepository } from "./repositories/compileBuildRepository.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
 import { createCommentRepository } from "./repositories/commentRepository.js";
@@ -20,6 +21,7 @@ import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
 import { createCollaborationService } from "./services/collaboration.js";
 import { createCompileDispatchService } from "./services/compileDispatch.js";
+import { createCompileRetrievalService } from "./services/compileRetrieval.js";
 import { createCommentService } from "./services/commentService.js";
 import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
@@ -146,6 +148,7 @@ async function main() {
       projectAccessService,
       snapshotService,
     });
+    const compileBuildRepository = createCompileBuildRepository(databaseClient);
     const compileArtifactStore = createLocalFilesystemCompileStore(
       config.compileStorageRoot,
     );
@@ -166,13 +169,20 @@ async function main() {
       },
       compileAdapter,
       compileArtifactStore,
+      compileBuildRepository,
       compileTimeoutMs: config.compileTimeoutMs,
       notifyCompileDone: (event) => compileDoneNotifier(event),
+    });
+    const compileRetrievalService = createCompileRetrievalService({
+      projectAccessService,
+      compileBuildRepository,
+      compileArtifactStore,
     });
     const app = createHttpApp(config, {
       authService,
       commentService,
       compileDispatchService,
+      compileRetrievalService,
       documentService,
       membershipService,
       projectService,

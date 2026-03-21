@@ -6,6 +6,7 @@ import type { DocumentService } from "../services/document.js";
 import type { MembershipService } from "../services/membership.js";
 import type { ProjectService } from "../services/project.js";
 import type { CompileDispatchService } from "../services/compileDispatch.js";
+import type { CompileRetrievalService } from "../services/compileRetrieval.js";
 import type { SnapshotManagementService } from "../services/snapshotManagement.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
@@ -21,6 +22,7 @@ export type HttpAppDependencies = {
   authService: AuthService;
   commentService: CommentService;
   compileDispatchService: CompileDispatchService;
+  compileRetrievalService: CompileRetrievalService;
   documentService: DocumentService;
   membershipService: MembershipService;
   projectService: ProjectService;
@@ -38,7 +40,13 @@ export function createHttpApp(
   app.use(createAuthRouter(config, dependencies.authService));
   app.use(createProjectRouter(config, dependencies.projectService));
   app.use(createDocumentRouter(config, dependencies.documentService));
-  app.use(createCompileRouter(config, dependencies.compileDispatchService));
+  app.use(
+    createCompileRouter(
+      config,
+      dependencies.compileDispatchService,
+      dependencies.compileRetrievalService,
+    ),
+  );
   app.use(createSnapshotRouter(config, dependencies.snapshotManagementService));
   app.use(
     createProjectMembershipRouter(config, dependencies.membershipService),

@@ -4,6 +4,7 @@ import type { CompileAdapter, CompileArtifactStore } from "./compile.js";
 import { DOCUMENT_WRITE_ROLES } from "./document.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
+import type { CompileBuildRepository } from "../repositories/compileBuildRepository.js";
 import type {
   ExportedFile,
   FileAssemblyDependencies,
@@ -39,6 +40,7 @@ export function createCompileDispatchService({
   fileAssemblyDeps,
   compileAdapter,
   compileArtifactStore,
+  compileBuildRepository,
   compileTimeoutMs,
   notifyCompileDone,
 }: {
@@ -47,6 +49,7 @@ export function createCompileDispatchService({
   fileAssemblyDeps: FileAssemblyDependencies;
   compileAdapter: CompileAdapter;
   compileArtifactStore: CompileArtifactStore;
+  compileBuildRepository: Pick<CompileBuildRepository, "saveLatestBuildPath">;
   compileTimeoutMs: number;
   notifyCompileDone: (event: CompileDoneEvent) => void;
 }): CompileDispatchService {
@@ -106,6 +109,18 @@ export function createCompileDispatchService({
             storagePath,
             compileResult.pdfContent,
           );
+          try {
+            await compileBuildRepository.saveLatestBuildPath(
+              projectId,
+              storagePath,
+            );
+          } catch (persistError) {
+            console.error(
+              "Failed to persist build path after successful compile",
+              { projectId, storagePath },
+              persistError,
+            );
+          }
         } else {
           status = "failure";
 

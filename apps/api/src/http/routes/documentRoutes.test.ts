@@ -294,6 +294,11 @@ function createDocumentTestApp(documentService: DocumentService) {
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService,
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),

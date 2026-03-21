@@ -20,6 +20,7 @@ import type { StoredDocument } from "../../services/document.js";
 import type { AuthService } from "../../services/auth.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { CompileDispatchService } from "../../services/compileDispatch.js";
+import type { CompileRetrievalService } from "../../services/compileRetrieval.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
@@ -538,6 +539,7 @@ function createProjectTestApp() {
     }),
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
+    compileRetrievalService: createStubCompileRetrievalService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
@@ -559,6 +561,7 @@ function createRoleRequiredProjectApp() {
     authService: createStubAuthService(),
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
+    compileRetrievalService: createStubCompileRetrievalService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: {
@@ -637,6 +640,14 @@ function createStubDocumentService(): DocumentService {
 function createStubCompileDispatchService(): CompileDispatchService {
   return {
     compile: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubCompileRetrievalService(): CompileRetrievalService {
+  return {
+    getLatestPdf: async () => {
       throw new Error("Not implemented for project route tests");
     },
   };
