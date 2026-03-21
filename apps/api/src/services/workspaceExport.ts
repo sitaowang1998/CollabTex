@@ -147,14 +147,18 @@ function assembleTextFiles(
   });
 }
 
+const BINARY_IO_BATCH_SIZE = 10;
+
 async function assembleBinaryFiles(
   binaryDocuments: StoredDocument[],
   binaryContentStore: Pick<BinaryContentStore, "get">,
   projectId: string,
   snapshotState: ProjectSnapshotState,
 ): Promise<ExportedFile[]> {
-  const results = await Promise.all(
-    binaryDocuments.map(async (document): Promise<ExportedFile | null> => {
+  const results = await mapInBatches(
+    binaryDocuments,
+    BINARY_IO_BATCH_SIZE,
+    async (document): Promise<ExportedFile | null> => {
       const storagePath = `${projectId}/${document.id}`;
 
       try {
@@ -175,7 +179,7 @@ async function assembleBinaryFiles(
       if (
         !snapshotDoc ||
         snapshotDoc.kind !== "binary" ||
-        typeof snapshotDoc.binaryContentBase64 !== "string"
+        !snapshotDoc.binaryContentBase64
       ) {
         console.warn(
           `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
@@ -188,8 +192,24 @@ async function assembleBinaryFiles(
         kind: "binary" as const,
         content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
       };
-    }),
+    },
   );
 
   return results.filter((file): file is ExportedFile => file !== null);
+}
+
+async function mapInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+
+  return results;
 }

@@ -118,6 +118,8 @@ export class SnapshotNotFoundError extends Error {
   }
 }
 
+const BINARY_IO_BATCH_SIZE = 10;
+
 const noopResetPublisher: SnapshotResetPublisher = {
   emitDocumentReset: async () => {},
 };
@@ -310,17 +312,15 @@ export async function buildProjectSnapshotState({
 
   const [currentTextStates, binaryContentEntries] = await Promise.all([
     loadCurrentTextStateMap(textDocuments, documentTextStateRepository),
-    Promise.all(
-      binaryDocuments.map(async (document) => {
-        const base64 = await loadBinaryDocumentContent(
-          binaryContentStore,
-          projectId,
-          document.id,
-          previousState,
-        );
-        return [document.id, base64] as const;
-      }),
-    ),
+    mapInBatches(binaryDocuments, BINARY_IO_BATCH_SIZE, async (document) => {
+      const base64 = await loadBinaryDocumentContent(
+        binaryContentStore,
+        projectId,
+        document.id,
+        previousState,
+      );
+      return [document.id, base64] as const;
+    }),
   ]);
 
   const binaryContentMap = new Map(binaryContentEntries);
@@ -509,17 +509,19 @@ async function syncBinaryContentStore({
       doc: doc as SnapshotBinaryDocumentState,
     }));
 
-  const writableBinaryDocuments = restoredBinaryDocuments.filter(
-    ({ id, doc }) => {
-      if (!doc.binaryContentBase64) {
-        console.warn(
-          `Snapshot restore: skipping empty binary content for document ${id} in project ${projectId}`,
-        );
-        return false;
-      }
-      return true;
-    },
-  );
+  const writableBinaryDocuments: typeof restoredBinaryDocuments = [];
+  const emptyContentDocumentIds: string[] = [];
+
+  for (const entry of restoredBinaryDocuments) {
+    if (!entry.doc.binaryContentBase64) {
+      console.warn(
+        `Snapshot restore: skipping empty binary content for document ${entry.id} in project ${projectId}`,
+      );
+      emptyContentDocumentIds.push(entry.id);
+    } else {
+      writableBinaryDocuments.push(entry);
+    }
+  }
 
   const putResults = await Promise.allSettled(
     writableBinaryDocuments.map(({ id, doc }) =>
@@ -548,9 +550,14 @@ async function syncBinaryContentStore({
       document.kind === "binary" && !restoredDocumentIds.has(document.id),
   );
 
+  const documentsToDelete = [
+    ...removedBinaryDocuments.map((document) => document.id),
+    ...emptyContentDocumentIds,
+  ];
+
   const deleteResults = await Promise.allSettled(
-    removedBinaryDocuments.map((document) =>
-      binaryContentStore.delete(`${projectId}/${document.id}`),
+    documentsToDelete.map((documentId) =>
+      binaryContentStore.delete(`${projectId}/${documentId}`),
     ),
   );
 
@@ -724,3 +731,19 @@ function assertSnapshotPathsDoNotConflict(
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function mapInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+
+  return results;
+}
