@@ -360,6 +360,169 @@ describe("comment routes", () => {
     });
   });
 
+  describe("PATCH /api/projects/:projectId/threads/:threadId", () => {
+    it("resolves an open thread (200)", async () => {
+      const { app, alice, projectId, docId } = await setupCommentTestApp();
+
+      const createResponse = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "initial",
+        })
+        .expect(201);
+
+      const threadId = createResponse.body.thread.id as string;
+
+      const patchResponse = await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ status: "resolved" })
+        .expect(200);
+
+      expect(patchResponse.body.thread).toMatchObject({
+        id: threadId,
+        status: "resolved",
+      });
+      expect(patchResponse.body.thread.comments).toHaveLength(1);
+    });
+
+    it("re-opens a resolved thread (200)", async () => {
+      const { app, alice, projectId, docId } = await setupCommentTestApp();
+
+      const createResponse = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "initial",
+        })
+        .expect(201);
+
+      const threadId = createResponse.body.thread.id as string;
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ status: "resolved" })
+        .expect(200);
+
+      const reopenResponse = await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ status: "open" })
+        .expect(200);
+
+      expect(reopenResponse.body.thread.status).toBe("open");
+    });
+
+    it("returns 400 for invalid status", async () => {
+      const { app, alice, projectId } = await setupCommentTestApp();
+      const threadId = randomUUID();
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ status: "invalid" })
+        .expect(400)
+        .expect({ error: "status must be one of: open, resolved" });
+    });
+
+    it("returns 400 for missing status", async () => {
+      const { app, alice, projectId } = await setupCommentTestApp();
+      const threadId = randomUUID();
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({})
+        .expect(400)
+        .expect({ error: "status must be one of: open, resolved" });
+    });
+
+    it("returns 401 without auth", async () => {
+      const { app, projectId } = await setupCommentTestApp();
+      const threadId = randomUUID();
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .send({ status: "resolved" })
+        .expect(401);
+    });
+
+    it("returns 404 for missing thread", async () => {
+      const { app, alice, projectId } = await setupCommentTestApp();
+      const threadId = randomUUID();
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({ status: "resolved" })
+        .expect(404)
+        .expect({ error: "comment thread not found" });
+    });
+
+    it("returns 403 for reader role", async () => {
+      const { app, alice, projectId, docId, addMembership } =
+        await setupCommentTestApp();
+
+      const createResponse = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "initial",
+        })
+        .expect(201);
+
+      const threadId = createResponse.body.thread.id as string;
+      const readerId = randomUUID();
+      addMembership(projectId, readerId, "reader");
+      const readerToken = signToken(readerId, testConfig.jwtSecret);
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${readerToken}`)
+        .send({ status: "resolved" })
+        .expect(403)
+        .expect({ error: "required project role missing" });
+    });
+
+    it("allows commenter role to resolve a thread", async () => {
+      const { app, alice, projectId, docId, addMembership } =
+        await setupCommentTestApp();
+
+      const createResponse = await request(app)
+        .post(`/api/projects/${projectId}/docs/${docId}/comments`)
+        .set("authorization", `Bearer ${alice.token}`)
+        .send({
+          startAnchorB64: "a",
+          endAnchorB64: "b",
+          quotedText: "qt",
+          body: "initial",
+        })
+        .expect(201);
+
+      const threadId = createResponse.body.thread.id as string;
+      const commenterId = randomUUID();
+      addMembership(projectId, commenterId, "commenter");
+      const commenterToken = signToken(commenterId, testConfig.jwtSecret);
+
+      await request(app)
+        .patch(`/api/projects/${projectId}/threads/${threadId}`)
+        .set("authorization", `Bearer ${commenterToken}`)
+        .send({ status: "resolved" })
+        .expect(200);
+    });
+  });
+
   describe("invalid UUIDs", () => {
     it("returns 400 for malformed projectId", async () => {
       const { app, alice } = await setupCommentTestApp();
@@ -621,6 +784,18 @@ function createInMemoryCommentRepository(
       return comment;
     },
     findThreadById: async (threadId) => threadsById.get(threadId) ?? null,
+    updateThreadStatus: async ({ threadId, status }) => {
+      const thread = threadsById.get(threadId);
+      if (!thread) {
+        throw new CommentDocumentNotFoundError();
+      }
+      const updated = { ...thread, status, updatedAt: new Date() };
+      threadsById.set(threadId, updated);
+      return {
+        ...updated,
+        comments: commentsByThreadId.get(threadId) ?? [],
+      };
+    },
   };
 }
 
