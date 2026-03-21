@@ -421,6 +421,9 @@ export async function openWorkspace(
           input.workspaceOpenInput.projectId,
         );
         if (!projectRoomJoined) {
+          if (previousSession) {
+            void leaveActiveTextSession(socket, previousSession);
+          }
           return;
         }
 
@@ -443,6 +446,9 @@ export async function openWorkspace(
         input.workspaceOpenInput.projectId,
       );
       if (!projectRoomJoined) {
+        if (previousSession) {
+          void leaveActiveTextSession(socket, previousSession);
+        }
         return;
       }
 
