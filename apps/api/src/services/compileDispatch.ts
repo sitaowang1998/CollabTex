@@ -48,7 +48,7 @@ export function createCompileDispatchService({
   compileAdapter: CompileAdapter;
   compileArtifactStore: CompileArtifactStore;
   compileTimeoutMs: number;
-  notifyCompileDone: (projectId: string, event: CompileDoneEvent) => void;
+  notifyCompileDone: (event: CompileDoneEvent) => void;
 }): CompileDispatchService {
   const compilesInProgress = new Set<string>();
 
@@ -115,7 +115,7 @@ export function createCompileDispatchService({
         }
 
         const event: CompileDoneEvent = { projectId, status, logs };
-        notifyCompileDone(projectId, event);
+        notifyCompileDone(event);
 
         return { status, logs };
       } catch (error) {
@@ -125,7 +125,7 @@ export function createCompileDispatchService({
               ? "No main document found for this project."
               : "An internal error occurred during compilation.";
 
-          notifyCompileDone(projectId, {
+          notifyCompileDone({
             projectId,
             status: "failure",
             logs,

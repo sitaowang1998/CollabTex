@@ -168,8 +168,7 @@ async function main() {
       compileAdapter,
       compileArtifactStore,
       compileTimeoutMs: config.compileTimeoutMs,
-      notifyCompileDone: (projectId, event) =>
-        compileDoneNotifier(projectId, event),
+      notifyCompileDone: (event) => compileDoneNotifier(event),
     });
     const app = createHttpApp(config, {
       authService,

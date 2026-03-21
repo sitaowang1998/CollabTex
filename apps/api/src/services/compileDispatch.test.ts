@@ -39,7 +39,7 @@ describe("compile dispatch service", () => {
       expect.stringContaining("project-1/"),
       pdfContent,
     );
-    expect(notifyCompileDone).toHaveBeenCalledWith("project-1", {
+    expect(notifyCompileDone).toHaveBeenCalledWith({
       projectId: "project-1",
       status: "success",
       logs: expect.any(String),
@@ -54,7 +54,7 @@ describe("compile dispatch service", () => {
 
     expect(result.status).toBe("failure");
     expect(compileArtifactStore.writePdf).not.toHaveBeenCalled();
-    expect(notifyCompileDone).toHaveBeenCalledWith("project-1", {
+    expect(notifyCompileDone).toHaveBeenCalledWith({
       projectId: "project-1",
       status: "failure",
       logs: expect.any(String),
@@ -191,7 +191,7 @@ describe("compile dispatch service", () => {
       "disk full",
     );
 
-    expect(notifyCompileDone).toHaveBeenCalledWith("project-1", {
+    expect(notifyCompileDone).toHaveBeenCalledWith({
       projectId: "project-1",
       status: "failure",
       logs: "An internal error occurred during compilation.",
@@ -290,8 +290,7 @@ function createTestService() {
     readPdf: vi.fn(),
   };
 
-  const notifyCompileDone =
-    vi.fn<(projectId: string, event: CompileDoneEvent) => void>();
+  const notifyCompileDone = vi.fn<(event: CompileDoneEvent) => void>();
 
   // We need to mock assembleProjectFiles. Since it's a module-level function,
   // we inject the file assembly deps as a mock that the service calls through.

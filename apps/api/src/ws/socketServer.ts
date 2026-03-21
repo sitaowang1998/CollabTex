@@ -280,11 +280,18 @@ export function createCompileDonePublisher(
   io: ReturnType<typeof createSocketServer>,
 ) {
   return {
-    emitCompileDone: (projectId: string, event: CompileDoneEvent) => {
+    emitCompileDone: (event: CompileDoneEvent) => {
       try {
-        io.to(createProjectRoomName(projectId)).emit("compile:done", event);
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "compile:done",
+          event,
+        );
       } catch (error) {
-        console.error("Failed to broadcast compile:done", { projectId }, error);
+        console.error(
+          "Failed to broadcast compile:done",
+          { projectId: event.projectId },
+          error,
+        );
       }
     },
   };
