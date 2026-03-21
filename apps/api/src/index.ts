@@ -149,7 +149,9 @@ async function main() {
     const compileArtifactStore = createLocalFilesystemCompileStore(
       config.compileStorageRoot,
     );
-    const compileAdapter = createDockerCompileAdapter();
+    const compileAdapter = createDockerCompileAdapter({
+      dockerImage: config.compileDockerImage,
+    });
     let compileDoneNotifier: (
       projectId: string,
       event: import("@collab-tex/shared").CompileDoneEvent,

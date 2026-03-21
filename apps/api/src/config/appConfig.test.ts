@@ -21,6 +21,7 @@ describe("loadConfig", () => {
       snapshotStorageRoot: "var/snapshots",
       compileStorageRoot: "var/compiles",
       compileTimeoutMs: 60000,
+      compileDockerImage: "texlive/texlive:latest-small",
       shutdownDrainTimeoutMs: 5000,
     });
   });
@@ -36,6 +37,7 @@ describe("loadConfig", () => {
         SNAPSHOT_STORAGE_ROOT: "tmp/snapshots",
         COMPILE_STORAGE_ROOT: "tmp/compiles",
         COMPILE_TIMEOUT_MS: "120000",
+        COMPILE_DOCKER_IMAGE: "texlive/texlive:2024",
         SHUTDOWN_DRAIN_TIMEOUT_MS: "10000",
       }),
     ).toEqual({
@@ -47,6 +49,7 @@ describe("loadConfig", () => {
       snapshotStorageRoot: "tmp/snapshots",
       compileStorageRoot: "tmp/compiles",
       compileTimeoutMs: 120000,
+      compileDockerImage: "texlive/texlive:2024",
       shutdownDrainTimeoutMs: 10000,
     });
   });

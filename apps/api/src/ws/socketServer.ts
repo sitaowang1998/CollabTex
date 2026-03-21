@@ -430,12 +430,12 @@ export async function openWorkspace(
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
 
-      const projectRoomJoined2 = await joinProjectRoom(
+      const projectRoomJoined = await joinProjectRoom(
         socket,
         input,
         input.workspaceOpenInput.projectId,
       );
-      if (!projectRoomJoined2) {
+      if (!projectRoomJoined) {
         return;
       }
 
@@ -1001,6 +1001,7 @@ async function joinProjectRoom(
   await socket.join(nextProjectRoomName);
 
   if (!input.isLatestJoin()) {
+    await socket.leave(nextProjectRoomName);
     return false;
   }
 

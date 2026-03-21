@@ -11,6 +11,7 @@ export type AppConfig = {
   snapshotStorageRoot: string;
   compileStorageRoot: string;
   compileTimeoutMs: number;
+  compileDockerImage: string;
   shutdownDrainTimeoutMs: number;
 };
 
@@ -67,6 +68,7 @@ function parseSnapshotStorageRoot(
 
 const DEFAULT_COMPILE_STORAGE_ROOT = "var/compiles";
 const DEFAULT_COMPILE_TIMEOUT_MS = 60000;
+const DEFAULT_COMPILE_DOCKER_IMAGE = "texlive/texlive:latest-small";
 
 function parseCompileStorageRoot(rawValue: string | undefined): string {
   const value = rawValue?.trim();
@@ -88,6 +90,12 @@ function parseCompileTimeoutMs(rawValue: string | undefined): number {
   return value;
 }
 
+function parseCompileDockerImage(rawValue: string | undefined): string {
+  const value = rawValue?.trim();
+
+  return value ? value : DEFAULT_COMPILE_DOCKER_IMAGE;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnv(env.NODE_ENV);
 
@@ -100,6 +108,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
     compileStorageRoot: parseCompileStorageRoot(env.COMPILE_STORAGE_ROOT),
     compileTimeoutMs: parseCompileTimeoutMs(env.COMPILE_TIMEOUT_MS),
+    compileDockerImage: parseCompileDockerImage(env.COMPILE_DOCKER_IMAGE),
     shutdownDrainTimeoutMs: parseShutdownDrainTimeoutMs(
       env.SHUTDOWN_DRAIN_TIMEOUT_MS,
     ),
