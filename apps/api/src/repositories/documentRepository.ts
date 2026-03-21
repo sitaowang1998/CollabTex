@@ -181,8 +181,9 @@ export function createDocumentRepository(
         if (descendantDocuments.length > 0) {
           await tx.document.deleteMany({
             where: {
-              id: {
-                in: descendantDocuments.map((d) => d.id),
+              projectId,
+              path: {
+                startsWith: `${path}/`,
               },
             },
           });

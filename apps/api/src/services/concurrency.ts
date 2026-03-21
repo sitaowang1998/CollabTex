@@ -5,6 +5,8 @@ export async function mapInBatches<T, R>(
   batchSize: number,
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
+  assertPositiveBatchSize(batchSize);
+
   const results: R[] = [];
 
   for (let i = 0; i < items.length; i += batchSize) {
@@ -21,6 +23,8 @@ export async function allSettledInBatches<T, R>(
   batchSize: number,
   fn: (item: T) => Promise<R>,
 ): Promise<PromiseSettledResult<R>[]> {
+  assertPositiveBatchSize(batchSize);
+
   const results: PromiseSettledResult<R>[] = [];
 
   for (let i = 0; i < items.length; i += batchSize) {
@@ -30,4 +34,12 @@ export async function allSettledInBatches<T, R>(
   }
 
   return results;
+}
+
+function assertPositiveBatchSize(batchSize: number): void {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new RangeError(
+      `batchSize must be a positive integer, got ${batchSize}`,
+    );
+  }
 }
