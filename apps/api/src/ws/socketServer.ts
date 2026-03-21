@@ -77,6 +77,7 @@ export function createSocketServer(
     const userId = socket.data.userId;
     let latestJoinSequence = 0;
     let activeWorkspaceRoomName: string | null = null;
+    let activeProjectRoomName: string | null = null;
     let activeTextSession: ActiveTextSessionState | null = null;
 
     if (!userId) {
@@ -108,6 +109,10 @@ export function createSocketServer(
         getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
         setActiveWorkspaceRoomName: (roomName) => {
           activeWorkspaceRoomName = roomName;
+        },
+        getActiveProjectRoomName: () => activeProjectRoomName,
+        setActiveProjectRoomName: (roomName) => {
+          activeProjectRoomName = roomName;
         },
         getActiveTextSession: () => activeTextSession,
         swapActiveTextSession: (nextSession) => {
@@ -299,6 +304,8 @@ export async function openWorkspace(
     isLatestJoin: () => boolean;
     getActiveWorkspaceRoomName: () => string | null;
     setActiveWorkspaceRoomName: (roomName: string) => void;
+    getActiveProjectRoomName: () => string | null;
+    setActiveProjectRoomName: (roomName: string) => void;
     getActiveTextSession: () => ActiveTextSessionState | null;
     swapActiveTextSession: (
       nextSession: ActiveTextSessionState | null,
@@ -400,9 +407,18 @@ export async function openWorkspace(
         });
         joinedSessionHandle = null;
         input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-        await socket.join(
-          createProjectRoomName(input.workspaceOpenInput.projectId),
+        const nextProjectRoomName = createProjectRoomName(
+          input.workspaceOpenInput.projectId,
         );
+        const previousProjectRoomName = input.getActiveProjectRoomName();
+        if (
+          previousProjectRoomName &&
+          previousProjectRoomName !== nextProjectRoomName
+        ) {
+          await socket.leave(previousProjectRoomName);
+        }
+        await socket.join(nextProjectRoomName);
+        input.setActiveProjectRoomName(nextProjectRoomName);
         socket.emit("workspace:opened", openedWorkspace.workspace);
         socket.emit("doc.sync.response", syncResponse);
 
@@ -415,9 +431,18 @@ export async function openWorkspace(
 
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
-      await socket.join(
-        createProjectRoomName(input.workspaceOpenInput.projectId),
+      const nextProjectRoomName2 = createProjectRoomName(
+        input.workspaceOpenInput.projectId,
       );
+      const previousProjectRoomName2 = input.getActiveProjectRoomName();
+      if (
+        previousProjectRoomName2 &&
+        previousProjectRoomName2 !== nextProjectRoomName2
+      ) {
+        await socket.leave(previousProjectRoomName2);
+      }
+      await socket.join(nextProjectRoomName2);
+      input.setActiveProjectRoomName(nextProjectRoomName2);
       socket.emit("workspace:opened", openedWorkspace.workspace);
 
       if (previousSession) {

@@ -1,17 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-export type CompileArtifactStore = {
-  writePdf(storagePath: string, content: Buffer): Promise<void>;
-  readPdf(storagePath: string): Promise<Buffer>;
-};
-
-export class CompileArtifactNotFoundError extends Error {
-  constructor() {
-    super("Compile artifact not found");
-    this.name = "CompileArtifactNotFoundError";
-  }
-}
+import {
+  CompileArtifactNotFoundError,
+  type CompileArtifactStore,
+} from "../../services/compile.js";
 
 export function createLocalFilesystemCompileStore(
   rootDirectory: string,

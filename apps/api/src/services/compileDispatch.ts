@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CompileDoneEvent } from "@collab-tex/shared";
-import type { CompileAdapter } from "./compile.js";
+import type { CompileAdapter, CompileArtifactStore } from "./compile.js";
 import { DOCUMENT_WRITE_ROLES } from "./document.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
@@ -9,7 +9,6 @@ import type {
   FileAssemblyDependencies,
 } from "./workspaceExport.js";
 import { assembleProjectFiles } from "./workspaceExport.js";
-import type { CompileArtifactStore } from "../infrastructure/storage/localFilesystemCompileStore.js";
 
 export type CompileDispatchResult = {
   status: "success" | "failure";
@@ -55,6 +54,12 @@ export function createCompileDispatchService({
 
   return {
     compile: async (projectId, userId) => {
+      await projectAccessService.requireProjectRole(
+        projectId,
+        userId,
+        DOCUMENT_WRITE_ROLES,
+      );
+
       if (compilesInProgress.has(projectId)) {
         throw new CompileAlreadyInProgressError();
       }
@@ -62,12 +67,6 @@ export function createCompileDispatchService({
       compilesInProgress.add(projectId);
 
       try {
-        await projectAccessService.requireProjectRole(
-          projectId,
-          userId,
-          DOCUMENT_WRITE_ROLES,
-        );
-
         const mainDocument = await projectService.getMainDocument(
           projectId,
           userId,
@@ -119,6 +118,18 @@ export function createCompileDispatchService({
         notifyCompileDone(projectId, event);
 
         return { status, logs };
+      } catch (error) {
+        try {
+          notifyCompileDone(projectId, {
+            projectId,
+            status: "failure",
+            logs: "An internal error occurred during compilation.",
+          });
+        } catch {
+          // Don't let notification failure mask the original error.
+        }
+
+        throw error;
       } finally {
         compilesInProgress.delete(projectId);
       }

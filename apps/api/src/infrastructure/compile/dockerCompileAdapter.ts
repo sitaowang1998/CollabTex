@@ -234,7 +234,10 @@ async function removeContainer(containerName: string): Promise<void> {
 }
 
 function derivePdfPath(mainFile: string): string {
-  return mainFile.replace(/\.tex$/i, ".pdf");
+  const lastDot = mainFile.lastIndexOf(".");
+  if (lastDot === -1) return mainFile + ".pdf";
+
+  return mainFile.slice(0, lastDot) + ".pdf";
 }
 
 async function tryReadPdf(
@@ -245,7 +248,15 @@ async function tryReadPdf(
 
   try {
     return await readFile(pdfPath);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      return undefined;
+    }
+
+    throw error;
   }
 }

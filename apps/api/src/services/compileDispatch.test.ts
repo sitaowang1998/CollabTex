@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CompileDoneEvent } from "@collab-tex/shared";
-import type { CompileAdapter, CompileResult } from "./compile.js";
+import type {
+  CompileAdapter,
+  CompileArtifactStore,
+  CompileResult,
+} from "./compile.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 import {
   ProjectNotFoundError,
   ProjectRoleRequiredError,
 } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
-import type {
-  ExportedFile,
-  FileAssemblyDependencies,
-} from "./workspaceExport.js";
-import type { CompileArtifactStore } from "../infrastructure/storage/localFilesystemCompileStore.js";
+import type { FileAssemblyDependencies } from "./workspaceExport.js";
 import {
   CompileAlreadyInProgressError,
   CompileMainDocumentNotFoundError,
@@ -162,22 +162,81 @@ describe("compile dispatch service", () => {
     );
   });
 
-  it("builds file map from text files only", async () => {
-    const { service, compileAdapter, assembleProjectFilesMock } =
+  it("does not notify on authorization errors", async () => {
+    const { service, projectAccessService, notifyCompileDone } =
       createTestService();
+    projectAccessService.requireProjectRole.mockRejectedValue(
+      new ProjectRoleRequiredError(["admin", "editor"]),
+    );
 
-    assembleProjectFilesMock.mockResolvedValue([
+    await expect(service.compile("project-1", "user-1")).rejects.toThrow(
+      ProjectRoleRequiredError,
+    );
+
+    expect(notifyCompileDone).not.toHaveBeenCalled();
+  });
+
+  it("notifies with failure on unexpected errors after compile starts", async () => {
+    const { service, compileArtifactStore, notifyCompileDone, compileAdapter } =
+      createTestService();
+    compileAdapter.compile.mockResolvedValue({
+      outcome: "completed",
+      exitCode: 0,
+      logs: "OK",
+      pdfContent: Buffer.from("pdf"),
+    });
+    compileArtifactStore.writePdf.mockRejectedValue(new Error("disk full"));
+
+    await expect(service.compile("project-1", "user-1")).rejects.toThrow(
+      "disk full",
+    );
+
+    expect(notifyCompileDone).toHaveBeenCalledWith("project-1", {
+      projectId: "project-1",
+      status: "failure",
+      logs: "An internal error occurred during compilation.",
+    });
+  });
+
+  it("builds file map from text files only", async () => {
+    const { service, compileAdapter, fileAssemblyDeps } = createTestService();
+
+    // Add a binary document to the repository mock
+    const binaryDoc = {
+      id: "bin-1",
+      projectId: "project-1",
+      path: "/figures/img.png",
+      kind: "binary" as const,
+      mime: "image/png",
+      contentHash: null,
+      createdAt: new Date("2026-03-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-03-01T12:00:00.000Z"),
+    };
+    fileAssemblyDeps.documentRepository.listForProject.mockResolvedValue([
+      createStoredDocument(),
+      binaryDoc,
+    ]);
+    fileAssemblyDeps.snapshotRepository.listForProject.mockResolvedValue([
       {
-        relativePath: "main.tex",
-        kind: "text",
-        content: "\\documentclass{article}",
-      },
-      {
-        relativePath: "figures/img.png",
-        kind: "binary",
-        content: Buffer.from("PNG"),
+        id: "snapshot-1",
+        projectId: "project-1",
+        storagePath: "project-1/existing.json",
+        message: null,
+        authorId: "user-1",
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
       },
     ]);
+    fileAssemblyDeps.snapshotStore.readProjectSnapshot.mockResolvedValue({
+      version: 2,
+      documents: {
+        "bin-1": {
+          path: "/figures/img.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: Buffer.from("PNG").toString("base64"),
+        },
+      },
+    });
 
     await service.compile("project-1", "user-1");
 
@@ -212,21 +271,6 @@ function createTestService() {
   } = {
     getMainDocument: vi.fn().mockResolvedValue(createStoredDocument()),
   };
-
-  const assembleProjectFilesMock =
-    vi.fn<
-      (
-        deps: FileAssemblyDependencies,
-        projectId: string,
-      ) => Promise<ExportedFile[]>
-    >();
-  assembleProjectFilesMock.mockResolvedValue([
-    {
-      relativePath: "main.tex",
-      kind: "text" as const,
-      content: "\\documentclass{article}",
-    },
-  ]);
 
   const compileAdapter: {
     compile: ReturnType<typeof vi.fn<CompileAdapter["compile"]>>;
@@ -294,7 +338,6 @@ function createTestService() {
     compileArtifactStore,
     notifyCompileDone,
     fileAssemblyDeps,
-    assembleProjectFilesMock,
   };
 }
 
