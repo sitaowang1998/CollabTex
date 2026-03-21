@@ -692,6 +692,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/projects/{projectId}/compile/pdf:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Compile
+      summary: Download the latest compiled PDF
+      description: >
+        Returns the PDF artifact from the most recent successful compile.
+        Requires project membership (any role). Returns 404 if no successful
+        build exists.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: The compiled PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   securitySchemes:
     BearerAuth:
