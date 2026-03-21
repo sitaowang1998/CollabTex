@@ -153,7 +153,6 @@ async function main() {
       dockerImage: config.compileDockerImage,
     });
     let compileDoneNotifier: (
-      projectId: string,
       event: import("@collab-tex/shared").CompileDoneEvent,
     ) => void = () => {};
     const compileDispatchService = createCompileDispatchService({
