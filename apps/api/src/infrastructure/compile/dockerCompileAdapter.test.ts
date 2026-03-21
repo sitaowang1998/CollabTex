@@ -126,6 +126,48 @@ describe("dockerCompileAdapter successful compilation", () => {
     expect(dockerArgs).toContain("./main.tex");
   });
 
+  it("reads PDF from working directory when mainFile is in a subdirectory", async () => {
+    const pdfBuffer = Buffer.from("%PDF-nested");
+    mockedReadFile.mockResolvedValueOnce(pdfBuffer as never);
+
+    mockedExecFile.mockImplementation((...args: unknown[]) => {
+      const cb = getCallback(args);
+      const cmd = args[1] as string[];
+      if (cmd[0] === "run") {
+        cb(null, "output", "");
+      } else {
+        cb(null, "", "");
+      }
+      return { kill: vi.fn() } as unknown as ChildProcess;
+    });
+
+    const result = await adapter.compile({
+      files: new Map([
+        [
+          "chapters/main.tex",
+          "\\documentclass{article}\\begin{document}Hello\\end{document}",
+        ],
+      ]),
+      mainFile: "chapters/main.tex",
+      timeoutMs: 5000,
+    });
+
+    expect(result).toEqual({
+      outcome: "completed",
+      exitCode: 0,
+      logs: "output",
+      pdfContent: pdfBuffer,
+    });
+
+    // Verify readFile was called with basename (main.pdf), not chapters/main.pdf
+    const readFileCalls = mockedReadFile.mock.calls;
+    const pdfReadCall = readFileCalls.find((call) =>
+      String(call[0]).endsWith("main.pdf"),
+    );
+    expect(pdfReadCall).toBeDefined();
+    expect(String(pdfReadCall![0])).not.toContain("chapters");
+  });
+
   it("returns completed with non-zero exit code on compile failure", async () => {
     mockedExecFile.mockImplementation((...args: unknown[]) => {
       const cb = getCallback(args);

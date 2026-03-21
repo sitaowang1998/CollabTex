@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   type CompileAdapter,
@@ -239,10 +246,11 @@ async function removeContainer(containerName: string): Promise<void> {
 }
 
 function derivePdfPath(mainFile: string): string {
-  const lastDot = mainFile.lastIndexOf(".");
-  if (lastDot === -1) return mainFile + ".pdf";
+  const base = basename(mainFile);
+  const lastDot = base.lastIndexOf(".");
+  if (lastDot === -1) return base + ".pdf";
 
-  return mainFile.slice(0, lastDot) + ".pdf";
+  return base.slice(0, lastDot) + ".pdf";
 }
 
 async function tryReadPdf(
