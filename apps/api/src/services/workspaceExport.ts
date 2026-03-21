@@ -129,7 +129,7 @@ function assembleBinaryFiles(
     if (
       !snapshotDoc ||
       snapshotDoc.kind !== "binary" ||
-      !snapshotDoc.binaryContentBase64
+      typeof snapshotDoc.binaryContentBase64 !== "string"
     ) {
       console.warn(
         `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
