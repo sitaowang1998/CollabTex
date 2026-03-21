@@ -530,6 +530,62 @@ describe("snapshot service", () => {
     ).rejects.toThrow("storage timeout");
   });
 
+  it("succeeds and logs error when binary put fails during restore", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const projectStateRepository = createProjectStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.put.mockRejectedValue(new Error("disk full"));
+    const documentLookup = createDocumentLookup();
+    documentLookup.listForProject.mockResolvedValue([]);
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository,
+      binaryContentStore,
+      documentLookup,
+    });
+
+    repository.findById.mockResolvedValue(createStoredSnapshot());
+    store.readProjectSnapshot.mockResolvedValue({
+      version: 2,
+      documents: {
+        "document-2": {
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: "AQID",
+        },
+      },
+    });
+    projectStateRepository.restoreProjectState.mockResolvedValue({
+      snapshot: createStoredSnapshot({ id: "snapshot-2" }),
+      affectedTextDocuments: [],
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const restored = await service.restoreProjectSnapshot({
+        projectId: "project-1",
+        snapshotId: "snapshot-1",
+        actorUserId: "user-1",
+      });
+
+      expect(restored.id).toBe("snapshot-2");
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "1 binary file(s) failed to write to the content store",
+        ),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("rejects malformed or unsupported snapshot payloads", () => {
     expect(() =>
       parseProjectSnapshotState({

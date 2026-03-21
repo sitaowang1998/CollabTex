@@ -235,12 +235,18 @@ export function createSnapshotService({
         },
       });
 
-      await syncBinaryContentStore({
+      const syncResult = await syncBinaryContentStore({
         binaryContentStore,
         projectId,
         currentDocuments,
         restoredState: targetState,
       });
+
+      if (syncResult.failedPutCount > 0) {
+        console.error(
+          `Snapshot restore for project ${projectId}: ${syncResult.failedPutCount} binary file(s) failed to write to the content store. The snapshot blob still contains the data; re-restoring may fix this.`,
+        );
+      }
 
       const resetPublisher = getResetPublisher();
 
@@ -495,7 +501,7 @@ async function syncBinaryContentStore({
   projectId: string;
   currentDocuments: StoredDocument[];
   restoredState: ProjectSnapshotState;
-}): Promise<void> {
+}): Promise<{ failedPutCount: number }> {
   const restoredBinaryDocuments = Object.entries(restoredState.documents)
     .filter(([, doc]) => doc.kind === "binary")
     .map(([id, doc]) => ({
@@ -512,8 +518,11 @@ async function syncBinaryContentStore({
     ),
   );
 
+  let failedPutCount = 0;
+
   for (const result of putResults) {
     if (result.status === "rejected") {
+      failedPutCount++;
       console.error(
         `Failed to write binary content during restore for project ${projectId}:`,
         result.reason,
@@ -541,6 +550,8 @@ async function syncBinaryContentStore({
       );
     }
   }
+
+  return { failedPutCount };
 }
 
 async function loadCurrentTextStateMap(
