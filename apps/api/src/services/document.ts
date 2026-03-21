@@ -5,6 +5,8 @@ import type {
   ProjectDocument,
   ProjectDocumentContentResponse,
 } from "@collab-tex/shared";
+import type { BinaryContentStore } from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, allSettledInBatches } from "./concurrency.js";
 import { type ProjectAccessService } from "./projectAccess.js";
 import type { SnapshotService } from "./snapshot.js";
 import type { SnapshotRefreshTrigger } from "./snapshotRefresh.js";
@@ -83,7 +85,7 @@ export type DocumentRepository = {
     projectId: string;
     actorUserId: string;
     path: string;
-  }) => Promise<boolean>;
+  }) => Promise<StoredDocument[]>;
 };
 
 export type DocumentService = {
@@ -120,11 +122,13 @@ export function createDocumentService({
   projectAccessService,
   snapshotService,
   snapshotRefreshTrigger,
+  binaryContentStore,
 }: {
   documentRepository: DocumentRepository;
   projectAccessService: ProjectAccessService;
   snapshotService: SnapshotService;
   snapshotRefreshTrigger: SnapshotRefreshTrigger;
+  binaryContentStore: Pick<BinaryContentStore, "delete">;
 }): DocumentService {
   return {
     getTree: async (projectId, userId) => {
@@ -214,15 +218,38 @@ export function createDocumentService({
         input.actorUserId,
       );
 
-      const deleted = await documentRepository.deleteNode({
+      const deletedDocuments = await documentRepository.deleteNode({
         projectId: input.projectId,
         actorUserId: input.actorUserId,
         path: normalizeDocumentPath(input.path),
       });
 
-      if (!deleted) {
+      if (deletedDocuments.length === 0) {
         throw new DocumentNotFoundError();
       }
+
+      const binaryDocuments = deletedDocuments.filter(
+        (document) => document.kind === "binary",
+      );
+
+      if (binaryDocuments.length > 0) {
+        const results = await allSettledInBatches(
+          binaryDocuments,
+          BINARY_IO_BATCH_SIZE,
+          (document) =>
+            binaryContentStore.delete(`${input.projectId}/${document.id}`),
+        );
+
+        for (const result of results) {
+          if (result.status === "rejected") {
+            console.error(
+              `Failed to clean up binary content after document delete in project ${input.projectId}:`,
+              result.reason,
+            );
+          }
+        }
+      }
+
       snapshotRefreshTrigger.kick();
     },
     getFileContent: async (input) => {

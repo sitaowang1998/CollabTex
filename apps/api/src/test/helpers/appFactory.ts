@@ -81,6 +81,7 @@ export function createTestApp() {
     },
     snapshotService: createInMemorySnapshotService(),
     snapshotRefreshTrigger: createNoopSnapshotRefreshTrigger(),
+    binaryContentStore: { delete: async () => {} },
   });
   const membershipService = createStubMembershipService();
 
@@ -385,30 +386,35 @@ function createInMemoryDocumentRepository(): DocumentRepository {
     },
     deleteNode: async ({ projectId, path }) => {
       const documents = documentsByProjectId.get(projectId) ?? [];
-      const exactDocumentExists = documents.some(
+      const exactDocument = documents.find(
         (document) => document.path === path,
       );
 
-      if (exactDocumentExists) {
+      if (exactDocument) {
         documentsByProjectId.set(
           projectId,
           documents.filter((document) => document.path !== path),
         );
 
-        return true;
+        return [exactDocument];
       }
 
       const descendantPrefix = `${path}/`;
-      const nextDocuments = documents.filter(
-        (document) => !document.path.startsWith(descendantPrefix),
+      const deletedDocuments = documents.filter((document) =>
+        document.path.startsWith(descendantPrefix),
       );
 
-      if (nextDocuments.length === documents.length) {
-        return false;
+      if (deletedDocuments.length === 0) {
+        return [];
       }
 
-      documentsByProjectId.set(projectId, nextDocuments);
-      return true;
+      documentsByProjectId.set(
+        projectId,
+        documents.filter(
+          (document) => !document.path.startsWith(descendantPrefix),
+        ),
+      );
+      return deletedDocuments;
     },
   };
 }

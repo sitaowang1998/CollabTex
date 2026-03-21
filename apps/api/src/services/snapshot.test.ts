@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCollaborationService } from "./collaboration.js";
-import type { StoredDocument } from "./document.js";
+import type { DocumentRepository, StoredDocument } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
+import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
 import {
   InvalidSnapshotDataError,
   SnapshotDataNotFoundError,
@@ -33,6 +37,8 @@ describe("snapshot service", () => {
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
     });
 
     await expect(
@@ -52,6 +58,8 @@ describe("snapshot service", () => {
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
     });
 
     repository.listForProject.mockResolvedValue([snapshot]);
@@ -82,6 +90,8 @@ describe("snapshot service", () => {
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -121,19 +131,24 @@ describe("snapshot service", () => {
     );
   });
 
-  it("captures snapshots from current text state and carries forward binary bytes", async () => {
+  it("captures binary content from the mutable store", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
     const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    const binaryContent = Buffer.from([1, 2, 3]);
+    binaryContentStore.get.mockResolvedValue(binaryContent);
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
     });
 
-    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
+    repository.listForProject.mockResolvedValue([]);
     repository.createSnapshot.mockImplementation(async (input) => ({
       id: "snapshot-2",
       projectId: input.projectId,
@@ -142,26 +157,6 @@ describe("snapshot service", () => {
       authorId: input.authorId,
       createdAt: new Date("2026-03-02T00:00:00.000Z"),
     }));
-    store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
-      documents: {
-        "document-1": {
-          path: "/main.tex",
-          kind: "text",
-          mime: null,
-          textContent: "\\section{Old}",
-        },
-        "document-2": {
-          path: "/figure.png",
-          kind: "binary",
-          mime: "image/png",
-          binaryContentBase64: "AQID",
-        },
-      },
-    });
-    documentTextStateRepository.findByDocumentId.mockImplementation(
-      async () => null,
-    );
     documentTextStateRepository.findByDocumentIds.mockResolvedValue([
       {
         documentId: "document-1",
@@ -187,6 +182,7 @@ describe("snapshot service", () => {
       ],
     });
 
+    expect(binaryContentStore.get).toHaveBeenCalledWith("project-1/document-2");
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
@@ -202,27 +198,94 @@ describe("snapshot service", () => {
             path: "/figure.png",
             kind: "binary",
             mime: "image/png",
-            binaryContentBase64: "AQID",
+            binaryContentBase64: binaryContent.toString("base64"),
           },
         },
       },
     );
-    expect(documentTextStateRepository.findByDocumentIds).toHaveBeenCalledWith([
-      "document-1",
-    ]);
-    expect(documentTextStateRepository.findByDocumentId).not.toHaveBeenCalled();
   });
 
-  it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
+  it("falls back to previous snapshot binary when mutable store has no content", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
     const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.get.mockRejectedValue(new BinaryContentNotFoundError());
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
+    });
+
+    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
+    repository.createSnapshot.mockImplementation(async (input) => ({
+      id: "snapshot-2",
+      projectId: input.projectId,
+      storagePath: input.storagePath,
+      message: input.message,
+      authorId: input.authorId,
+      createdAt: new Date("2026-03-02T00:00:00.000Z"),
+    }));
+    store.readProjectSnapshot.mockResolvedValue({
+      version: 2,
+      documents: {
+        "document-2": {
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: "AQID",
+        },
+      },
+    });
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
+
+    await service.captureProjectSnapshot({
+      projectId: "project-1",
+      authorId: "user-1",
+      documents: [
+        createStoredDocument({
+          id: "document-2",
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+        }),
+      ],
+    });
+
+    expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+      expect.stringMatching(/^project-1\/.+\.json$/),
+      {
+        version: 2,
+        documents: {
+          "document-2": {
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "AQID",
+          },
+        },
+      },
+    );
+  });
+
+  it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.get.mockRejectedValue(new BinaryContentNotFoundError());
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -290,18 +353,37 @@ describe("snapshot service", () => {
     );
   });
 
-  it("restores a snapshot, writes a checkpoint, and emits resets after commit", async () => {
+  it("restores a snapshot, writes a checkpoint, syncs binary store, and emits resets", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
     const documentTextStateRepository = createDocumentTextStateRepository();
     const projectStateRepository = createProjectStateRepository();
     const resetPublisher = createResetPublisher();
+    const binaryContentStore = createBinaryContentStore();
+    const documentLookup = createDocumentLookup();
+    documentLookup.listForProject.mockResolvedValue([
+      createStoredDocument(),
+      createStoredDocument({
+        id: "document-2",
+        path: "/figure.png",
+        kind: "binary",
+        mime: "image/png",
+      }),
+      createStoredDocument({
+        id: "document-3",
+        path: "/old-image.png",
+        kind: "binary",
+        mime: "image/png",
+      }),
+    ]);
     const service = createSnapshotService({
       snapshotRepository: repository,
       snapshotStore: store,
       documentTextStateRepository,
       collaborationService: createCollaborationService(),
       projectStateRepository,
+      binaryContentStore,
+      documentLookup,
       getResetPublisher: () => resetPublisher,
     });
     const targetSnapshot = createStoredSnapshot();
@@ -389,6 +471,15 @@ describe("snapshot service", () => {
         ],
       }),
     );
+    expect(binaryContentStore.put).toHaveBeenCalledTimes(1);
+    expect(binaryContentStore.put).toHaveBeenCalledWith(
+      "project-1/document-2",
+      Buffer.from("AQID", "base64"),
+    );
+    expect(binaryContentStore.delete).toHaveBeenCalledTimes(1);
+    expect(binaryContentStore.delete).toHaveBeenCalledWith(
+      "project-1/document-3",
+    );
     expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(1, {
       projectId: "project-1",
       documentId: "document-1",
@@ -402,6 +493,97 @@ describe("snapshot service", () => {
       serverVersion: 0,
     });
     expect(restored.id).toBe("snapshot-2");
+  });
+
+  it("propagates unexpected errors from the binary content store during capture", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.get.mockRejectedValue(new Error("storage timeout"));
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
+    });
+
+    repository.listForProject.mockResolvedValue([]);
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
+
+    await expect(
+      service.captureProjectSnapshot({
+        projectId: "project-1",
+        authorId: "user-1",
+        documents: [
+          createStoredDocument({
+            id: "document-2",
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+          }),
+        ],
+      }),
+    ).rejects.toThrow("storage timeout");
+  });
+
+  it("succeeds and logs error when binary put fails during restore", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const projectStateRepository = createProjectStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.put.mockRejectedValue(new Error("disk full"));
+    const documentLookup = createDocumentLookup();
+    documentLookup.listForProject.mockResolvedValue([]);
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository,
+      binaryContentStore,
+      documentLookup,
+    });
+
+    repository.findById.mockResolvedValue(createStoredSnapshot());
+    store.readProjectSnapshot.mockResolvedValue({
+      version: 2,
+      documents: {
+        "document-2": {
+          path: "/figure.png",
+          kind: "binary",
+          mime: "image/png",
+          binaryContentBase64: "AQID",
+        },
+      },
+    });
+    projectStateRepository.restoreProjectState.mockResolvedValue({
+      snapshot: createStoredSnapshot({ id: "snapshot-2" }),
+      affectedTextDocuments: [],
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const restored = await service.restoreProjectSnapshot({
+        projectId: "project-1",
+        snapshotId: "snapshot-1",
+        actorUserId: "user-1",
+      });
+
+      expect(restored.id).toBe("snapshot-2");
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "1 binary file(s) failed to write to the content store",
+        ),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("rejects malformed or unsupported snapshot payloads", () => {
@@ -530,6 +712,21 @@ function createProjectStateRepository() {
   return {
     restoreProjectState: vi.fn<ProjectStateRepository["restoreProjectState"]>(),
   };
+}
+
+function createBinaryContentStore() {
+  return {
+    get: vi.fn<BinaryContentStore["get"]>(),
+    put: vi.fn<BinaryContentStore["put"]>(),
+    delete: vi.fn<BinaryContentStore["delete"]>(),
+  };
+}
+
+function createDocumentLookup() {
+  const listForProject = vi.fn<DocumentRepository["listForProject"]>();
+  listForProject.mockResolvedValue([]);
+
+  return { listForProject };
 }
 
 function createResetPublisher() {

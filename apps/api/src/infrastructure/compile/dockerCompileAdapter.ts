@@ -128,7 +128,7 @@ async function runCompile(
 
 async function writeInputFiles(
   tmpDir: string,
-  files: Map<string, string>,
+  files: Map<string, string | Buffer>,
 ): Promise<void> {
   for (const [relativePath, content] of files) {
     const filePath = resolve(tmpDir, relativePath);
@@ -144,7 +144,12 @@ async function writeInputFiles(
       throw new Error(`File path escapes working directory: ${relativePath}`);
     }
     await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, content, "utf8");
+
+    if (typeof content === "string") {
+      await writeFile(filePath, content, "utf8");
+    } else {
+      await writeFile(filePath, content);
+    }
   }
 }
 

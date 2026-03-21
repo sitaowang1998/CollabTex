@@ -186,6 +186,12 @@ function createRuntime() {
     documentTextStateRepository,
     collaborationService,
     projectStateRepository: createProjectStateRepository(getDb()),
+    binaryContentStore: {
+      get: async () => Buffer.alloc(0),
+      put: async () => {},
+      delete: async () => {},
+    },
+    documentLookup: documentRepository,
   });
   const currentTextStateService = createCurrentTextStateService({
     documentTextStateRepository,

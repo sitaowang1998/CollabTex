@@ -12,6 +12,7 @@ import {
 } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
 import type { CompileBuildRepository } from "../repositories/compileBuildRepository.js";
+import { BinaryContentNotFoundError } from "./binaryContent.js";
 import type { FileAssemblyDependencies } from "./workspaceExport.js";
 import {
   CompileAlreadyInProgressError,
@@ -242,10 +243,10 @@ describe("compile dispatch service", () => {
     });
   });
 
-  it("builds file map from text files only", async () => {
+  it("includes both text and binary files in compile input", async () => {
     const { service, compileAdapter, fileAssemblyDeps } = createTestService();
 
-    // Add a binary document to the repository mock
+    const binaryContent = Buffer.from("PNG");
     const binaryDoc = {
       id: "bin-1",
       projectId: "project-1",
@@ -260,33 +261,15 @@ describe("compile dispatch service", () => {
       createStoredDocument(),
       binaryDoc,
     ]);
-    fileAssemblyDeps.snapshotRepository.listForProject.mockResolvedValue([
-      {
-        id: "snapshot-1",
-        projectId: "project-1",
-        storagePath: "project-1/existing.json",
-        message: null,
-        authorId: "user-1",
-        createdAt: new Date("2026-03-01T12:00:00.000Z"),
-      },
-    ]);
-    fileAssemblyDeps.snapshotStore.readProjectSnapshot.mockResolvedValue({
-      version: 2,
-      documents: {
-        "bin-1": {
-          path: "/figures/img.png",
-          kind: "binary",
-          mime: "image/png",
-          binaryContentBase64: Buffer.from("PNG").toString("base64"),
-        },
-      },
-    });
+    fileAssemblyDeps.binaryContentStore.get.mockResolvedValue(binaryContent);
 
     await service.compile("project-1", "user-1");
 
     const compileInput = compileAdapter.compile.mock.calls[0]![0];
     expect(compileInput.files.has("main.tex")).toBe(true);
-    expect(compileInput.files.has("figures/img.png")).toBe(false);
+    expect(compileInput.files.get("main.tex")).toBe("\\documentclass{article}");
+    expect(compileInput.files.has("figures/img.png")).toBe(true);
+    expect(compileInput.files.get("figures/img.png")).toEqual(binaryContent);
   });
 });
 
@@ -368,6 +351,9 @@ function createTestService() {
     },
     snapshotStore: {
       readProjectSnapshot: vi.fn(),
+    },
+    binaryContentStore: {
+      get: vi.fn().mockRejectedValue(new BinaryContentNotFoundError()),
     },
   };
 
