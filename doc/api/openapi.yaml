@@ -692,6 +692,12 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "413":
+          description: Payload too large (uploaded file exceeds 50 MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{projectId}/compile:
     parameters:
       - $ref: "#/components/parameters/ProjectId"

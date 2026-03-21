@@ -19,7 +19,7 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE },
+  limits: { fileSize: MAX_FILE_SIZE, files: 1, fields: 0 },
 });
 
 function runUpload(req: Request, res: Response): Promise<void> {
