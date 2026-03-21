@@ -12,6 +12,11 @@ import {
   BinaryContentNotFoundError,
   type BinaryContentStore,
 } from "./binaryContent.js";
+import {
+  BINARY_IO_BATCH_SIZE,
+  allSettledInBatches,
+  mapInBatches,
+} from "./concurrency.js";
 
 export type StoredSnapshot = {
   id: string;
@@ -117,8 +122,6 @@ export class SnapshotNotFoundError extends Error {
     super("Snapshot not found");
   }
 }
-
-const BINARY_IO_BATCH_SIZE = 10;
 
 const noopResetPublisher: SnapshotResetPublisher = {
   emitDocumentReset: async () => {},
@@ -523,13 +526,14 @@ async function syncBinaryContentStore({
     }
   }
 
-  const putResults = await Promise.allSettled(
-    writableBinaryDocuments.map(({ id, doc }) =>
+  const putResults = await allSettledInBatches(
+    writableBinaryDocuments,
+    BINARY_IO_BATCH_SIZE,
+    ({ id, doc }) =>
       binaryContentStore.put(
         `${projectId}/${id}`,
         Buffer.from(doc.binaryContentBase64, "base64"),
       ),
-    ),
   );
 
   let failedPutCount = 0;
@@ -555,10 +559,10 @@ async function syncBinaryContentStore({
     ...emptyContentDocumentIds,
   ];
 
-  const deleteResults = await Promise.allSettled(
-    documentsToDelete.map((documentId) =>
-      binaryContentStore.delete(`${projectId}/${documentId}`),
-    ),
+  const deleteResults = await allSettledInBatches(
+    documentsToDelete,
+    BINARY_IO_BATCH_SIZE,
+    (documentId) => binaryContentStore.delete(`${projectId}/${documentId}`),
   );
 
   for (const result of deleteResults) {
@@ -731,19 +735,3 @@ function assertSnapshotPathsDoNotConflict(
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function mapInBatches<T, R>(
-  items: T[],
-  batchSize: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map(fn));
-    results.push(...batchResults);
-  }
-
-  return results;
-}

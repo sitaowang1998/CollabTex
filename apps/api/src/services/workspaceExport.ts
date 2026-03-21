@@ -4,6 +4,7 @@ import {
   BinaryContentNotFoundError,
   type BinaryContentStore,
 } from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, mapInBatches } from "./concurrency.js";
 import {
   loadLatestProjectSnapshotState,
   type ProjectSnapshotState,
@@ -147,8 +148,6 @@ function assembleTextFiles(
   });
 }
 
-const BINARY_IO_BATCH_SIZE = 10;
-
 async function assembleBinaryFiles(
   binaryDocuments: StoredDocument[],
   binaryContentStore: Pick<BinaryContentStore, "get">,
@@ -196,20 +195,4 @@ async function assembleBinaryFiles(
   );
 
   return results.filter((file): file is ExportedFile => file !== null);
-}
-
-async function mapInBatches<T, R>(
-  items: T[],
-  batchSize: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map(fn));
-    results.push(...batchResults);
-  }
-
-  return results;
 }

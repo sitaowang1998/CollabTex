@@ -128,6 +128,12 @@ function createRuntime(snapshotRoot: string) {
     documentTextStateRepository,
     collaborationService,
     projectStateRepository: createProjectStateRepository(getDb()),
+    binaryContentStore: {
+      get: async () => Buffer.alloc(0),
+      put: async () => {},
+      delete: async () => {},
+    },
+    documentLookup: createDocumentRepository(getDb()),
   });
   const currentTextStateService = createCurrentTextStateService({
     documentTextStateRepository,

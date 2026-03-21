@@ -6,6 +6,7 @@ import type {
   ProjectDocumentContentResponse,
 } from "@collab-tex/shared";
 import type { BinaryContentStore } from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, allSettledInBatches } from "./concurrency.js";
 import { type ProjectAccessService } from "./projectAccess.js";
 import type { SnapshotService } from "./snapshot.js";
 import type { SnapshotRefreshTrigger } from "./snapshotRefresh.js";
@@ -232,10 +233,11 @@ export function createDocumentService({
       );
 
       if (binaryDocuments.length > 0) {
-        const results = await Promise.allSettled(
-          binaryDocuments.map((document) =>
+        const results = await allSettledInBatches(
+          binaryDocuments,
+          BINARY_IO_BATCH_SIZE,
+          (document) =>
             binaryContentStore.delete(`${input.projectId}/${document.id}`),
-          ),
         );
 
         for (const result of results) {
