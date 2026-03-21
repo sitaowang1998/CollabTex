@@ -43,7 +43,7 @@ import {
   createSocketDocumentResetPublisher,
   createSocketServer,
 } from "../../ws/socketServer.js";
-import { testConfig } from "./appFactory.js";
+import { createStubBinaryContentService, testConfig } from "./appFactory.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
@@ -93,11 +93,7 @@ export async function createTestSocketServer(options?: {
     projectService: createProjectService({
       projectRepository,
     }),
-    binaryContentService: {
-      uploadContent: async () => {
-        throw new Error("stub");
-      },
-    },
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

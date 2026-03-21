@@ -1,5 +1,5 @@
-import { Router } from "express";
-import multer from "multer";
+import { Router, type Request, type Response } from "express";
+import multer, { MulterError } from "multer";
 import type { AppConfig } from "../../config/appConfig.js";
 import type { AuthenticatedRequest } from "../../types/express.js";
 import { createRequireAuth } from "../middleware/requireAuth.js";
@@ -22,6 +22,19 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE },
 });
 
+function runUpload(req: Request, res: Response): Promise<void> {
+  return new Promise((resolve, reject) => {
+    upload.single("file")(req, res, (error: unknown) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 export function createBinaryContentRouter(
   config: AppConfig,
   binaryContentService: BinaryContentService,
@@ -32,7 +45,6 @@ export function createBinaryContentRouter(
   router.post(
     "/api/projects/:projectId/files/:fileId/content",
     requireAuth,
-    upload.single("file"),
     async (req, res, next) => {
       try {
         const authenticatedRequest = req as AuthenticatedRequest;
@@ -48,6 +60,8 @@ export function createBinaryContentRouter(
           next(fileId);
           return;
         }
+
+        await runUpload(req, res);
 
         if (!req.file) {
           next(new HttpError(400, "file is required"));
@@ -72,6 +86,14 @@ export function createBinaryContentRouter(
 }
 
 function mapBinaryContentError(error: unknown): Error {
+  if (error instanceof MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return new HttpError(413, "file exceeds maximum size of 50 MB");
+    }
+
+    return new HttpError(400, `upload error: ${error.message}`);
+  }
+
   if (error instanceof BinaryContentValidationError) {
     return new HttpError(400, error.message);
   }

@@ -22,7 +22,10 @@ import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { ProjectService } from "../../services/project.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 const PROJECT_ID = "6f35c2aa-fd34-4905-a370-7d9642244166";
 
@@ -258,11 +261,7 @@ function createCompileTestApp({
 }) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
-    binaryContentService: {
-      uploadContent: async () => {
-        throw new Error("stub");
-      },
-    },
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService:
       compileDispatchService ?? createMockCompileDispatchService(),

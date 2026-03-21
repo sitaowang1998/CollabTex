@@ -129,6 +129,23 @@ describe("binary content routes", () => {
       .expect({ error: "document not found" });
   });
 
+  it("returns 413 when file exceeds size limit", async () => {
+    const binaryContentService = createMockBinaryContentService();
+    const app = createTestApp(binaryContentService);
+
+    // multer is configured with 50 MB limit; send a buffer just over it
+    const oversizedBuffer = Buffer.alloc(50 * 1024 * 1024 + 1);
+
+    await request(app)
+      .post(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+      .set("authorization", `Bearer ${createToken()}`)
+      .attach("file", oversizedBuffer, "huge.bin")
+      .expect(413)
+      .expect({ error: "file exceeds maximum size of 50 MB" });
+
+    expect(binaryContentService.uploadContent).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when document is not binary", async () => {
     const binaryContentService = createMockBinaryContentService();
     binaryContentService.uploadContent.mockRejectedValue(

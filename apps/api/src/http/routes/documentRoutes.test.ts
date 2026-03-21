@@ -13,11 +13,13 @@ import {
   ProjectRoleRequiredError,
   type ProjectService,
 } from "../../services/project.js";
-import type { BinaryContentService } from "../../services/binaryContent.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("document routes", () => {
   it("lists the file tree for an authenticated project member", async () => {
@@ -306,14 +308,6 @@ function createDocumentTestApp(documentService: DocumentService) {
     projectService: createStubProjectService(),
     snapshotManagementService: createStubSnapshotManagementService(),
   });
-}
-
-function createStubBinaryContentService(): BinaryContentService {
-  return {
-    uploadContent: async () => {
-      throw new Error("Not implemented for document route tests");
-    },
-  };
 }
 
 function createStubCommentService(): CommentService {

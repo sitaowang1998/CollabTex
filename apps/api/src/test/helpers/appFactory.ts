@@ -481,7 +481,7 @@ function createInMemorySnapshotService(): SnapshotService {
   };
 }
 
-function createStubBinaryContentService(): BinaryContentService {
+export function createStubBinaryContentService(): BinaryContentService {
   return {
     uploadContent: async () => {
       throw new Error("Not implemented for createTestApp");

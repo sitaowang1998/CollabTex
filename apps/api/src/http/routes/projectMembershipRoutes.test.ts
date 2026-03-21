@@ -33,7 +33,10 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("project membership routes", () => {
   it("lists members for any project member", async () => {
@@ -655,11 +658,7 @@ function createMembershipTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
-    binaryContentService: {
-      uploadContent: async () => {
-        throw new Error("stub");
-      },
-    },
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
@@ -701,11 +700,7 @@ function createMembershipTestApp() {
 function createRoleRequiredMembershipApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
-    binaryContentService: {
-      uploadContent: async () => {
-        throw new Error("stub");
-      },
-    },
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

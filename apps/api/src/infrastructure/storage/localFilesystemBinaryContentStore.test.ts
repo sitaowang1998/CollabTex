@@ -119,6 +119,15 @@ describe("localFilesystemBinaryContentStore", () => {
     );
   });
 
+  it("re-throws non-ENOENT errors from delete", async () => {
+    const root = createTestRoot();
+    const dirPath = join(root, "project-1", "document-1", "nested");
+    await mkdir(dirPath, { recursive: true });
+    const store = createLocalFilesystemBinaryContentStore(root);
+
+    await expect(store.delete("project-1/document-1")).rejects.toThrow();
+  });
+
   it("re-throws non-ENOENT errors from get", async () => {
     const root = createTestRoot();
     const dirPath = join(root, "project-1", "document-1");

@@ -16,7 +16,10 @@ import {
   InvalidSnapshotDataError,
   SnapshotDataNotFoundError,
 } from "../../services/snapshot.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("snapshot routes", () => {
   it("lists snapshots for an authenticated project member", async () => {
@@ -136,11 +139,7 @@ function createSnapshotTestApp(
 ) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
-    binaryContentService: {
-      uploadContent: async () => {
-        throw new Error("stub");
-      },
-    },
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {
