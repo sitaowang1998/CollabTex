@@ -153,44 +153,43 @@ async function assembleBinaryFiles(
   projectId: string,
   snapshotState: ProjectSnapshotState,
 ): Promise<ExportedFile[]> {
-  const files: ExportedFile[] = [];
+  const results = await Promise.all(
+    binaryDocuments.map(async (document): Promise<ExportedFile | null> => {
+      const storagePath = `${projectId}/${document.id}`;
 
-  for (const document of binaryDocuments) {
-    const storagePath = `${projectId}/${document.id}`;
+      try {
+        const content = await binaryContentStore.get(storagePath);
+        return {
+          relativePath: toRelativePath(document.path),
+          kind: "binary" as const,
+          content,
+        };
+      } catch (error) {
+        if (!(error instanceof BinaryContentNotFoundError)) {
+          throw error;
+        }
+      }
 
-    try {
-      const content = await binaryContentStore.get(storagePath);
-      files.push({
+      const snapshotDoc = snapshotState.documents[document.id];
+
+      if (
+        !snapshotDoc ||
+        snapshotDoc.kind !== "binary" ||
+        typeof snapshotDoc.binaryContentBase64 !== "string"
+      ) {
+        console.warn(
+          `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
+        );
+        return null;
+      }
+
+      return {
         relativePath: toRelativePath(document.path),
         kind: "binary" as const,
-        content,
-      });
-      continue;
-    } catch (error) {
-      if (!(error instanceof BinaryContentNotFoundError)) {
-        throw error;
-      }
-    }
+        content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
+      };
+    }),
+  );
 
-    const snapshotDoc = snapshotState.documents[document.id];
-
-    if (
-      !snapshotDoc ||
-      snapshotDoc.kind !== "binary" ||
-      typeof snapshotDoc.binaryContentBase64 !== "string"
-    ) {
-      console.warn(
-        `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
-      );
-      continue;
-    }
-
-    files.push({
-      relativePath: toRelativePath(document.path),
-      kind: "binary" as const,
-      content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
-    });
-  }
-
-  return files;
+  return results.filter((file): file is ExportedFile => file !== null);
 }

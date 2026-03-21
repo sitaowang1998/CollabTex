@@ -509,8 +509,20 @@ async function syncBinaryContentStore({
       doc: doc as SnapshotBinaryDocumentState,
     }));
 
+  const writableBinaryDocuments = restoredBinaryDocuments.filter(
+    ({ id, doc }) => {
+      if (!doc.binaryContentBase64) {
+        console.warn(
+          `Snapshot restore: skipping empty binary content for document ${id} in project ${projectId}`,
+        );
+        return false;
+      }
+      return true;
+    },
+  );
+
   const putResults = await Promise.allSettled(
-    restoredBinaryDocuments.map(({ id, doc }) =>
+    writableBinaryDocuments.map(({ id, doc }) =>
       binaryContentStore.put(
         `${projectId}/${id}`,
         Buffer.from(doc.binaryContentBase64, "base64"),
