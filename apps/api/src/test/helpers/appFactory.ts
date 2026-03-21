@@ -90,6 +90,11 @@ export function createTestApp() {
         throw new Error("stub");
       },
     },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService,
     membershipService,
     projectService,

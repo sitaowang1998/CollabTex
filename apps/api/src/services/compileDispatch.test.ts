@@ -11,6 +11,7 @@ import {
   ProjectRoleRequiredError,
 } from "./projectAccess.js";
 import type { ProjectService } from "./project.js";
+import type { CompileBuildRepository } from "../repositories/compileBuildRepository.js";
 import type { FileAssemblyDependencies } from "./workspaceExport.js";
 import {
   CompileAlreadyInProgressError,
@@ -20,8 +21,13 @@ import {
 
 describe("compile dispatch service", () => {
   it("runs a successful compile and stores the PDF artifact", async () => {
-    const { service, compileAdapter, compileArtifactStore, notifyCompileDone } =
-      createTestService();
+    const {
+      service,
+      compileAdapter,
+      compileArtifactStore,
+      compileBuildRepository,
+      notifyCompileDone,
+    } = createTestService();
 
     const pdfContent = Buffer.from("%PDF-1.4 test");
     compileAdapter.compile.mockResolvedValue({
@@ -39,6 +45,10 @@ describe("compile dispatch service", () => {
       expect.stringContaining("project-1/"),
       pdfContent,
     );
+    expect(compileBuildRepository.saveLatestBuildPath).toHaveBeenCalledWith(
+      "project-1",
+      expect.stringContaining("project-1/"),
+    );
     expect(notifyCompileDone).toHaveBeenCalledWith({
       projectId: "project-1",
       status: "success",
@@ -47,13 +57,18 @@ describe("compile dispatch service", () => {
   });
 
   it("returns failure when compile exits with non-zero code", async () => {
-    const { service, compileArtifactStore, notifyCompileDone } =
-      createTestService();
+    const {
+      service,
+      compileArtifactStore,
+      compileBuildRepository,
+      notifyCompileDone,
+    } = createTestService();
 
     const result = await service.compile("project-1", "user-1");
 
     expect(result.status).toBe("failure");
     expect(compileArtifactStore.writePdf).not.toHaveBeenCalled();
+    expect(compileBuildRepository.saveLatestBuildPath).not.toHaveBeenCalled();
     expect(notifyCompileDone).toHaveBeenCalledWith({
       projectId: "project-1",
       status: "failure",
@@ -290,6 +305,14 @@ function createTestService() {
     readPdf: vi.fn(),
   };
 
+  const compileBuildRepository: {
+    saveLatestBuildPath: ReturnType<
+      typeof vi.fn<CompileBuildRepository["saveLatestBuildPath"]>
+    >;
+  } = {
+    saveLatestBuildPath: vi.fn().mockResolvedValue(undefined),
+  };
+
   const notifyCompileDone = vi.fn<(event: CompileDoneEvent) => void>();
 
   // We need to mock assembleProjectFiles. Since it's a module-level function,
@@ -325,6 +348,7 @@ function createTestService() {
     fileAssemblyDeps,
     compileAdapter,
     compileArtifactStore,
+    compileBuildRepository,
     compileTimeoutMs: 60000,
     notifyCompileDone,
   });
@@ -335,6 +359,7 @@ function createTestService() {
     projectService,
     compileAdapter,
     compileArtifactStore,
+    compileBuildRepository,
     notifyCompileDone,
     fileAssemblyDeps,
   };
