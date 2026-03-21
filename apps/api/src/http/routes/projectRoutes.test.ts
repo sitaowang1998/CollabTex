@@ -28,7 +28,10 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("project routes", () => {
   it("creates a project and lists it with admin role for the creator", async () => {
@@ -537,6 +540,7 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
     compileRetrievalService: createStubCompileRetrievalService(),
@@ -559,6 +563,7 @@ function createProjectTestApp() {
 function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: createStubCompileDispatchService(),
     compileRetrievalService: createStubCompileRetrievalService(),

@@ -647,6 +647,57 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/files/{fileId}/content:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: fileId
+        in: path
+        required: true
+        description: UUID of the binary document to upload content for.
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags:
+        - Documents
+      summary: Upload binary file content
+      description: >
+        Accepts a multipart file upload for a binary document. The uploaded
+        content replaces any previously stored content for the document.
+        Only binary-kind documents are accepted; uploading to a text document
+        returns 400. Requires admin or editor role.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The binary file to upload (max 50 MB).
+      responses:
+        "204":
+          description: Content uploaded successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: Payload too large (uploaded file exceeds 50 MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{projectId}/compile:
     parameters:
       - $ref: "#/components/parameters/ProjectId"

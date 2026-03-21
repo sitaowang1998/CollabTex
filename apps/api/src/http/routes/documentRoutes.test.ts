@@ -16,7 +16,10 @@ import {
 import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("document routes", () => {
   it("lists the file tree for an authenticated project member", async () => {
@@ -288,6 +291,7 @@ describe("document routes", () => {
 function createDocumentTestApp(documentService: DocumentService) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
     compileDispatchService: {
       compile: async () => {

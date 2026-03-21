@@ -29,7 +29,10 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-import { testConfig } from "../../test/helpers/appFactory.js";
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("comment routes", () => {
   describe("GET /api/projects/:projectId/docs/:docId/comments", () => {
@@ -491,6 +494,7 @@ async function setupCommentTestApp() {
 
   const app = createHttpApp(testConfig, {
     authService,
+    binaryContentService: createStubBinaryContentService(),
     commentService,
     compileDispatchService: {
       compile: async () => {

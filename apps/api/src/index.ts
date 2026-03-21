@@ -6,6 +6,7 @@ import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
 import { createDockerCompileAdapter } from "./infrastructure/compile/dockerCompileAdapter.js";
+import { createLocalFilesystemBinaryContentStore } from "./infrastructure/storage/localFilesystemBinaryContentStore.js";
 import { createLocalFilesystemCompileStore } from "./infrastructure/storage/localFilesystemCompileStore.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createCompileBuildRepository } from "./repositories/compileBuildRepository.js";
@@ -19,6 +20,7 @@ import { createSnapshotRepository } from "./repositories/snapshotRepository.js";
 import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefreshJobRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createBinaryContentService } from "./services/binaryContent.js";
 import { createCollaborationService } from "./services/collaboration.js";
 import { createCompileDispatchService } from "./services/compileDispatch.js";
 import { createCompileRetrievalService } from "./services/compileRetrieval.js";
@@ -178,8 +180,17 @@ async function main() {
       compileBuildRepository,
       compileArtifactStore,
     });
+    const binaryContentStore = createLocalFilesystemBinaryContentStore(
+      config.binaryContentStorageRoot,
+    );
+    const binaryContentService = createBinaryContentService({
+      projectAccessService,
+      documentRepository,
+      binaryContentStore,
+    });
     const app = createHttpApp(config, {
       authService,
+      binaryContentService,
       commentService,
       compileDispatchService,
       compileRetrievalService,

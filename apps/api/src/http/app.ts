@@ -5,6 +5,7 @@ import type { CommentService } from "../services/commentService.js";
 import type { DocumentService } from "../services/document.js";
 import type { MembershipService } from "../services/membership.js";
 import type { ProjectService } from "../services/project.js";
+import type { BinaryContentService } from "../services/binaryContent.js";
 import type { CompileDispatchService } from "../services/compileDispatch.js";
 import type { CompileRetrievalService } from "../services/compileRetrieval.js";
 import type { SnapshotManagementService } from "../services/snapshotManagement.js";
@@ -12,6 +13,7 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createCommentRouter } from "./routes/commentRoutes.js";
 import { createCompileRouter } from "./routes/compileRoutes.js";
+import { createBinaryContentRouter } from "./routes/binaryContentRoutes.js";
 import { createDocumentRouter } from "./routes/documentRoutes.js";
 import { createHealthRouter } from "./routes/healthRoutes.js";
 import { createProjectMembershipRouter } from "./routes/projectMembershipRoutes.js";
@@ -20,6 +22,7 @@ import { createSnapshotRouter } from "./routes/snapshotRoutes.js";
 
 export type HttpAppDependencies = {
   authService: AuthService;
+  binaryContentService: BinaryContentService;
   commentService: CommentService;
   compileDispatchService: CompileDispatchService;
   compileRetrievalService: CompileRetrievalService;
@@ -39,6 +42,7 @@ export function createHttpApp(
   app.use(createHealthRouter());
   app.use(createAuthRouter(config, dependencies.authService));
   app.use(createProjectRouter(config, dependencies.projectService));
+  app.use(createBinaryContentRouter(config, dependencies.binaryContentService));
   app.use(createDocumentRouter(config, dependencies.documentService));
   app.use(
     createCompileRouter(
