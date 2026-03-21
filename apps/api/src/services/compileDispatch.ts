@@ -164,13 +164,13 @@ export function createCompileDispatchService({
   };
 }
 
-function buildFileMap(exportedFiles: ExportedFile[]): Map<string, string> {
-  const files = new Map<string, string>();
+function buildFileMap(
+  exportedFiles: ExportedFile[],
+): Map<string, string | Buffer> {
+  const files = new Map<string, string | Buffer>();
 
   for (const file of exportedFiles) {
-    if (file.kind === "text") {
-      files.set(file.relativePath, file.content);
-    }
+    files.set(file.relativePath, file.content);
   }
 
   return files;
