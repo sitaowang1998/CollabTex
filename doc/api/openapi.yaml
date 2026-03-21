@@ -12,6 +12,7 @@ tags:
   - name: Members
   - name: Snapshots
   - name: Comments
+  - name: Compile
   - name: Documents
 paths:
   /api/health:
@@ -646,6 +647,42 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/compile:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags:
+        - Compile
+      summary: Trigger a LaTeX compile for the project
+      description: >
+        Triggers an in-memory LaTeX compile using the project's main document
+        as the entrypoint. Requires admin or editor role. Only one compile per
+        project at a time — concurrent requests return 409. The response is
+        returned synchronously after compile completes. A `compile:done` socket
+        event is also emitted to the project room.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Compile completed (check status field for success/failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompileResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Compile already in progress for this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     BearerAuth:
@@ -734,6 +771,21 @@ components:
         ok:
           type: boolean
           const: true
+    CompileResult:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - logs
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - failure
+        logs:
+          type: string
+          description: LaTeX compiler output (stdout + stderr)
     ErrorResponse:
       type: object
       additionalProperties: false
