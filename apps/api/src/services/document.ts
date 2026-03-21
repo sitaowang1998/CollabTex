@@ -227,13 +227,26 @@ export function createDocumentService({
         throw new DocumentNotFoundError();
       }
 
-      await Promise.all(
-        deletedDocuments
-          .filter((document) => document.kind === "binary")
-          .map((document) =>
+      const binaryDocuments = deletedDocuments.filter(
+        (document) => document.kind === "binary",
+      );
+
+      if (binaryDocuments.length > 0) {
+        const results = await Promise.allSettled(
+          binaryDocuments.map((document) =>
             binaryContentStore.delete(`${input.projectId}/${document.id}`),
           ),
-      );
+        );
+
+        for (const result of results) {
+          if (result.status === "rejected") {
+            console.error(
+              `Failed to clean up binary content after document delete in project ${input.projectId}:`,
+              result.reason,
+            );
+          }
+        }
+      }
 
       snapshotRefreshTrigger.kick();
     },

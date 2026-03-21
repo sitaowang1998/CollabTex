@@ -471,10 +471,12 @@ describe("snapshot service", () => {
         ],
       }),
     );
+    expect(binaryContentStore.put).toHaveBeenCalledTimes(1);
     expect(binaryContentStore.put).toHaveBeenCalledWith(
       "project-1/document-2",
       Buffer.from("AQID", "base64"),
     );
+    expect(binaryContentStore.delete).toHaveBeenCalledTimes(1);
     expect(binaryContentStore.delete).toHaveBeenCalledWith(
       "project-1/document-3",
     );
@@ -491,6 +493,41 @@ describe("snapshot service", () => {
       serverVersion: 0,
     });
     expect(restored.id).toBe("snapshot-2");
+  });
+
+  it("propagates unexpected errors from the binary content store during capture", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.get.mockRejectedValue(new Error("storage timeout"));
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
+    });
+
+    repository.listForProject.mockResolvedValue([]);
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
+
+    await expect(
+      service.captureProjectSnapshot({
+        projectId: "project-1",
+        authorId: "user-1",
+        documents: [
+          createStoredDocument({
+            id: "document-2",
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+          }),
+        ],
+      }),
+    ).rejects.toThrow("storage timeout");
   });
 
   it("rejects malformed or unsupported snapshot payloads", () => {

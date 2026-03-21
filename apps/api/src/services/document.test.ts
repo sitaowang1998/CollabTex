@@ -248,6 +248,65 @@ describe("document service", () => {
     ).rejects.toBeInstanceOf(DocumentNotFoundError);
   });
 
+  it("cleans up binary content store on delete for binary documents only", async () => {
+    const repository = createDocumentRepository();
+    const binaryContentStore = createBinaryContentStoreMock();
+    const service = createDocumentService({
+      documentRepository: repository,
+      projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore,
+    });
+
+    repository.deleteNode.mockResolvedValue([
+      createStoredDocument({ id: "text-1", kind: "text", path: "/main.tex" }),
+      createStoredDocument({
+        id: "bin-1",
+        kind: "binary",
+        path: "/figure.png",
+      }),
+    ]);
+
+    await service.deleteNode({
+      projectId: "project-1",
+      actorUserId: "user-1",
+      path: "/docs",
+    });
+
+    expect(binaryContentStore.delete).toHaveBeenCalledTimes(1);
+    expect(binaryContentStore.delete).toHaveBeenCalledWith("project-1/bin-1");
+  });
+
+  it("does not throw when binary cleanup fails after delete", async () => {
+    const repository = createDocumentRepository();
+    const binaryContentStore = createBinaryContentStoreMock();
+    binaryContentStore.delete.mockRejectedValue(new Error("storage error"));
+    const service = createDocumentService({
+      documentRepository: repository,
+      projectAccessService: createProjectAccessService(),
+      snapshotService: createSnapshotService(),
+      snapshotRefreshTrigger: createSnapshotRefreshTrigger(),
+      binaryContentStore,
+    });
+
+    repository.deleteNode.mockResolvedValue([
+      createStoredDocument({
+        id: "bin-1",
+        kind: "binary",
+        path: "/figure.png",
+      }),
+    ]);
+
+    await expect(
+      service.deleteNode({
+        projectId: "project-1",
+        actorUserId: "user-1",
+        path: "/figure.png",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("passes root moves through as a null parent path and returns empty text content", async () => {
     const repository = createDocumentRepository();
     const service = createDocumentService({
