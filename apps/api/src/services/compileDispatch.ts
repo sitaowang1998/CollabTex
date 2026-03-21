@@ -108,10 +108,17 @@ export function createCompileDispatchService({
           );
         } else {
           status = "failure";
-          logs =
-            compileResult.outcome === "timeout"
-              ? `Compile timed out after ${compileTimeoutMs}ms\n${compileResult.logs}`
-              : compileResult.logs;
+
+          if (compileResult.outcome === "timeout") {
+            logs = `Compile timed out after ${compileTimeoutMs}ms\n${compileResult.logs}`;
+          } else if (
+            compileResult.outcome === "completed" &&
+            compileResult.exitCode === 0
+          ) {
+            logs = `Compilation exited successfully but no PDF was produced.\n${compileResult.logs}`;
+          } else {
+            logs = compileResult.logs;
+          }
         }
 
         const event: CompileDoneEvent = { projectId, status, logs };
