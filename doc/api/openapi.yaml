@@ -659,7 +659,10 @@ paths:
         as the entrypoint. Requires admin or editor role. Only one compile per
         project at a time — concurrent requests return 409. The response is
         returned synchronously after compile completes. A `compile:done` socket
-        event is also emitted to the project room.
+        event is also emitted to the project room. Note: the compile pipeline
+        currently only includes text-based project files; binary assets such as
+        images are not passed to the compiler, so projects that depend on such
+        assets may fail to compile as expected.
       security:
         - BearerAuth: []
       responses:

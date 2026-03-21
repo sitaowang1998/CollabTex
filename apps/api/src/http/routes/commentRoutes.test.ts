@@ -3,7 +3,6 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import type { ProjectRole } from "@collab-tex/shared";
 import { createHttpApp } from "../app.js";
-import type { AppConfig } from "../../config/appConfig.js";
 import {
   createAuthService,
   DuplicateEmailError,
@@ -30,19 +29,7 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-
-const testConfig: AppConfig = {
-  nodeEnv: "test",
-  port: 0,
-  jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173",
-  databaseUrl:
-    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
-  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
-  compileStorageRoot: "/tmp/collabtex-test-compiles",
-  compileTimeoutMs: 60000,
-  shutdownDrainTimeoutMs: 5000,
-};
+import { testConfig } from "../../test/helpers/appFactory.js";
 
 describe("comment routes", () => {
   describe("GET /api/projects/:projectId/docs/:docId/comments", () => {

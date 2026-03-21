@@ -38,6 +38,7 @@ export const testConfig: AppConfig = {
   snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
   compileStorageRoot: "/tmp/collabtex-test-compiles",
   compileTimeoutMs: 60000,
+  compileDockerImage: "texlive/texlive:latest-small",
   shutdownDrainTimeoutMs: 5000,
 };
 
