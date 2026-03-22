@@ -222,7 +222,7 @@ async function main() {
         documentRepository,
         currentTextStateService,
       }),
-      touchProjectTimestamp: (projectId) =>
+      touchProjectUpdatedAt: (projectId) =>
         projectRepository.touchUpdatedAt(projectId),
     });
     resetPublisher = createSocketDocumentResetPublisher(

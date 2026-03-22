@@ -3247,9 +3247,9 @@ describe("socket server", () => {
     }
   });
 
-  it("calls touchProjectTimestamp with the correct project ID on disconnect", async () => {
-    const touchProjectTimestamp = vi.fn().mockResolvedValue(undefined);
-    socketServer = await createTestSocketServer({ touchProjectTimestamp });
+  it("calls touchProjectUpdatedAt with the correct project ID on disconnect", async () => {
+    const touchProjectUpdatedAt = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ touchProjectUpdatedAt });
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
@@ -3267,12 +3267,12 @@ describe("socket server", () => {
     client.close();
     await waitForSocketFlush();
 
-    expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+    expect(touchProjectUpdatedAt).toHaveBeenCalledWith("project-123");
   });
 
-  it("does not call touchProjectTimestamp when disconnecting without joining a project", async () => {
-    const touchProjectTimestamp = vi.fn().mockResolvedValue(undefined);
-    socketServer = await createTestSocketServer({ touchProjectTimestamp });
+  it("does not call touchProjectUpdatedAt when disconnecting without joining a project", async () => {
+    const touchProjectUpdatedAt = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ touchProjectUpdatedAt });
     const token = signToken("alice", testConfig.jwtSecret);
     const client = socketServer.connect(token);
 
@@ -3284,19 +3284,19 @@ describe("socket server", () => {
     client.close();
     await waitForSocketFlush();
 
-    expect(touchProjectTimestamp).not.toHaveBeenCalled();
+    expect(touchProjectUpdatedAt).not.toHaveBeenCalled();
   });
 
-  it("does not crash when touchProjectTimestamp rejects on disconnect", async () => {
+  it("does not crash when touchProjectUpdatedAt rejects on disconnect", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
     try {
-      const touchProjectTimestamp = vi
+      const touchProjectUpdatedAt = vi
         .fn()
         .mockRejectedValue(new Error("db connection lost"));
-      socketServer = await createTestSocketServer({ touchProjectTimestamp });
+      socketServer = await createTestSocketServer({ touchProjectUpdatedAt });
       const token = signToken("alice", testConfig.jwtSecret);
       const client = socketServer.connect(token);
 
@@ -3314,7 +3314,7 @@ describe("socket server", () => {
       client.close();
       await waitForSocketFlush();
 
-      expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+      expect(touchProjectUpdatedAt).toHaveBeenCalledWith("project-123");
     } finally {
       consoleErrorSpy.mockRestore();
     }

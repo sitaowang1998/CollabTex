@@ -69,7 +69,7 @@ export async function createTestSocketServer(options?: {
     import("../../services/projectAccess.js").ProjectAccessService,
     "requireProjectMember" | "requireProjectRole"
   >;
-  touchProjectTimestamp?: (projectId: string) => Promise<void>;
+  touchProjectUpdatedAt?: (projectId: string) => Promise<void>;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
@@ -172,7 +172,7 @@ export async function createTestSocketServer(options?: {
         documentRepository,
         currentTextStateService,
       }),
-    touchProjectTimestamp: options?.touchProjectTimestamp ?? (async () => {}),
+    touchProjectUpdatedAt: options?.touchProjectUpdatedAt ?? (async () => {}),
   });
 
   await new Promise<void>((resolve) => {

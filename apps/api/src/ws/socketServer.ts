@@ -43,7 +43,7 @@ export function createSocketServer(
     activeDocumentRegistry: ActiveDocumentRegistry;
     realtimeDocumentService: RealtimeDocumentService;
     projectAccessService: Pick<ProjectAccessService, "requireProjectMember">;
-    touchProjectTimestamp: (projectId: string) => Promise<void>;
+    touchProjectUpdatedAt: (projectId: string) => Promise<void>;
   },
 ) {
   const io = new Server<
@@ -252,7 +252,7 @@ export function createSocketServer(
       // leaving so there is no one to notify of failure.
       if (disconnectedProjectId) {
         void dependencies
-          .touchProjectTimestamp(disconnectedProjectId)
+          .touchProjectUpdatedAt(disconnectedProjectId)
           .catch((error) => {
             console.error(
               "Failed to touch project timestamp on disconnect",
