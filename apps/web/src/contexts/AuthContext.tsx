@@ -87,11 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // token so the session survives beyond the 15-minute JWT expiry window.
   useEffect(() => {
     if (state.status !== "authenticated") return;
+    let cancelled = false;
 
     const intervalId = setInterval(() => {
       api
         .post<AuthResponse>("/auth/refresh")
         .then((data) => {
+          if (cancelled) return;
           if (data.token) {
             localStorage.setItem("token", data.token);
           }
@@ -100,16 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch((error: unknown) => {
+          if (cancelled) return;
           if (error instanceof ApiError && error.status === 401) {
             localStorage.removeItem("token");
             dispatch({ type: "LOGOUT" });
+          } else {
+            console.warn(
+              "Proactive token refresh failed (will retry next interval):",
+              error,
+            );
           }
-          // Network / transient errors are ignored — the reactive interceptor
-          // in api.ts will handle 401s on individual requests.
         });
     }, TOKEN_REFRESH_INTERVAL_MS);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, [state.status]);
 
   /** @throws {ApiError} Callers must catch — auth failure is re-thrown after dispatching. */

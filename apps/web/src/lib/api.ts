@@ -75,13 +75,19 @@ async function request<T>(
   // On 401, attempt a single token refresh and retry — but not for auth
   // endpoints themselves (to avoid infinite loops).
   if (res.status === 401 && !AUTH_PATHS.has(path)) {
+    let newToken: string | undefined;
     try {
       if (!refreshInFlight) {
         refreshInFlight = attemptTokenRefresh();
       }
-      const newToken = await refreshInFlight;
+      newToken = await refreshInFlight;
+    } catch {
+      // Refresh failed — fall through to normal error handling with original 401
+    } finally {
       refreshInFlight = null;
+    }
 
+    if (newToken) {
       const retryHeaders: Record<string, string> = {
         Authorization: `Bearer ${newToken}`,
       };
@@ -89,17 +95,21 @@ async function request<T>(
         retryHeaders["Content-Type"] = "application/json";
       }
 
-      const retryRes = await fetch(`${BASE_URL}${path}`, {
-        method,
-        headers: retryHeaders,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(30_000),
-      });
-
-      res = retryRes;
-    } catch {
-      refreshInFlight = null;
-      // Refresh failed — fall through to normal error handling with original 401
+      try {
+        res = await fetch(`${BASE_URL}${path}`, {
+          method,
+          headers: retryHeaders,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch (err) {
+        throw new ApiError(
+          NETWORK_ERROR_STATUS,
+          err instanceof Error ? err.message : "Network error",
+          undefined,
+          { cause: err },
+        );
+      }
     }
   }
 

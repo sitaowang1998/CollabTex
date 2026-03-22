@@ -380,4 +380,90 @@ describe("401 refresh interceptor", () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
+
+  it("deduplicates concurrent refresh attempts", async () => {
+    localStorage.setItem("token", "old-token");
+
+    // Both original requests: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    // Single refresh call: success
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        token: "new-token",
+        user: { id: "u1", email: "a@b.com", name: "A" },
+      }),
+    );
+    // Both retries: success
+    mockFetch.mockResolvedValueOnce(jsonResponse({ a: 1 }));
+    mockFetch.mockResolvedValueOnce(jsonResponse({ b: 2 }));
+
+    const [r1, r2] = await Promise.all([
+      api.get<{ a: number }>("/items/1"),
+      api.get<{ b: number }>("/items/2"),
+    ]);
+
+    expect(r1).toEqual({ a: 1 });
+    expect(r2).toEqual({ b: 2 });
+    // 2 originals + 1 shared refresh + 2 retries = 5
+    expect(mockFetch).toHaveBeenCalledTimes(5);
+  });
+
+  it("retries POST with body after refresh", async () => {
+    localStorage.setItem("token", "old-token");
+
+    // Original POST: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    // Refresh: success
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        token: "new-token",
+        user: { id: "u1", email: "a@b.com", name: "A" },
+      }),
+    );
+    // Retry POST: success
+    mockFetch.mockResolvedValueOnce(jsonResponse({ id: 42 }));
+
+    const result = await api.post<{ id: number }>("/items", { name: "test" });
+
+    expect(result).toEqual({ id: 42 });
+
+    // Verify retry preserved body and Content-Type
+    const [retryUrl, retryInit] = mockFetch.mock.calls[2];
+    expect(retryUrl).toBe("/api/items");
+    expect(retryInit.method).toBe("POST");
+    expect(retryInit.body).toBe(JSON.stringify({ name: "test" }));
+    expect(retryInit.headers["Content-Type"]).toBe("application/json");
+    expect(retryInit.headers.Authorization).toBe("Bearer new-token");
+  });
+
+  it("propagates network error from retry fetch (not stale 401)", async () => {
+    localStorage.setItem("token", "old-token");
+
+    // Original: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    // Refresh: success
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        token: "new-token",
+        user: { id: "u1", email: "a@b.com", name: "A" },
+      }),
+    );
+    // Retry: network failure
+    mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const error = await api.get("/projects").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(NETWORK_ERROR_STATUS);
+    expect((error as ApiError).message).toBe("Failed to fetch");
+  });
 });

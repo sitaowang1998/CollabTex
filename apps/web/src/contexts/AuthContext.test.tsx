@@ -1108,6 +1108,32 @@ describe("AuthContext", () => {
       // post should not be called because interval was cleared on logout
       expect(mockedApi.post).not.toHaveBeenCalled();
     });
+
+    it("stays authenticated when refresh fails with non-401 error", async () => {
+      localStorage.setItem("token", "valid-token");
+      const user = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.get.mockResolvedValue({ user });
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "authenticated", user }),
+      );
+
+      mockedApi.post.mockRejectedValue(new ApiError(500, "Server Error"));
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      expect(result.current.state).toEqual({ status: "authenticated", user });
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Proactive token refresh failed (will retry next interval):",
+        expect.any(ApiError),
+      );
+      consoleSpy.mockRestore();
+    });
   });
 });
 
