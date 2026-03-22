@@ -78,6 +78,7 @@ export function createSocketServer(
     let latestJoinSequence = 0;
     let activeWorkspaceRoomName: string | null = null;
     let activeProjectRoomName: string | null = null;
+    let activeDocumentId: string | null = null;
     let activeTextSession: ActiveTextSessionState | null = null;
 
     if (!userId) {
@@ -109,6 +110,9 @@ export function createSocketServer(
         getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
         setActiveWorkspaceRoomName: (roomName) => {
           activeWorkspaceRoomName = roomName;
+        },
+        setActiveDocumentId: (documentId) => {
+          activeDocumentId = documentId;
         },
         getActiveProjectRoomName: () => activeProjectRoomName,
         setActiveProjectRoomName: (roomName) => {
@@ -194,9 +198,44 @@ export function createSocketServer(
       });
     });
 
+    socket.on("presence.update", (payload) => {
+      const request = parsePresenceUpdateRequest(payload);
+
+      if ("code" in request) {
+        socket.emit("realtime:error", request);
+        return;
+      }
+
+      if (
+        !activeWorkspaceRoomName ||
+        request.documentId !== activeDocumentId ||
+        !socket.rooms.has(activeWorkspaceRoomName)
+      ) {
+        socket.emit("realtime:error", {
+          code: "INVALID_REQUEST",
+          message: "socket is not joined to this document",
+        });
+        return;
+      }
+
+      try {
+        socket.to(activeWorkspaceRoomName).emit("presence.update", {
+          documentId: request.documentId,
+          awarenessB64: request.awarenessB64,
+        });
+      } catch (error) {
+        console.error(
+          "Failed to broadcast presence update",
+          { socketId: socket.id, documentId: request.documentId },
+          error,
+        );
+      }
+    });
+
     socket.on("disconnect", (reason) => {
       const sessionState = activeTextSession;
       activeTextSession = null;
+      activeDocumentId = null;
 
       if (sessionState) {
         void leaveActiveTextSession(socket, sessionState);
@@ -311,6 +350,7 @@ export async function openWorkspace(
     isLatestJoin: () => boolean;
     getActiveWorkspaceRoomName: () => string | null;
     setActiveWorkspaceRoomName: (roomName: string) => void;
+    setActiveDocumentId: (documentId: string | null) => void;
     getActiveProjectRoomName: () => string | null;
     setActiveProjectRoomName: (roomName: string) => void;
     getActiveTextSession: () => ActiveTextSessionState | null;
@@ -414,6 +454,7 @@ export async function openWorkspace(
         });
         joinedSessionHandle = null;
         input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+        input.setActiveDocumentId(input.workspaceOpenInput.documentId);
 
         const projectRoomJoined = await joinProjectRoom(
           socket,
@@ -439,6 +480,7 @@ export async function openWorkspace(
 
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+      input.setActiveDocumentId(input.workspaceOpenInput.documentId);
 
       const projectRoomJoined = await joinProjectRoom(
         socket,
@@ -809,6 +851,54 @@ function parseSyncRequest(
   }
 
   return { documentId };
+}
+
+const MAX_AWARENESS_B64_LENGTH = 8192;
+
+function parsePresenceUpdateRequest(
+  value: unknown,
+): { documentId: string; awarenessB64: string } | WorkspaceErrorEvent {
+  if (!isObject(value)) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "presence.update payload must be an object",
+    };
+  }
+
+  const documentId =
+    typeof value.documentId === "string" ? value.documentId.trim() : "";
+  const awarenessB64 =
+    typeof value.awarenessB64 === "string" ? value.awarenessB64.trim() : "";
+
+  if (!documentId) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "documentId is required",
+    };
+  }
+
+  if (!awarenessB64) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "awarenessB64 is required",
+    };
+  }
+
+  if (awarenessB64.length > MAX_AWARENESS_B64_LENGTH) {
+    return {
+      code: "INVALID_REQUEST",
+      message: `awarenessB64 exceeds maximum length of ${MAX_AWARENESS_B64_LENGTH}`,
+    };
+  }
+
+  if (!isStrictBase64(awarenessB64)) {
+    return {
+      code: "INVALID_REQUEST",
+      message: "awarenessB64 must be valid base64",
+    };
+  }
+
+  return { documentId, awarenessB64 };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

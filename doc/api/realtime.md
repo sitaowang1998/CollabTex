@@ -25,6 +25,8 @@ the Yjs-backed realtime implementation.
   workspace
 - `commenter` and `reader` remain read-only and receive `FORBIDDEN` if they
   send `doc.update`
+- any joined project member may send `presence.update` to broadcast cursor and
+  selection awareness to peers
 - Project membership is still required for all workspace and document events
 
 ## Client To Server Events
@@ -80,6 +82,24 @@ Validation behavior:
 - `clientUpdateId` must be a non-empty client-generated string
 - valid only after the socket has joined the matching workspace/document
 - write access is limited to `admin` and `editor`
+
+### `presence.update`
+
+```json
+{
+  "documentId": "document-456",
+  "awarenessB64": "AQIDBA=="
+}
+```
+
+Validation behavior:
+
+- payload must be an object
+- `documentId` must be a non-empty string
+- `awarenessB64` must be a non-empty valid base64 string with a maximum length
+  of 8192 characters
+- valid only after the socket has joined the matching workspace/document
+- available to any joined project member (all roles)
 
 ## Server To Client Events
 
@@ -212,6 +232,24 @@ Behavior:
   live current-state row after the server-side change
 - the current use case is snapshot restore / reopen resynchronization
 
+### `presence.update`
+
+```json
+{
+  "documentId": "document-456",
+  "awarenessB64": "AQIDBA=="
+}
+```
+
+Behavior:
+
+- broadcast to all other sockets in the same workspace room (excluding sender)
+- carries opaque Yjs awareness state; the server does not interpret the contents
+- presence is ephemeral and not persisted
+- available to any joined project member (all roles)
+- when a peer disconnects or switches documents, client-side Yjs awareness
+  protocol timeout handles cleanup
+
 ### `realtime:error`
 
 ```json
@@ -276,8 +314,3 @@ Behavior:
   produce logs (e.g., no main document found, internal error)
 - this event is a notification for connected clients; the HTTP endpoint that
   triggered the compile also returns the result synchronously
-
-## Deferred From This Change
-
-- `presence.update` is part of the broader proposal but is intentionally not
-  included in the current contract
