@@ -3288,28 +3288,36 @@ describe("socket server", () => {
   });
 
   it("does not crash when touchProjectTimestamp rejects on disconnect", async () => {
-    const touchProjectTimestamp = vi
-      .fn()
-      .mockRejectedValue(new Error("db connection lost"));
-    socketServer = await createTestSocketServer({ touchProjectTimestamp });
-    const token = signToken("alice", testConfig.jwtSecret);
-    const client = socketServer.connect(token);
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
-    await new Promise<void>((resolve, reject) => {
-      client.once("workspace:opened", () => resolve());
-      client.once("connect_error", reject);
-      client.once("connect", () => {
-        client.emit("workspace:join", {
-          projectId: "project-123",
-          documentId: "doc-456",
+    try {
+      const touchProjectTimestamp = vi
+        .fn()
+        .mockRejectedValue(new Error("db connection lost"));
+      socketServer = await createTestSocketServer({ touchProjectTimestamp });
+      const token = signToken("alice", testConfig.jwtSecret);
+      const client = socketServer.connect(token);
+
+      await new Promise<void>((resolve, reject) => {
+        client.once("workspace:opened", () => resolve());
+        client.once("connect_error", reject);
+        client.once("connect", () => {
+          client.emit("workspace:join", {
+            projectId: "project-123",
+            documentId: "doc-456",
+          });
         });
       });
-    });
 
-    client.close();
-    await waitForSocketFlush();
+      client.close();
+      await waitForSocketFlush();
 
-    expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+      expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });
 
