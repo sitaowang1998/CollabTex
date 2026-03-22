@@ -25,6 +25,13 @@ export type ReplyToThreadInput = {
   body: string;
 };
 
+export type UpdateThreadStatusInput = {
+  projectId: string;
+  threadId: string;
+  actorUserId: string;
+  status: "open" | "resolved";
+};
+
 export type CommentService = {
   listThreads: (
     projectId: string,
@@ -35,6 +42,9 @@ export type CommentService = {
     input: CreateThreadInput,
   ) => Promise<StoredCommentThreadWithComments>;
   replyToThread: (input: ReplyToThreadInput) => Promise<StoredComment>;
+  updateThreadStatus: (
+    input: UpdateThreadStatusInput,
+  ) => Promise<StoredCommentThreadWithComments>;
 };
 
 export function createCommentService({
@@ -87,6 +97,25 @@ export function createCommentService({
         threadId: input.threadId,
         authorId: input.actorUserId,
         body: input.body,
+      });
+    },
+
+    updateThreadStatus: async (input) => {
+      const thread = await commentRepository.findThreadById(input.threadId);
+
+      if (!thread || thread.projectId !== input.projectId) {
+        throw new CommentThreadNotFoundError();
+      }
+
+      await projectAccessService.requireProjectRole(
+        thread.projectId,
+        input.actorUserId,
+        COMMENT_ALLOWED_ROLES,
+      );
+
+      return commentRepository.updateThreadStatus({
+        threadId: input.threadId,
+        status: input.status,
       });
     },
   };

@@ -3,10 +3,20 @@ import type { CollaborationService } from "./collaboration.js";
 import {
   InvalidDocumentPathError,
   normalizeDocumentPath,
+  type DocumentRepository,
   type StoredDocument,
 } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import type { ProjectStateRepository } from "../repositories/projectStateRepository.js";
+import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
+import {
+  BINARY_IO_BATCH_SIZE,
+  allSettledInBatches,
+  mapInBatches,
+} from "./concurrency.js";
 
 export type StoredSnapshot = {
   id: string;
@@ -123,6 +133,8 @@ export function createSnapshotService({
   documentTextStateRepository,
   collaborationService,
   projectStateRepository,
+  binaryContentStore,
+  documentLookup,
   getResetPublisher = () => noopResetPublisher,
 }: {
   snapshotRepository: SnapshotRepository;
@@ -130,6 +142,8 @@ export function createSnapshotService({
   documentTextStateRepository: DocumentTextStateRepository;
   collaborationService: CollaborationService;
   projectStateRepository: ProjectStateRepository;
+  binaryContentStore: Pick<BinaryContentStore, "get" | "put" | "delete">;
+  documentLookup: Pick<DocumentRepository, "listForProject">;
   getResetPublisher?: () => SnapshotResetPublisher;
 }): SnapshotService {
   return {
@@ -171,9 +185,11 @@ export function createSnapshotService({
         projectId,
       );
       const nextState = await buildProjectSnapshotState({
+        projectId,
         documents,
         previousState,
         documentTextStateRepository,
+        binaryContentStore,
       });
       const storagePath = createSnapshotStoragePath(projectId);
 
@@ -198,9 +214,10 @@ export function createSnapshotService({
         throw new SnapshotNotFoundError();
       }
 
-      const targetState = await snapshotStore.readProjectSnapshot(
-        targetSnapshot.storagePath,
-      );
+      const [targetState, currentDocuments] = await Promise.all([
+        snapshotStore.readProjectSnapshot(targetSnapshot.storagePath),
+        documentLookup.listForProject(projectId),
+      ]);
       const restoredDocuments = buildRestoredProjectDocumentStates({
         snapshotState: targetState,
         collaborationService,
@@ -222,6 +239,20 @@ export function createSnapshotService({
           authorId: actorUserId,
         },
       });
+
+      const syncResult = await syncBinaryContentStore({
+        binaryContentStore,
+        projectId,
+        currentDocuments,
+        restoredState: targetState,
+      });
+
+      if (syncResult.failedPutCount > 0) {
+        console.error(
+          `Snapshot restore for project ${projectId}: ${syncResult.failedPutCount} binary file(s) failed to write to the content store. The snapshot blob still contains the data; re-restoring may fix this.`,
+        );
+      }
+
       const resetPublisher = getResetPublisher();
 
       await Promise.all(
@@ -264,53 +295,61 @@ export async function loadLatestProjectSnapshotState(
 }
 
 export async function buildProjectSnapshotState({
+  projectId,
   documents,
   previousState,
   documentTextStateRepository,
+  binaryContentStore,
 }: {
+  projectId: string;
   documents: StoredDocument[];
   previousState: ProjectSnapshotState;
   documentTextStateRepository: Pick<
     DocumentTextStateRepository,
     "findByDocumentIds"
   >;
+  binaryContentStore: Pick<BinaryContentStore, "get">;
 }): Promise<ProjectSnapshotState> {
-  const currentTextStates = await loadCurrentTextStateMap(
-    documents,
-    documentTextStateRepository,
-  );
-  const nextDocuments = Object.fromEntries(
-    documents.map((document) => {
-      if (document.kind === "text") {
-        return [
-          document.id,
-          {
-            path: document.path,
-            kind: "text",
-            mime: document.mime,
-            textContent: loadTextDocumentContent({
-              documentId: document.id,
-              previousState,
-              currentTextStates,
-            }),
-          } satisfies SnapshotTextDocumentState,
-        ] as const;
-      }
+  const textDocuments = documents.filter((d) => d.kind === "text");
+  const binaryDocuments = documents.filter((d) => d.kind === "binary");
 
-      return [
+  const [currentTextStates, binaryContentEntries] = await Promise.all([
+    loadCurrentTextStateMap(textDocuments, documentTextStateRepository),
+    mapInBatches(binaryDocuments, BINARY_IO_BATCH_SIZE, async (document) => {
+      const base64 = await loadBinaryDocumentContent(
+        binaryContentStore,
+        projectId,
         document.id,
-        {
-          path: document.path,
-          kind: "binary",
-          mime: document.mime,
-          binaryContentBase64: loadBinaryDocumentContent(
-            previousState,
-            document.id,
-          ),
-        } satisfies SnapshotBinaryDocumentState,
-      ] as const;
+        previousState,
+      );
+      return [document.id, base64] as const;
     }),
-  );
+  ]);
+
+  const binaryContentMap = new Map(binaryContentEntries);
+  const nextDocuments: Record<string, SnapshotDocumentState> = {};
+
+  for (const document of textDocuments) {
+    nextDocuments[document.id] = {
+      path: document.path,
+      kind: "text",
+      mime: document.mime,
+      textContent: loadTextDocumentContent({
+        documentId: document.id,
+        previousState,
+        currentTextStates,
+      }),
+    } satisfies SnapshotTextDocumentState;
+  }
+
+  for (const document of binaryDocuments) {
+    nextDocuments[document.id] = {
+      path: document.path,
+      kind: "binary",
+      mime: document.mime,
+      binaryContentBase64: binaryContentMap.get(document.id) ?? "",
+    } satisfies SnapshotBinaryDocumentState;
+  }
 
   return {
     version: 2,
@@ -455,6 +494,89 @@ function buildRestoredProjectDocumentStates({
   );
 }
 
+async function syncBinaryContentStore({
+  binaryContentStore,
+  projectId,
+  currentDocuments,
+  restoredState,
+}: {
+  binaryContentStore: Pick<BinaryContentStore, "put" | "delete">;
+  projectId: string;
+  currentDocuments: StoredDocument[];
+  restoredState: ProjectSnapshotState;
+}): Promise<{ failedPutCount: number }> {
+  const restoredBinaryDocuments = Object.entries(restoredState.documents)
+    .filter(([, doc]) => doc.kind === "binary")
+    .map(([id, doc]) => ({
+      id,
+      doc: doc as SnapshotBinaryDocumentState,
+    }));
+
+  const writableBinaryDocuments: typeof restoredBinaryDocuments = [];
+  const emptyContentDocumentIds: string[] = [];
+
+  for (const entry of restoredBinaryDocuments) {
+    if (!entry.doc.binaryContentBase64) {
+      console.warn(
+        `Snapshot restore: skipping empty binary content for document ${entry.id} in project ${projectId}`,
+      );
+      emptyContentDocumentIds.push(entry.id);
+    } else {
+      writableBinaryDocuments.push(entry);
+    }
+  }
+
+  const putResults = await allSettledInBatches(
+    writableBinaryDocuments,
+    BINARY_IO_BATCH_SIZE,
+    ({ id, doc }) =>
+      binaryContentStore.put(
+        `${projectId}/${id}`,
+        Buffer.from(doc.binaryContentBase64, "base64"),
+      ),
+  );
+
+  let failedPutCount = 0;
+
+  for (const result of putResults) {
+    if (result.status === "rejected") {
+      failedPutCount++;
+      console.error(
+        `Failed to write binary content during restore for project ${projectId}:`,
+        result.reason,
+      );
+    }
+  }
+
+  const restoredDocumentIds = new Set(Object.keys(restoredState.documents));
+  const removedBinaryDocuments = currentDocuments.filter(
+    (document) =>
+      document.kind === "binary" && !restoredDocumentIds.has(document.id),
+  );
+
+  const documentsToDelete = [
+    ...removedBinaryDocuments.map((document) => document.id),
+    ...emptyContentDocumentIds,
+  ];
+
+  const deleteResults = await allSettledInBatches(
+    documentsToDelete,
+    BINARY_IO_BATCH_SIZE,
+    (documentId) => binaryContentStore.delete(`${projectId}/${documentId}`),
+  );
+
+  for (const result of deleteResults) {
+    if (result.status === "rejected") {
+      console.error(
+        `Failed to delete binary content during restore for project ${projectId}:`,
+        result.reason,
+      );
+    }
+  }
+
+  return { failedPutCount };
+}
+
 async function loadCurrentTextStateMap(
   documents: StoredDocument[],
   documentTextStateRepository: Pick<
@@ -508,17 +630,33 @@ function loadTextDocumentFallback(
   return snapshotDocument.textContent;
 }
 
-function loadBinaryDocumentContent(
-  previousState: ProjectSnapshotState,
+async function loadBinaryDocumentContent(
+  binaryContentStore: Pick<BinaryContentStore, "get">,
+  projectId: string,
   documentId: string,
-): string {
-  const snapshotDocument = previousState.documents[documentId];
+  previousState: ProjectSnapshotState,
+): Promise<string> {
+  const storagePath = `${projectId}/${documentId}`;
 
-  if (!snapshotDocument || snapshotDocument.kind !== "binary") {
-    return "";
+  try {
+    const buffer = await binaryContentStore.get(storagePath);
+    return buffer.toString("base64");
+  } catch (error) {
+    if (error instanceof BinaryContentNotFoundError) {
+      const snapshotDocument = previousState.documents[documentId];
+
+      if (snapshotDocument && snapshotDocument.kind === "binary") {
+        return snapshotDocument.binaryContentBase64;
+      }
+
+      console.warn(
+        `Snapshot capture: binary document ${documentId} in project ${projectId} has no content in store or previous snapshot`,
+      );
+      return "";
+    }
+
+    throw error;
   }
-
-  return snapshotDocument.binaryContentBase64;
 }
 
 function parseSnapshotDocumentPath(value: unknown): string {

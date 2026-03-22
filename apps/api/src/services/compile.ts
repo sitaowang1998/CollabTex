@@ -1,7 +1,7 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
 export type CompileInput = {
-  files: Map<string, string>;
+  files: Map<string, string | Buffer>;
   mainFile: string;
   timeoutMs: number;
 };

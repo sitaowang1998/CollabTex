@@ -83,6 +83,9 @@ async function main() {
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
+    const binaryContentStore = createLocalFilesystemBinaryContentStore(
+      config.binaryContentStorageRoot,
+    );
     let resetPublisher: SnapshotResetPublisher = {
       emitDocumentReset: async () => {},
     };
@@ -92,6 +95,8 @@ async function main() {
       documentTextStateRepository,
       collaborationService,
       projectStateRepository,
+      binaryContentStore,
+      documentLookup: documentRepository,
       getResetPublisher: () => resetPublisher,
     });
     const currentTextStateService = createCurrentTextStateService({
@@ -131,6 +136,7 @@ async function main() {
       projectAccessService,
       snapshotService,
       snapshotRefreshTrigger,
+      binaryContentStore,
     });
     const projectService = createProjectService({
       projectRepository,

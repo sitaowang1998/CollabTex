@@ -1,6 +1,11 @@
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
 import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, mapInBatches } from "./concurrency.js";
+import {
   loadLatestProjectSnapshotState,
   type ProjectSnapshotState,
   type SnapshotRepository,
@@ -135,32 +140,51 @@ function assembleTextFiles(
   });
 }
 
-function assembleBinaryFiles(
+async function assembleBinaryFiles(
   binaryDocuments: StoredDocument[],
+  binaryContentStore: Pick<BinaryContentStore, "get">,
+  projectId: string,
   snapshotState: ProjectSnapshotState,
-): ExportedFile[] {
-  const files: ExportedFile[] = [];
+): Promise<ExportedFile[]> {
+  const results = await mapInBatches(
+    binaryDocuments,
+    BINARY_IO_BATCH_SIZE,
+    async (document): Promise<ExportedFile | null> => {
+      const storagePath = `${projectId}/${document.id}`;
 
-  for (const document of binaryDocuments) {
-    const snapshotDoc = snapshotState.documents[document.id];
+      try {
+        const content = await binaryContentStore.get(storagePath);
+        return {
+          relativePath: toRelativePath(document.path),
+          kind: "binary" as const,
+          content,
+        };
+      } catch (error) {
+        if (!(error instanceof BinaryContentNotFoundError)) {
+          throw error;
+        }
+      }
 
-    if (
-      !snapshotDoc ||
-      snapshotDoc.kind !== "binary" ||
-      typeof snapshotDoc.binaryContentBase64 !== "string"
-    ) {
-      console.warn(
-        `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
-      );
-      continue;
-    }
+      const snapshotDoc = snapshotState.documents[document.id];
 
-    files.push({
-      relativePath: toRelativePath(document.path),
-      kind: "binary" as const,
-      content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
-    });
-  }
+      if (
+        !snapshotDoc ||
+        snapshotDoc.kind !== "binary" ||
+        !snapshotDoc.binaryContentBase64
+      ) {
+        console.warn(
+          `Workspace export: binary document "${document.path}" (${document.id}) has no content, skipping`,
+        );
+        return null;
+      }
 
-  return files;
+      return {
+        relativePath: toRelativePath(document.path),
+        kind: "binary" as const,
+        content: Buffer.from(snapshotDoc.binaryContentBase64, "base64"),
+      };
+    },
+  );
+
+  return results.filter((file): file is ExportedFile => file !== null);
 }

@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import type { DocumentTextStateRepository } from "./currentTextState.js";
+import {
+  BinaryContentNotFoundError,
+  type BinaryContentStore,
+} from "./binaryContent.js";
 import type {
   SnapshotRepository,
   SnapshotStore,
@@ -81,8 +85,8 @@ describe("workspace export service", () => {
     }
   });
 
-  it("exports binary files decoded from snapshot", async () => {
-    const { service, documentRepository, snapshotRepository, snapshotStore } =
+  it("exports binary files from the mutable store", async () => {
+    const { service, documentRepository, binaryContentStore } =
       createTestService();
     const binaryContent = Buffer.from("PNG image bytes");
     documentRepository.listForProject.mockResolvedValue([
@@ -92,6 +96,38 @@ describe("workspace export service", () => {
         kind: "binary",
       }),
     ]);
+    binaryContentStore.get.mockResolvedValue(binaryContent);
+
+    const result = await service.exportWorkspace("project-1");
+
+    try {
+      const bytes = await readFile(
+        join(result.directory, "figures", "diagram.png"),
+      );
+      expect(bytes).toEqual(binaryContent);
+      expect(binaryContentStore.get).toHaveBeenCalledWith("project-1/bin-1");
+    } finally {
+      await result.cleanup();
+    }
+  });
+
+  it("falls back to snapshot binary when mutable store has no content", async () => {
+    const {
+      service,
+      documentRepository,
+      binaryContentStore,
+      snapshotRepository,
+      snapshotStore,
+    } = createTestService();
+    const binaryContent = Buffer.from("PNG image bytes");
+    documentRepository.listForProject.mockResolvedValue([
+      createStoredDocument({
+        id: "bin-1",
+        path: "/figures/diagram.png",
+        kind: "binary",
+      }),
+    ]);
+    binaryContentStore.get.mockRejectedValue(new BinaryContentNotFoundError());
     snapshotRepository.listForProject.mockResolvedValue([
       createStoredSnapshot(),
     ]);
@@ -119,8 +155,9 @@ describe("workspace export service", () => {
     }
   });
 
-  it("skips binary files with no snapshot content", async () => {
-    const { service, documentRepository } = createTestService();
+  it("skips binary files with no content in store or snapshot", async () => {
+    const { service, documentRepository, binaryContentStore } =
+      createTestService();
     documentRepository.listForProject.mockResolvedValue([
       createStoredDocument({
         id: "bin-1",
@@ -128,6 +165,7 @@ describe("workspace export service", () => {
         kind: "binary",
       }),
     ]);
+    binaryContentStore.get.mockRejectedValue(new BinaryContentNotFoundError());
 
     const result = await service.exportWorkspace("project-1");
 
@@ -221,6 +259,7 @@ describe("workspace export service", () => {
       documentTextStateRepository: createDocumentTextStateRepository(),
       snapshotRepository: createSnapshotRepository(),
       snapshotStore: createSnapshotStore(),
+      binaryContentStore: createBinaryContentStore(),
       workspaceWriter: failingWriter,
     });
 
@@ -235,12 +274,14 @@ function createTestService() {
   const documentTextStateRepository = createDocumentTextStateRepository();
   const snapshotRepository = createSnapshotRepository();
   const snapshotStore = createSnapshotStore();
+  const binaryContentStore = createBinaryContentStore();
 
   const service = createWorkspaceExportService({
     documentRepository,
     documentTextStateRepository,
     snapshotRepository,
     snapshotStore,
+    binaryContentStore,
     workspaceWriter: createLocalWorkspaceWriter(),
   });
 
@@ -250,6 +291,7 @@ function createTestService() {
     documentTextStateRepository,
     snapshotRepository,
     snapshotStore,
+    binaryContentStore,
   };
 }
 
@@ -280,6 +322,12 @@ function createSnapshotRepository() {
 function createSnapshotStore() {
   return {
     readProjectSnapshot: vi.fn<SnapshotStore["readProjectSnapshot"]>(),
+  };
+}
+
+function createBinaryContentStore() {
+  return {
+    get: vi.fn<BinaryContentStore["get"]>(),
   };
 }
 
