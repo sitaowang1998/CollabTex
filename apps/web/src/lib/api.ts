@@ -81,8 +81,8 @@ async function request<T>(
         refreshInFlight = attemptTokenRefresh();
       }
       newToken = await refreshInFlight;
-    } catch {
-      // Refresh failed — fall through to normal error handling with original 401
+    } catch (refreshErr) {
+      console.warn("Token refresh failed during 401 recovery:", refreshErr);
     } finally {
       refreshInFlight = null;
     }
