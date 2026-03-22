@@ -389,6 +389,35 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/snapshots/{snapshotId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/SnapshotId"
+    get:
+      tags:
+        - Snapshots
+      summary: View the full content of a historical snapshot
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Snapshot metadata with document contents and comment threads
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSnapshotContentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: The snapshot blob is unreadable, invalid, or stored in an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{projectId}/snapshots/{snapshotId}/restore:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -1132,6 +1161,114 @@ components:
       properties:
         snapshot:
           $ref: "#/components/schemas/ProjectSnapshot"
+    ProjectSnapshotContentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshot
+        - documents
+        - commentThreads
+      properties:
+        snapshot:
+          $ref: "#/components/schemas/ProjectSnapshot"
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotDocument"
+        commentThreads:
+          type:
+            - array
+            - "null"
+          items:
+            $ref: "#/components/schemas/SnapshotCommentThread"
+    SnapshotDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - documentId
+        - path
+        - kind
+        - mime
+        - textContent
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        path:
+          type: string
+        kind:
+          type: string
+          enum: [text, binary]
+        mime:
+          type:
+            - string
+            - "null"
+        textContent:
+          type:
+            - string
+            - "null"
+          description: Full text content for text documents; null for binary documents.
+    SnapshotCommentThread:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - documentId
+        - status
+        - startAnchor
+        - endAnchor
+        - quotedText
+        - createdAt
+        - updatedAt
+        - comments
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [open, resolved]
+        startAnchor:
+          type: string
+        endAnchor:
+          type: string
+        quotedText:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotComment"
+    SnapshotComment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - authorId
+        - body
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
     ProjectListResponse:
       type: object
       additionalProperties: false
