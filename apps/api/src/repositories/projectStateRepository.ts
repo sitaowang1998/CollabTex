@@ -267,6 +267,20 @@ export function createProjectStateRepository(
             })),
           });
 
+          const nulledAuthorCount = restoredCommentThreads
+            .flatMap((thread) => thread.comments)
+            .filter(
+              (comment) =>
+                comment.authorId !== null &&
+                !existingUserIds.has(comment.authorId),
+            ).length;
+
+          if (nulledAuthorCount > 0) {
+            console.warn(
+              `Snapshot restore for project ${projectId}: ${nulledAuthorCount} comment(s) had author(s) that no longer exist; restored with null authorId`,
+            );
+          }
+
           const allComments = restoredCommentThreads.flatMap((thread) =>
             thread.comments.map((comment) => ({
               id: comment.id,

@@ -772,6 +772,145 @@ describe("snapshot restore integration", () => {
 
     expect(threads).toHaveLength(0);
   });
+
+  it("restores comments correctly when switching between older and latest snapshots", async () => {
+    const suffix = randomUUID();
+    const snapshotRoot = await mkdtemp(
+      path.join(os.tmpdir(), "collabtex-snapshot-roundtrip-"),
+    );
+    const owner = await createUser(`snapshot-roundtrip-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `Snapshot Roundtrip ${suffix}`,
+    );
+    const documentRepository = createDocumentRepository(getDb());
+    const textStateRepository = createDocumentTextStateRepository(getDb());
+    const commentRepository = createCommentRepository(getDb());
+    const collaborationService = createCollaborationService();
+    const doc = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+
+    await textStateRepository.create({
+      documentId: doc.id,
+      ...createStoredTextState(collaborationService, "\\section{Content}"),
+    });
+
+    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+    const service = createSnapshotService({
+      snapshotRepository: createSnapshotRepository(getDb()),
+      snapshotStore,
+      documentTextStateRepository: textStateRepository,
+      collaborationService,
+      projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: documentRepository,
+      commentThreadLookup: commentRepository,
+      getResetPublisher: () => ({
+        emitDocumentReset: vi.fn(),
+      }),
+    });
+
+    // State 1: one open thread with one comment
+    const threadA = await commentRepository.createThread({
+      projectId: project.id,
+      documentId: doc.id,
+      startAnchor: "a-start",
+      endAnchor: "a-end",
+      quotedText: "quoted A",
+      authorId: owner.id,
+      body: "Thread A comment",
+    });
+
+    const snapshot1 = await service.captureProjectSnapshot({
+      projectId: project.id,
+      authorId: owner.id,
+      documents: [doc],
+    });
+
+    // State 2: resolve thread A, add thread B with two comments
+    await commentRepository.updateThreadStatus({
+      threadId: threadA.id,
+      status: "resolved",
+    });
+
+    const threadB = await commentRepository.createThread({
+      projectId: project.id,
+      documentId: doc.id,
+      startAnchor: "b-start",
+      endAnchor: "b-end",
+      quotedText: "quoted B",
+      authorId: owner.id,
+      body: "Thread B first comment",
+    });
+    await commentRepository.addComment({
+      threadId: threadB.id,
+      authorId: owner.id,
+      body: "Thread B second comment",
+    });
+
+    const snapshot2 = await service.captureProjectSnapshot({
+      projectId: project.id,
+      authorId: owner.id,
+      documents: [doc],
+    });
+
+    // Restore to snapshot 1: thread A open with 1 comment, thread B absent
+    await service.restoreProjectSnapshot({
+      projectId: project.id,
+      snapshotId: snapshot1.id,
+      actorUserId: owner.id,
+    });
+
+    const afterRestore1 = await getDb().commentThread.findMany({
+      where: { projectId: project.id },
+      include: {
+        comments: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    expect(afterRestore1).toHaveLength(1);
+    expect(afterRestore1[0]?.id).toBe(threadA.id);
+    expect(afterRestore1[0]?.status).toBe("open");
+    expect(afterRestore1[0]?.comments).toHaveLength(1);
+    expect(afterRestore1[0]?.comments[0]?.body).toBe("Thread A comment");
+
+    // Restore to snapshot 2: thread A resolved, thread B present with 2 comments
+    await service.restoreProjectSnapshot({
+      projectId: project.id,
+      snapshotId: snapshot2.id,
+      actorUserId: owner.id,
+    });
+
+    const afterRestore2 = await getDb().commentThread.findMany({
+      where: { projectId: project.id },
+      include: {
+        comments: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+
+    expect(afterRestore2).toHaveLength(2);
+
+    const restoredA = afterRestore2.find((t) => t.id === threadA.id);
+    const restoredB = afterRestore2.find((t) => t.id === threadB.id);
+
+    expect(restoredA).toBeDefined();
+    expect(restoredA?.status).toBe("resolved");
+    expect(restoredA?.comments).toHaveLength(1);
+    expect(restoredA?.comments[0]?.body).toBe("Thread A comment");
+
+    expect(restoredB).toBeDefined();
+    expect(restoredB?.status).toBe("open");
+    expect(restoredB?.comments).toHaveLength(2);
+    expect(restoredB?.comments[0]?.body).toBe("Thread B first comment");
+    expect(restoredB?.comments[1]?.body).toBe("Thread B second comment");
+  });
 });
 
 async function createUser(email: string) {

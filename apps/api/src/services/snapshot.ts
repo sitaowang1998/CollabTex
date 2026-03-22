@@ -841,6 +841,8 @@ function parseSnapshotCommentThreads(
   }
 
   const documentIds = new Set(Object.keys(documents));
+  const seenThreadIds = new Set<string>();
+  const seenCommentIds = new Set<string>();
 
   return value.map((entry, index) => {
     if (!isObject(entry)) {
@@ -854,6 +856,14 @@ function parseSnapshotCommentThreads(
         `snapshot commentThreads[${index}].id must be a valid UUID`,
       );
     }
+
+    if (seenThreadIds.has(entry.id)) {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].id is duplicated`,
+      );
+    }
+
+    seenThreadIds.add(entry.id);
 
     if (
       typeof entry.documentId !== "string" ||
@@ -888,15 +898,21 @@ function parseSnapshotCommentThreads(
       );
     }
 
-    if (typeof entry.createdAt !== "string") {
+    if (
+      typeof entry.createdAt !== "string" ||
+      !isValidIsoDateString(entry.createdAt)
+    ) {
       throw new InvalidSnapshotDataError(
-        `snapshot commentThreads[${index}].createdAt must be a string`,
+        `snapshot commentThreads[${index}].createdAt must be a valid ISO date string`,
       );
     }
 
-    if (typeof entry.updatedAt !== "string") {
+    if (
+      typeof entry.updatedAt !== "string" ||
+      !isValidIsoDateString(entry.updatedAt)
+    ) {
       throw new InvalidSnapshotDataError(
-        `snapshot commentThreads[${index}].updatedAt must be a string`,
+        `snapshot commentThreads[${index}].updatedAt must be a valid ISO date string`,
       );
     }
 
@@ -920,9 +936,21 @@ function parseSnapshotCommentThreads(
           );
         }
 
-        if (comment.authorId !== null && typeof comment.authorId !== "string") {
+        if (seenCommentIds.has(comment.id)) {
           throw new InvalidSnapshotDataError(
-            `snapshot commentThreads[${index}].comments[${commentIndex}].authorId must be a string or null`,
+            `snapshot commentThreads[${index}].comments[${commentIndex}].id is duplicated`,
+          );
+        }
+
+        seenCommentIds.add(comment.id);
+
+        if (
+          comment.authorId !== null &&
+          (typeof comment.authorId !== "string" ||
+            !UUID_PATTERN.test(comment.authorId))
+        ) {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}].authorId must be a valid UUID or null`,
           );
         }
 
@@ -932,9 +960,12 @@ function parseSnapshotCommentThreads(
           );
         }
 
-        if (typeof comment.createdAt !== "string") {
+        if (
+          typeof comment.createdAt !== "string" ||
+          !isValidIsoDateString(comment.createdAt)
+        ) {
           throw new InvalidSnapshotDataError(
-            `snapshot commentThreads[${index}].comments[${commentIndex}].createdAt must be a string`,
+            `snapshot commentThreads[${index}].comments[${commentIndex}].createdAt must be a valid ISO date string`,
           );
         }
 
@@ -959,6 +990,10 @@ function parseSnapshotCommentThreads(
       comments,
     };
   });
+}
+
+function isValidIsoDateString(value: string): boolean {
+  return !isNaN(new Date(value).getTime());
 }
 
 const UUID_PATTERN =
