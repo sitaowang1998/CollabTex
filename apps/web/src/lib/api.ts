@@ -19,7 +19,12 @@ export class ApiError extends Error {
   }
 }
 
-const AUTH_PATHS = new Set(["/auth/refresh", "/auth/login", "/auth/register"]);
+const AUTH_PATHS = new Set([
+  "/auth/refresh",
+  "/auth/login",
+  "/auth/register",
+  "/auth/me",
+]);
 
 let refreshInFlight: Promise<string> | null = null;
 
@@ -67,28 +72,31 @@ async function request<T>(
 
   // On 401, attempt a single token refresh and retry — but not for auth
   // endpoints themselves (to avoid infinite loops).
-  const currentToken = localStorage.getItem("token");
-  if (
-    res.status === 401 &&
-    !AUTH_PATHS.has(path) &&
-    token &&
-    currentToken === token
-  ) {
-    let newToken: string | undefined;
-    try {
-      if (!refreshInFlight) {
-        refreshInFlight = attemptTokenRefresh();
-      }
-      newToken = await refreshInFlight;
-    } catch (refreshErr) {
-      console.warn("Token refresh failed during 401 recovery:", refreshErr);
-    } finally {
-      refreshInFlight = null;
-    }
+  if (res.status === 401 && !AUTH_PATHS.has(path) && token) {
+    const currentToken = localStorage.getItem("token");
+    let retryToken: string | undefined;
 
-    if (newToken) {
+    if (currentToken && currentToken !== token) {
+      // Another request already refreshed — retry with the new token directly.
+      retryToken = currentToken;
+    } else if (currentToken === token) {
+      // Token unchanged — perform a refresh-and-retry.
+      try {
+        if (!refreshInFlight) {
+          refreshInFlight = attemptTokenRefresh();
+        }
+        retryToken = await refreshInFlight;
+      } catch (refreshErr) {
+        console.warn("Token refresh failed during 401 recovery:", refreshErr);
+      } finally {
+        refreshInFlight = null;
+      }
+    }
+    // If !currentToken (logged out), skip refresh entirely.
+
+    if (retryToken) {
       const retryHeaders: Record<string, string> = {
-        Authorization: `Bearer ${newToken}`,
+        Authorization: `Bearer ${retryToken}`,
       };
       if (body !== undefined) {
         retryHeaders["Content-Type"] = "application/json";

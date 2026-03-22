@@ -368,6 +368,19 @@ describe("401 refresh interceptor", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("does not attempt refresh for /auth/me", async () => {
+    localStorage.setItem("token", "old-token");
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+
+    await expect(api.get("/auth/me")).rejects.toMatchObject({
+      status: 401,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("does not attempt refresh for /auth/refresh", async () => {
     localStorage.setItem("token", "old-token");
     mockFetch.mockResolvedValueOnce(
