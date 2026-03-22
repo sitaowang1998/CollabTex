@@ -1,7 +1,6 @@
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpApp } from "../app.js";
-import type { AppConfig } from "../../config/appConfig.js";
 import { signToken, type AuthService } from "../../services/auth.js";
 import {
   DocumentNotFoundError,
@@ -17,16 +16,10 @@ import {
 import type { CommentService } from "../../services/commentService.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
-
-const testConfig: AppConfig = {
-  nodeEnv: "test",
-  port: 0,
-  jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173",
-  databaseUrl:
-    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
-  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
-};
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("document routes", () => {
   it("lists the file tree for an authenticated project member", async () => {
@@ -298,7 +291,18 @@ describe("document routes", () => {
 function createDocumentTestApp(documentService: DocumentService) {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
+    compileDispatchService: {
+      compile: async () => {
+        throw new Error("stub");
+      },
+    },
+    compileRetrievalService: {
+      getLatestPdf: async () => {
+        throw new Error("stub");
+      },
+    },
     documentService,
     membershipService: createStubMembershipService(),
     projectService: createStubProjectService(),

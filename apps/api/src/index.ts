@@ -5,7 +5,11 @@ import { loadConfig } from "./config/appConfig.js";
 import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
+import { createDockerCompileAdapter } from "./infrastructure/compile/dockerCompileAdapter.js";
+import { createLocalFilesystemBinaryContentStore } from "./infrastructure/storage/localFilesystemBinaryContentStore.js";
+import { createLocalFilesystemCompileStore } from "./infrastructure/storage/localFilesystemCompileStore.js";
 import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
+import { createCompileBuildRepository } from "./repositories/compileBuildRepository.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
 import { createCommentRepository } from "./repositories/commentRepository.js";
@@ -16,7 +20,10 @@ import { createSnapshotRepository } from "./repositories/snapshotRepository.js";
 import { createSnapshotRefreshJobRepository } from "./repositories/snapshotRefreshJobRepository.js";
 import { createUserRepository } from "./repositories/userRepository.js";
 import { createAuthService } from "./services/auth.js";
+import { createBinaryContentService } from "./services/binaryContent.js";
 import { createCollaborationService } from "./services/collaboration.js";
+import { createCompileDispatchService } from "./services/compileDispatch.js";
+import { createCompileRetrievalService } from "./services/compileRetrieval.js";
 import { createCommentService } from "./services/commentService.js";
 import { createCurrentTextStateService } from "./services/currentTextState.js";
 import { createDocumentService } from "./services/document.js";
@@ -38,6 +45,7 @@ import {
 } from "./services/snapshotRefresh.js";
 import { createWorkspaceService } from "./services/workspace.js";
 import {
+  createCompileDonePublisher,
   createSocketDocumentResetPublisher,
   createSocketServer,
 } from "./ws/socketServer.js";
@@ -142,9 +150,50 @@ async function main() {
       projectAccessService,
       snapshotService,
     });
+    const compileBuildRepository = createCompileBuildRepository(databaseClient);
+    const compileArtifactStore = createLocalFilesystemCompileStore(
+      config.compileStorageRoot,
+    );
+    const compileAdapter = createDockerCompileAdapter({
+      dockerImage: config.compileDockerImage,
+    });
+    let compileDoneNotifier: (
+      event: import("@collab-tex/shared").CompileDoneEvent,
+    ) => void = () => {};
+    const compileDispatchService = createCompileDispatchService({
+      projectAccessService,
+      projectService,
+      fileAssemblyDeps: {
+        documentRepository,
+        documentTextStateRepository,
+        snapshotRepository,
+        snapshotStore,
+      },
+      compileAdapter,
+      compileArtifactStore,
+      compileBuildRepository,
+      compileTimeoutMs: config.compileTimeoutMs,
+      notifyCompileDone: (event) => compileDoneNotifier(event),
+    });
+    const compileRetrievalService = createCompileRetrievalService({
+      projectAccessService,
+      compileBuildRepository,
+      compileArtifactStore,
+    });
+    const binaryContentStore = createLocalFilesystemBinaryContentStore(
+      config.binaryContentStorageRoot,
+    );
+    const binaryContentService = createBinaryContentService({
+      projectAccessService,
+      documentRepository,
+      binaryContentStore,
+    });
     const app = createHttpApp(config, {
       authService,
+      binaryContentService,
       commentService,
+      compileDispatchService,
+      compileRetrievalService,
       documentService,
       membershipService,
       projectService,
@@ -170,6 +219,8 @@ async function main() {
       io,
       activeDocumentRegistry,
     );
+    const compileDonePublisher = createCompileDonePublisher(io);
+    compileDoneNotifier = compileDonePublisher.emitCompileDone;
 
     installShutdownHandlers({
       server,

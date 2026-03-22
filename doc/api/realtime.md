@@ -255,6 +255,28 @@ Behavior:
   - `NOT_FOUND` for missing or non-text documents
   - `UNAVAILABLE` for unexpected realtime persistence failures
 
+### `compile:done`
+
+```json
+{
+  "projectId": "project-123",
+  "status": "success",
+  "logs": "Output written on main.pdf (1 page, 12345 bytes)."
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when a compile finishes
+- sockets join the project room automatically during `workspace:join`
+- `status` is `"success"` when pdflatex produces a PDF (exit code 0), or
+  `"failure"` on compile error or timeout
+- `logs` contains the combined stdout/stderr from the LaTeX compiler when
+  available, or a descriptive failure message when compilation could not
+  produce logs (e.g., no main document found, internal error)
+- this event is a notification for connected clients; the HTTP endpoint that
+  triggered the compile also returns the result synchronously
+
 ## Deferred From This Change
 
 - `presence.update` is part of the broader proposal but is intentionally not

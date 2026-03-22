@@ -45,13 +45,14 @@ model User {
 }
 
 model Project {
-  id                  String               @id @default(uuid()) @db.Uuid
-  name                String               @db.VarChar(160)
-  mainDocumentId      String?              @unique @db.Uuid
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @default(now()) @updatedAt
-  tombstoneAt         DateTime?
-  mainDocument        Document?            @relation("ProjectMainDocument", fields: [mainDocumentId], references: [id], onDelete: SetNull)
+  id                        String               @id @default(uuid()) @db.Uuid
+  name                      String               @db.VarChar(160)
+  mainDocumentId            String?              @unique @db.Uuid
+  latestCompileArtifactPath String?              @db.VarChar(1024)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @default(now()) @updatedAt
+  tombstoneAt               DateTime?
+  mainDocument              Document?            @relation("ProjectMainDocument", fields: [mainDocumentId], references: [id], onDelete: SetNull)
   memberships         ProjectMembership[]
   documents           Document[]
   snapshots           Snapshot[]

@@ -12,6 +12,7 @@ tags:
   - name: Members
   - name: Snapshots
   - name: Comments
+  - name: Compile
   - name: Documents
 paths:
   /api/health:
@@ -646,6 +647,135 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/files/{fileId}/content:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: fileId
+        in: path
+        required: true
+        description: UUID of the binary document to upload content for.
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags:
+        - Documents
+      summary: Upload binary file content
+      description: >
+        Accepts a multipart file upload for a binary document. The uploaded
+        content replaces any previously stored content for the document.
+        Only binary-kind documents are accepted; uploading to a text document
+        returns 400. Requires admin or editor role.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The binary file to upload (max 50 MB).
+      responses:
+        "204":
+          description: Content uploaded successfully
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: Payload too large (uploaded file exceeds 50 MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/projects/{projectId}/compile:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags:
+        - Compile
+      summary: Trigger a LaTeX compile for the project
+      description: >
+        Triggers an in-memory LaTeX compile using the project's main document
+        as the entrypoint. Requires admin or editor role. Only one compile per
+        project at a time — concurrent requests return 409. The response is
+        returned synchronously after compile completes. A `compile:done` socket
+        event is also emitted to the project room. Note: the compile pipeline
+        currently only includes text-based project files; binary assets such as
+        images are not passed to the compiler, so projects that depend on such
+        assets may fail to compile as expected.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Compile completed (check status field for success/failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompileResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Compile already in progress for this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected server error during compile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/projects/{projectId}/compile/pdf:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags:
+        - Compile
+      summary: Download the latest compiled PDF
+      description: >
+        Returns the PDF artifact from the most recent successful compile.
+        Requires project membership (any role). Returns 404 if no successful
+        build exists.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: The compiled PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: Unexpected server error during PDF retrieval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     BearerAuth:
@@ -734,6 +864,21 @@ components:
         ok:
           type: boolean
           const: true
+    CompileResult:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - logs
+      properties:
+        status:
+          type: string
+          enum:
+            - success
+            - failure
+        logs:
+          type: string
+          description: LaTeX compiler output (stdout + stderr)
     ErrorResponse:
       type: object
       additionalProperties: false

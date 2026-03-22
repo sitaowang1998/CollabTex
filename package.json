@@ -9,7 +9,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c auto \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
+    "dev": "concurrently -n web,api -c auto \"VITE_API_TARGET=http://localhost:13000 npm run dev -w apps/web -- --port 15173 --host\" \"npm run dev -w apps/api\"",
+    "dev:full": "tsx scripts/runDev.ts",
+    "dev:db": "docker compose -f docker-compose.dev.yml up -d --wait",
+    "dev:db:stop": "docker compose -f docker-compose.dev.yml down",
+    "dev:db:reset": "docker compose -f docker-compose.dev.yml down -v && docker compose -f docker-compose.dev.yml up -d --wait",
     "docs:api": "npm run docs:serve -w apps/api",
     "build": "npm run prisma:generate -w apps/api && tsc -b && npm run build -w apps/web",
     "clean": "tsc -b --clean",
@@ -22,10 +26,12 @@
     "lint:js:fix": "eslint . --fix",
     "lint:yaml": "uvx yamllint -s .github apps doc",
     "lint:fix": "npm run lint:js:fix",
-    "typecheck": "npm run prisma:generate -w apps/api && tsc -b --emitDeclarationOnly"
+    "typecheck": "npm run prisma:generate -w apps/api && tsc -b --emitDeclarationOnly",
+    "test:e2e": "tsx e2e/scripts/runE2eTests.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.0.0",
     "eslint": "^9.39.3",
     "eslint-plugin-jsonc": "^3.1.0",

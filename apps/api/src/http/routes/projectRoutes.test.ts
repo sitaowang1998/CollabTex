@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createHttpApp } from "../app.js";
-import type { AppConfig } from "../../config/appConfig.js";
 import {
   createAuthService,
   DuplicateEmailError,
@@ -20,6 +19,8 @@ import {
 import type { StoredDocument } from "../../services/document.js";
 import type { AuthService } from "../../services/auth.js";
 import type { CommentService } from "../../services/commentService.js";
+import type { CompileDispatchService } from "../../services/compileDispatch.js";
+import type { CompileRetrievalService } from "../../services/compileRetrieval.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
@@ -27,16 +28,10 @@ import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
 } from "../../test/helpers/passwordHasher.js";
-
-const testConfig: AppConfig = {
-  nodeEnv: "test",
-  port: 0,
-  jwtSecret: "test_secret",
-  clientOrigin: "http://localhost:5173",
-  databaseUrl:
-    "postgresql://invalid:invalid@invalid.invalid:5432/invalid?schema=public",
-  snapshotStorageRoot: "/tmp/collabtex-test-snapshots",
-};
+import {
+  createStubBinaryContentService,
+  testConfig,
+} from "../../test/helpers/appFactory.js";
 
 describe("project routes", () => {
   it("creates a project and lists it with admin role for the creator", async () => {
@@ -545,7 +540,10 @@ function createProjectTestApp() {
       jwtSecret: testConfig.jwtSecret,
       dummyPasswordHash: TEST_DUMMY_PASSWORD_HASH,
     }),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
+    compileDispatchService: createStubCompileDispatchService(),
+    compileRetrievalService: createStubCompileRetrievalService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: createProjectService({
@@ -565,7 +563,10 @@ function createProjectTestApp() {
 function createRoleRequiredProjectApp() {
   return createHttpApp(testConfig, {
     authService: createStubAuthService(),
+    binaryContentService: createStubBinaryContentService(),
     commentService: createStubCommentService(),
+    compileDispatchService: createStubCompileDispatchService(),
+    compileRetrievalService: createStubCompileRetrievalService(),
     documentService: createStubDocumentService(),
     membershipService: createStubMembershipService(),
     projectService: {
@@ -636,6 +637,22 @@ function createStubDocumentService(): DocumentService {
       throw new Error("Not implemented for project route tests");
     },
     getFileContent: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubCompileDispatchService(): CompileDispatchService {
+  return {
+    compile: async () => {
+      throw new Error("Not implemented for project route tests");
+    },
+  };
+}
+
+function createStubCompileRetrievalService(): CompileRetrievalService {
+  return {
+    getLatestPdf: async () => {
       throw new Error("Not implemented for project route tests");
     },
   };

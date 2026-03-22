@@ -2,6 +2,7 @@ import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
 import type {
   ClientToServerEvents,
+  CompileDoneEvent,
   ServerToClientEvents,
   ClientDocumentUpdateEvent,
   WorkspaceErrorEvent,
@@ -76,6 +77,7 @@ export function createSocketServer(
     const userId = socket.data.userId;
     let latestJoinSequence = 0;
     let activeWorkspaceRoomName: string | null = null;
+    let activeProjectRoomName: string | null = null;
     let activeTextSession: ActiveTextSessionState | null = null;
 
     if (!userId) {
@@ -107,6 +109,10 @@ export function createSocketServer(
         getActiveWorkspaceRoomName: () => activeWorkspaceRoomName,
         setActiveWorkspaceRoomName: (roomName) => {
           activeWorkspaceRoomName = roomName;
+        },
+        getActiveProjectRoomName: () => activeProjectRoomName,
+        setActiveProjectRoomName: (roomName) => {
+          activeProjectRoomName = roomName;
         },
         getActiveTextSession: () => activeTextSession,
         swapActiveTextSession: (nextSession) => {
@@ -270,6 +276,27 @@ export function createSocketDocumentResetPublisher(
   };
 }
 
+export function createCompileDonePublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitCompileDone: (event: CompileDoneEvent) => {
+      try {
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "compile:done",
+          event,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to broadcast compile:done",
+          { projectId: event.projectId },
+          error,
+        );
+      }
+    },
+  };
+}
+
 export async function openWorkspace(
   socket: WorkspaceSocket,
   workspaceService: WorkspaceService,
@@ -284,6 +311,8 @@ export async function openWorkspace(
     isLatestJoin: () => boolean;
     getActiveWorkspaceRoomName: () => string | null;
     setActiveWorkspaceRoomName: (roomName: string) => void;
+    getActiveProjectRoomName: () => string | null;
+    setActiveProjectRoomName: (roomName: string) => void;
     getActiveTextSession: () => ActiveTextSessionState | null;
     swapActiveTextSession: (
       nextSession: ActiveTextSessionState | null,
@@ -385,6 +414,19 @@ export async function openWorkspace(
         });
         joinedSessionHandle = null;
         input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+
+        const projectRoomJoined = await joinProjectRoom(
+          socket,
+          input,
+          input.workspaceOpenInput.projectId,
+        );
+        if (!projectRoomJoined) {
+          if (previousSession) {
+            void leaveActiveTextSession(socket, previousSession);
+          }
+          return;
+        }
+
         socket.emit("workspace:opened", openedWorkspace.workspace);
         socket.emit("doc.sync.response", syncResponse);
 
@@ -397,6 +439,19 @@ export async function openWorkspace(
 
       const previousSession = input.swapActiveTextSession(null);
       input.setActiveWorkspaceRoomName(nextWorkspaceRoomName);
+
+      const projectRoomJoined = await joinProjectRoom(
+        socket,
+        input,
+        input.workspaceOpenInput.projectId,
+      );
+      if (!projectRoomJoined) {
+        if (previousSession) {
+          void leaveActiveTextSession(socket, previousSession);
+        }
+        return;
+      }
+
       socket.emit("workspace:opened", openedWorkspace.workspace);
 
       if (previousSession) {
@@ -760,6 +815,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export function createProjectRoomName(projectId: string): string {
+  return `project:${projectId}`;
+}
+
 export function createWorkspaceRoomName(
   projectId: string,
   documentId: string,
@@ -927,6 +986,40 @@ function shouldSuppressStaleSessionFailure(
   }
 
   return !input.isCurrentSession();
+}
+
+async function joinProjectRoom(
+  socket: WorkspaceSocket,
+  input: {
+    isLatestJoin: () => boolean;
+    getActiveProjectRoomName: () => string | null;
+    setActiveProjectRoomName: (roomName: string) => void;
+  },
+  projectId: string,
+): Promise<boolean> {
+  const nextProjectRoomName = createProjectRoomName(projectId);
+  const previousProjectRoomName = input.getActiveProjectRoomName();
+
+  if (
+    previousProjectRoomName &&
+    previousProjectRoomName !== nextProjectRoomName
+  ) {
+    await socket.leave(previousProjectRoomName);
+
+    if (!input.isLatestJoin()) {
+      return false;
+    }
+  }
+
+  await socket.join(nextProjectRoomName);
+
+  if (!input.isLatestJoin()) {
+    await socket.leave(nextProjectRoomName);
+    return false;
+  }
+
+  input.setActiveProjectRoomName(nextProjectRoomName);
+  return true;
 }
 
 async function leaveJoinedRoomIfNeeded(

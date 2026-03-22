@@ -8,12 +8,15 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:fs/promises", () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
+  readFile: vi.fn().mockResolvedValue(undefined),
   rm: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { execFile } = await import("node:child_process");
 const mockedExecFile = vi.mocked(execFile);
+const { readFile } = await import("node:fs/promises");
+const mockedReadFile = vi.mocked(readFile);
 
 function validInput() {
   return {
@@ -80,6 +83,9 @@ describe("dockerCompileAdapter successful compilation", () => {
   const adapter = createDockerCompileAdapter();
 
   it("returns completed with exit code 0 on success", async () => {
+    const pdfBuffer = Buffer.from("%PDF-1.4\n");
+    mockedReadFile.mockResolvedValueOnce(pdfBuffer as never);
+
     mockedExecFile.mockImplementation((...args: unknown[]) => {
       const cb = getCallback(args);
       const cmd = args[1] as string[];
@@ -97,6 +103,7 @@ describe("dockerCompileAdapter successful compilation", () => {
       outcome: "completed",
       exitCode: 0,
       logs: "pdflatex outputpdflatex stderr",
+      pdfContent: pdfBuffer,
     });
 
     // Verify the docker run args on the first call (the "run" invocation)
@@ -117,6 +124,48 @@ describe("dockerCompileAdapter successful compilation", () => {
     expect(dockerArgs).toContain("pdflatex");
     expect(dockerArgs).toContain("-interaction=nonstopmode");
     expect(dockerArgs).toContain("./main.tex");
+  });
+
+  it("reads PDF from working directory when mainFile is in a subdirectory", async () => {
+    const pdfBuffer = Buffer.from("%PDF-nested");
+    mockedReadFile.mockResolvedValueOnce(pdfBuffer as never);
+
+    mockedExecFile.mockImplementation((...args: unknown[]) => {
+      const cb = getCallback(args);
+      const cmd = args[1] as string[];
+      if (cmd[0] === "run") {
+        cb(null, "output", "");
+      } else {
+        cb(null, "", "");
+      }
+      return { kill: vi.fn() } as unknown as ChildProcess;
+    });
+
+    const result = await adapter.compile({
+      files: new Map([
+        [
+          "chapters/main.tex",
+          "\\documentclass{article}\\begin{document}Hello\\end{document}",
+        ],
+      ]),
+      mainFile: "chapters/main.tex",
+      timeoutMs: 5000,
+    });
+
+    expect(result).toEqual({
+      outcome: "completed",
+      exitCode: 0,
+      logs: "output",
+      pdfContent: pdfBuffer,
+    });
+
+    // Verify readFile was called with basename (main.pdf), not chapters/main.pdf
+    const readFileCalls = mockedReadFile.mock.calls;
+    const pdfReadCall = readFileCalls.find((call) =>
+      String(call[0]).endsWith("main.pdf"),
+    );
+    expect(pdfReadCall).toBeDefined();
+    expect(String(pdfReadCall![0])).not.toContain("chapters");
   });
 
   it("returns completed with non-zero exit code on compile failure", async () => {
