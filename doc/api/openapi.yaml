@@ -87,6 +87,26 @@ paths:
                 $ref: "#/components/schemas/AuthMeResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Refresh the current token
+      description: >-
+        Accepts a valid (non-expired) Bearer token and returns a fresh token
+        with a new expiry window. The caller must present a current token;
+        expired tokens are rejected with 401.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/projects:
     get:
       tags:
