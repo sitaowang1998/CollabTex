@@ -145,6 +145,12 @@ export function createProjectService({
       });
     },
     deleteProject: async (input) => {
+      await projectAccessService.requireProjectRole(
+        input.projectId,
+        input.userId,
+        ["admin"],
+      );
+
       let binaryDocuments: StoredDocument[] = [];
       if (documentListing && binaryContentStore) {
         try {

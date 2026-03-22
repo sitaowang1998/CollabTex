@@ -111,9 +111,8 @@ describe("project service", () => {
     expect(result).toBe(updatedProject);
   });
 
-  it("maps missing rows during delete to not found", async () => {
+  it("rejects delete for non-members", async () => {
     const repository = createProjectRepository();
-    repository.softDelete.mockRejectedValue(new ProjectNotFoundError());
     const service = createProjectService({
       projectRepository: repository,
       documentLookup: createDocumentLookup(),
@@ -126,17 +125,38 @@ describe("project service", () => {
       }),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
 
-    expect(repository.softDelete).toHaveBeenCalledWith({
-      projectId: "project-1",
-      actorUserId: "user-1",
-      deletedAt: expect.any(Date),
+    expect(repository.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("rejects delete for non-admin members", async () => {
+    const repository = createProjectRepository();
+    repository.findForUser.mockResolvedValue({
+      project: createStoredProject(),
+      myRole: "editor",
     });
+    const service = createProjectService({
+      projectRepository: repository,
+      documentLookup: createDocumentLookup(),
+    });
+
+    await expect(
+      service.deleteProject({
+        projectId: "project-1",
+        userId: "user-1",
+      }),
+    ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
+
+    expect(repository.softDelete).not.toHaveBeenCalled();
   });
 
   describe("binary content cleanup on delete", () => {
     it("lists documents before soft-deleting the project", async () => {
       const callOrder: string[] = [];
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockImplementation(async () => {
         callOrder.push("softDelete");
       });
@@ -158,6 +178,10 @@ describe("project service", () => {
 
     it("deletes binary content for binary documents after soft-delete", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const documentListing = createDocumentListing();
       const binaryContentStore = createBinaryContentStore();
@@ -182,6 +206,10 @@ describe("project service", () => {
 
     it("skips binary cleanup when no binary documents exist", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const documentListing = createDocumentListing();
       const binaryContentStore = createBinaryContentStore();
@@ -201,6 +229,10 @@ describe("project service", () => {
 
     it("continues successfully when binary cleanup fails", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const documentListing = createDocumentListing();
       const binaryContentStore = createBinaryContentStore();
@@ -228,6 +260,10 @@ describe("project service", () => {
 
     it("skips binary cleanup when dependencies not provided", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const service = createProjectService({
         projectRepository: repository,
@@ -240,6 +276,10 @@ describe("project service", () => {
 
     it("still soft-deletes when document listing fails", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const documentListing = createDocumentListing();
       const binaryContentStore = createBinaryContentStore();
@@ -268,6 +308,10 @@ describe("project service", () => {
 
     it("continues deleting remaining files when one cleanup fails", async () => {
       const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
       repository.softDelete.mockResolvedValue(undefined);
       const documentListing = createDocumentListing();
       const binaryContentStore = createBinaryContentStore();
