@@ -270,6 +270,7 @@ function createInMemoryProjectRepository(): ProjectRepository {
 
       return;
     },
+    touchUpdatedAt: async () => {},
   };
 }
 
