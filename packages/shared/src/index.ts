@@ -227,6 +227,11 @@ export type CompileDoneEvent = {
   logs: string;
 };
 
+export type PresenceUpdateEvent = {
+  documentId: string;
+  awarenessB64: string;
+};
+
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
@@ -235,10 +240,12 @@ export type ServerToClientEvents = {
   "doc.update.ack": (data: DocumentUpdateAckEvent) => void;
   "doc.reset": (data: DocumentResetEvent) => void;
   "compile:done": (data: CompileDoneEvent) => void;
+  "presence.update": (data: PresenceUpdateEvent) => void;
 };
 
 export type ClientToServerEvents = {
   "workspace:join": (data: WorkspaceJoinRequest) => void;
   "doc.sync.request": (data: DocumentSyncRequest) => void;
   "doc.update": (data: ClientDocumentUpdateEvent) => void;
+  "presence.update": (data: PresenceUpdateEvent) => void;
 };
