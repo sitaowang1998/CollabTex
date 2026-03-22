@@ -32,6 +32,11 @@ export type BinaryContentService = {
     fileId: string;
     content: Buffer;
   }): Promise<void>;
+  downloadContent(input: {
+    projectId: string;
+    actorUserId: string;
+    fileId: string;
+  }): Promise<Buffer>;
 };
 
 export function createBinaryContentService({
@@ -65,6 +70,25 @@ export function createBinaryContentService({
 
       const storagePath = `${projectId}/${fileId}`;
       await binaryContentStore.put(storagePath, content);
+    },
+
+    downloadContent: async ({ projectId, actorUserId, fileId }) => {
+      await projectAccessService.requireProjectMember(projectId, actorUserId);
+
+      const document = await documentRepository.findById(projectId, fileId);
+
+      if (!document) {
+        throw new DocumentNotFoundError();
+      }
+
+      if (document.kind !== "binary") {
+        throw new BinaryContentValidationError(
+          "content download is only allowed for binary documents",
+        );
+      }
+
+      const storagePath = `${projectId}/${fileId}`;
+      return binaryContentStore.get(storagePath);
     },
   };
 }

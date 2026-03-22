@@ -11,6 +11,7 @@ import {
   ProjectRoleRequiredError,
 } from "../../services/project.js";
 import {
+  BinaryContentNotFoundError,
   BinaryContentValidationError,
   type BinaryContentService,
 } from "../../services/binaryContent.js";
@@ -82,6 +83,38 @@ export function createBinaryContentRouter(
     },
   );
 
+  router.get(
+    "/api/projects/:projectId/files/:fileId/content",
+    requireAuth,
+    async (req, res, next) => {
+      try {
+        const authenticatedRequest = req as AuthenticatedRequest;
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+        const fileId = parseUuidParam(req.params.fileId, "fileId");
+
+        if (projectId instanceof HttpError) {
+          next(projectId);
+          return;
+        }
+
+        if (fileId instanceof HttpError) {
+          next(fileId);
+          return;
+        }
+
+        const content = await binaryContentService.downloadContent({
+          projectId,
+          actorUserId: authenticatedRequest.userId,
+          fileId,
+        });
+
+        res.contentType("application/octet-stream").send(content);
+      } catch (error) {
+        next(mapBinaryContentError(error));
+      }
+    },
+  );
+
   return router;
 }
 
@@ -96,6 +129,10 @@ function mapBinaryContentError(error: unknown): Error {
 
   if (error instanceof BinaryContentValidationError) {
     return new HttpError(400, error.message);
+  }
+
+  if (error instanceof BinaryContentNotFoundError) {
+    return new HttpError(404, "binary content not found");
   }
 
   if (error instanceof ProjectNotFoundError) {
