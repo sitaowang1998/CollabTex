@@ -675,6 +675,233 @@ describe("snapshot service", () => {
       ),
     );
   });
+
+  it("rejects malformed comment thread data in snapshot payloads", () => {
+    const validDoc = {
+      "11111111-1111-1111-1111-111111111111": {
+        path: "/main.tex",
+        kind: "text",
+        mime: null,
+        textContent: "body",
+      },
+    };
+
+    // commentThreads must be an array
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: "not-an-array",
+      }),
+    ).toThrow("snapshot commentThreads must be an array");
+
+    // thread id must be a valid UUID
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "not-a-uuid",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[0].id must be a valid UUID");
+
+    // duplicate thread ids
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "c",
+            endAnchor: "d",
+            quotedText: "q2",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[1].id is duplicated");
+
+    // thread documentId must reference a document in the snapshot
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "99999999-9999-9999-9999-999999999999",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow(
+      "commentThreads[0].documentId must reference a document in the snapshot",
+    );
+
+    // invalid date string
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "not-a-date",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[0].createdAt must be a valid ISO date string");
+
+    // duplicate comment ids
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: null,
+                body: "one",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: null,
+                body: "two",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("comments[1].id is duplicated");
+
+    // comment authorId must be a valid UUID when non-null
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: "not-a-uuid",
+                body: "text",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("comments[0].authorId must be a valid UUID or null");
+  });
+
+  it("parses valid comment threads in snapshot payloads", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+      commentThreads: [
+        {
+          id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          documentId: "11111111-1111-1111-1111-111111111111",
+          status: "open",
+          startAnchor: "a",
+          endAnchor: "b",
+          quotedText: "q",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T00:00:00.000Z",
+          comments: [
+            {
+              id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+              authorId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+              body: "hello",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.commentThreads).toHaveLength(1);
+    expect(result.commentThreads[0]?.id).toBe(
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    );
+    expect(result.commentThreads[0]?.comments).toHaveLength(1);
+    expect(result.commentThreads[0]?.comments[0]?.body).toBe("hello");
+  });
+
+  it("defaults commentThreads to empty when field is absent", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+    });
+
+    expect(result.commentThreads).toEqual([]);
+  });
 });
 
 function createSnapshotRepository() {
