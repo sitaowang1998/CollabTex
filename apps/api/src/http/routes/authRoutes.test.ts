@@ -315,4 +315,62 @@ describe("auth routes", () => {
 
     expect(response.body).toEqual({ error: "invalid token" });
   });
+
+  it("refreshes a valid token and returns a new auth response", async () => {
+    const app = createTestApp();
+
+    const registerResponse = await request(app)
+      .post("/api/auth/register")
+      .send({
+        email: "alice@example.com",
+        name: "Alice",
+        password: "secret",
+      });
+    const token = registerResponse.body.token as string;
+
+    const response = await request(app)
+      .post("/api/auth/refresh")
+      .set("authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      token: expect.any(String),
+      user: {
+        id: expect.any(String),
+        email: "alice@example.com",
+        name: "Alice",
+      },
+    });
+  });
+
+  it("rejects refresh without a bearer token", async () => {
+    const app = createTestApp();
+
+    const response = await request(app).post("/api/auth/refresh").expect(401);
+
+    expect(response.body).toEqual({ error: "missing token" });
+  });
+
+  it("rejects refresh with an invalid bearer token", async () => {
+    const app = createTestApp();
+
+    const response = await request(app)
+      .post("/api/auth/refresh")
+      .set("authorization", "Bearer definitely-not-a-jwt")
+      .expect(401);
+
+    expect(response.body).toEqual({ error: "invalid token" });
+  });
+
+  it("rejects refresh when the token user does not exist", async () => {
+    const app = createTestApp();
+    const token = signToken("missing-user-id", testConfig.jwtSecret);
+
+    const response = await request(app)
+      .post("/api/auth/refresh")
+      .set("authorization", `Bearer ${token}`)
+      .expect(401);
+
+    expect(response.body).toEqual({ error: "invalid token" });
+  });
 });

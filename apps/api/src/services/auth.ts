@@ -35,6 +35,7 @@ export type AuthService = {
   register: (input: RegisterRequest) => Promise<AuthResponse>;
   login: (input: LoginRequest) => Promise<AuthResponse>;
   getAuthenticatedUser: (userId: string) => Promise<AuthUser>;
+  refreshToken: (userId: string) => Promise<AuthResponse>;
 };
 
 export class DuplicateEmailError extends Error {
@@ -141,6 +142,18 @@ export function createAuthService({
       }
 
       return toAuthUser(user);
+    },
+    refreshToken: async (userId) => {
+      const user = await userRepository.findById(userId);
+
+      if (!user) {
+        throw new AuthenticatedUserNotFoundError();
+      }
+
+      return {
+        token: signToken(user.id, jwtSecret),
+        user: toAuthUser(user),
+      };
     },
   };
 }

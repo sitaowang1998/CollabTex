@@ -163,17 +163,22 @@ describe("api", () => {
     });
   });
 
-  it("throws ApiError with server message on 401 without side effects", async () => {
+  it("throws ApiError on 401 when refresh also fails", async () => {
     localStorage.setItem("token", "old-token");
 
-    mockFetch.mockResolvedValue(jsonResponse({ error: "Token expired" }, 401));
+    // Original request: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "Token expired" }, 401),
+    );
+    // Refresh attempt: also 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
 
     await expect(api.get("/secret")).rejects.toMatchObject({
       status: 401,
       message: "Token expired",
     });
-    // api.ts should NOT clear localStorage or redirect — that's AuthContext's job
-    expect(localStorage.getItem("token")).toBe("old-token");
   });
 
   it("falls back to statusText for non-JSON error body", async () => {
@@ -305,5 +310,74 @@ describe("api", () => {
       status: 200,
       message: "Invalid response format",
     });
+  });
+});
+
+describe("401 refresh interceptor", () => {
+  it("retries the request after a successful token refresh", async () => {
+    localStorage.setItem("token", "old-token");
+
+    // Original: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    // Refresh: success
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        token: "new-token",
+        user: { id: "u1", email: "a@b.com", name: "A" },
+      }),
+    );
+    // Retry: success
+    mockFetch.mockResolvedValueOnce(jsonResponse({ data: "hello" }));
+
+    const result = await api.get<{ data: string }>("/projects");
+
+    expect(result).toEqual({ data: "hello" });
+    expect(localStorage.getItem("token")).toBe("new-token");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    // Verify retry used the new token
+    const retryHeaders = mockFetch.mock.calls[2][1].headers;
+    expect(retryHeaders.Authorization).toBe("Bearer new-token");
+  });
+
+  it("does not attempt refresh for /auth/login", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid email or password" }, 401),
+    );
+
+    await expect(
+      api.post("/auth/login", { email: "a@b.com", password: "wrong" }),
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attempt refresh for /auth/register", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "invalid" }, 401));
+
+    await expect(
+      api.post("/auth/register", {
+        email: "a@b.com",
+        name: "A",
+        password: "p",
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attempt refresh for /auth/refresh", async () => {
+    localStorage.setItem("token", "old-token");
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+
+    await expect(api.post("/auth/refresh")).rejects.toMatchObject({
+      status: 401,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

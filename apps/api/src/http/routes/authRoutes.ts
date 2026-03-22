@@ -63,6 +63,19 @@ export function createAuthRouter(config: AppConfig, authService: AuthService) {
     }
   });
 
+  router.post("/api/auth/refresh", requireAuth, async (req, res, next) => {
+    try {
+      const authenticatedRequest = req as AuthenticatedRequest;
+      const response = await authService.refreshToken(
+        authenticatedRequest.userId,
+      );
+
+      res.json(response);
+    } catch (error) {
+      next(mapAuthError(error));
+    }
+  });
+
   return router;
 }
 

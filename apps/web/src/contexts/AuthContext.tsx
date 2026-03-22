@@ -18,6 +18,8 @@ import { AuthContext, authReducer, type AuthState } from "./AuthContextDef";
 const initialState = (hasToken: boolean): AuthState =>
   hasToken ? { status: "loading" } : { status: "unauthenticated" };
 
+const TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     authReducer,
@@ -80,6 +82,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelledRef.current.cancelled = true;
     };
   }, [verifyAuth]);
+
+  // Proactive token refresh: while authenticated, periodically fetch a fresh
+  // token so the session survives beyond the 15-minute JWT expiry window.
+  useEffect(() => {
+    if (state.status !== "authenticated") return;
+
+    const intervalId = setInterval(() => {
+      api
+        .post<AuthResponse>("/auth/refresh")
+        .then((data) => {
+          if (data.token) {
+            localStorage.setItem("token", data.token);
+          }
+          if (data.user) {
+            dispatch({ type: "VERIFY_SUCCESS", user: data.user });
+          }
+        })
+        .catch((error: unknown) => {
+          if (error instanceof ApiError && error.status === 401) {
+            localStorage.removeItem("token");
+            dispatch({ type: "LOGOUT" });
+          }
+          // Network / transient errors are ignored — the reactive interceptor
+          // in api.ts will handle 401s on individual requests.
+        });
+    }, TOKEN_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [state.status]);
 
   /** @throws {ApiError} Callers must catch — auth failure is re-thrown after dispatching. */
   const login = useCallback(async (email: string, password: string) => {

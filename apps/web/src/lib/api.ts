@@ -1,3 +1,5 @@
+import type { AuthResponse } from "@collab-tex/shared";
+
 const BASE_URL = "/api";
 
 export const NETWORK_ERROR_STATUS = 0 as const;
@@ -15,6 +17,26 @@ export class ApiError extends Error {
     );
     this.name = "ApiError";
   }
+}
+
+const AUTH_PATHS = new Set(["/auth/refresh", "/auth/login", "/auth/register"]);
+
+let refreshInFlight: Promise<string> | null = null;
+
+async function attemptTokenRefresh(): Promise<string> {
+  const res = await fetch(`${BASE_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!res.ok) {
+    throw new ApiError(res.status, "Token refresh failed");
+  }
+
+  const data = (await res.json()) as AuthResponse;
+  localStorage.setItem("token", data.token);
+  return data.token;
 }
 
 async function request<T>(
@@ -50,17 +72,43 @@ async function request<T>(
     );
   }
 
-  // No special 401 interception (e.g., auto-redirect or token refresh).
-  // 401s throw as normal ApiErrors. AuthContext catches 401s from /auth/me
-  // to coordinate session cleanup; other 401s are thrown to callers.
+  // On 401, attempt a single token refresh and retry — but not for auth
+  // endpoints themselves (to avoid infinite loops).
+  if (res.status === 401 && !AUTH_PATHS.has(path)) {
+    try {
+      if (!refreshInFlight) {
+        refreshInFlight = attemptTokenRefresh();
+      }
+      const newToken = await refreshInFlight;
+      refreshInFlight = null;
+
+      const retryHeaders: Record<string, string> = {
+        Authorization: `Bearer ${newToken}`,
+      };
+      if (body !== undefined) {
+        retryHeaders["Content-Type"] = "application/json";
+      }
+
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        method,
+        headers: retryHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      res = retryRes;
+    } catch {
+      refreshInFlight = null;
+      // Refresh failed — fall through to normal error handling with original 401
+    }
+  }
+
   if (!res.ok) {
     let message = res.statusText || `Request failed (${res.status})`;
     let fields: Record<string, string> | undefined;
 
     try {
       const data = await res.json();
-      // Handles string errors (per API spec) and structured errors with
-      // message + fields (for future validation endpoints).
       if (data.error) {
         if (typeof data.error === "string") {
           message = data.error;
