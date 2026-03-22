@@ -5,7 +5,13 @@ import {
   type ProjectWithRole,
   type StoredProject,
 } from "./projectAccess.js";
-import { DOCUMENT_WRITE_ROLES, type StoredDocument } from "./document.js";
+import { type BinaryContentStore } from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, allSettledInBatches } from "./concurrency.js";
+import {
+  DOCUMENT_WRITE_ROLES,
+  type DocumentRepository,
+  type StoredDocument,
+} from "./document.js";
 
 export type DocumentLookup = {
   findById: (
@@ -104,6 +110,8 @@ export function createProjectService({
     findById: async () => null,
     findByPath: async () => null,
   },
+  documentListing,
+  binaryContentStore,
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
@@ -111,8 +119,13 @@ export function createProjectService({
 }: {
   projectRepository: ProjectRepository;
   documentLookup?: DocumentLookup;
+  documentListing?: Pick<DocumentRepository, "listForProject">;
+  binaryContentStore?: Pick<BinaryContentStore, "delete">;
   projectAccessService?: ProjectAccessService;
-  logger?: { warn: (message: string) => void };
+  logger?: {
+    warn: (message: string) => void;
+    error: (...args: unknown[]) => void;
+  };
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -132,11 +145,50 @@ export function createProjectService({
       });
     },
     deleteProject: async (input) => {
+      await projectAccessService.requireProjectRole(
+        input.projectId,
+        input.userId,
+        ["admin"],
+      );
+
+      let binaryDocuments: StoredDocument[] = [];
+      if (documentListing && binaryContentStore) {
+        try {
+          const documents = await documentListing.listForProject(
+            input.projectId,
+          );
+          binaryDocuments = documents.filter((d) => d.kind === "binary");
+        } catch (err) {
+          logger.error(
+            `Failed to list documents for binary cleanup in project ${input.projectId}:`,
+            err,
+          );
+        }
+      }
+
       await projectRepository.softDelete({
         projectId: input.projectId,
         actorUserId: input.userId,
         deletedAt: new Date(),
       });
+
+      if (binaryDocuments.length > 0 && binaryContentStore) {
+        const results = await allSettledInBatches(
+          binaryDocuments,
+          BINARY_IO_BATCH_SIZE,
+          (document) =>
+            binaryContentStore.delete(`${input.projectId}/${document.id}`),
+        );
+
+        for (const result of results) {
+          if (result.status === "rejected") {
+            logger.error(
+              `Failed to clean up binary content after project delete ${input.projectId}:`,
+              result.reason,
+            );
+          }
+        }
+      }
     },
     getMainDocument: async (projectId, userId) => {
       await projectAccessService.requireProjectMember(projectId, userId);

@@ -111,9 +111,8 @@ describe("project service", () => {
     expect(result).toBe(updatedProject);
   });
 
-  it("maps missing rows during delete to not found", async () => {
+  it("rejects delete for non-members", async () => {
     const repository = createProjectRepository();
-    repository.softDelete.mockRejectedValue(new ProjectNotFoundError());
     const service = createProjectService({
       projectRepository: repository,
       documentLookup: createDocumentLookup(),
@@ -126,10 +125,219 @@ describe("project service", () => {
       }),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
 
-    expect(repository.softDelete).toHaveBeenCalledWith({
-      projectId: "project-1",
-      actorUserId: "user-1",
-      deletedAt: expect.any(Date),
+    expect(repository.softDelete).not.toHaveBeenCalled();
+  });
+
+  it("rejects delete for non-admin members", async () => {
+    const repository = createProjectRepository();
+    repository.findForUser.mockResolvedValue({
+      project: createStoredProject(),
+      myRole: "editor",
+    });
+    const service = createProjectService({
+      projectRepository: repository,
+      documentLookup: createDocumentLookup(),
+    });
+
+    await expect(
+      service.deleteProject({
+        projectId: "project-1",
+        userId: "user-1",
+      }),
+    ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
+
+    expect(repository.softDelete).not.toHaveBeenCalled();
+  });
+
+  describe("binary content cleanup on delete", () => {
+    it("lists documents before soft-deleting the project", async () => {
+      const callOrder: string[] = [];
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockImplementation(async () => {
+        callOrder.push("softDelete");
+      });
+      const documentListing = createDocumentListing();
+      documentListing.listForProject.mockImplementation(async () => {
+        callOrder.push("listForProject");
+        return [];
+      });
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore: createBinaryContentStore(),
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(callOrder).toEqual(["listForProject", "softDelete"]);
+    });
+
+    it("deletes binary content for binary documents after soft-delete", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "text-doc", kind: "text" }),
+        createStoredDocument({ id: "bin-1", kind: "binary", path: "/img.png" }),
+        createStoredDocument({ id: "bin-2", kind: "binary", path: "/fig.pdf" }),
+      ]);
+      binaryContentStore.delete.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(binaryContentStore.delete).toHaveBeenCalledTimes(2);
+      expect(binaryContentStore.delete).toHaveBeenCalledWith("project-1/bin-1");
+      expect(binaryContentStore.delete).toHaveBeenCalledWith("project-1/bin-2");
+    });
+
+    it("skips binary cleanup when no binary documents exist", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "text-doc", kind: "text" }),
+      ]);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(binaryContentStore.delete).not.toHaveBeenCalled();
+    });
+
+    it("continues successfully when binary cleanup fails", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "bin-1", kind: "binary", path: "/img.png" }),
+      ]);
+      binaryContentStore.delete.mockRejectedValue(new Error("disk error"));
+      const logger = { warn: vi.fn(), error: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+        logger,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to clean up binary content"),
+        expect.any(Error),
+      );
+    });
+
+    it("skips binary cleanup when dependencies not provided", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+    });
+
+    it("still soft-deletes when document listing fails", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockRejectedValue(
+        new Error("db connection lost"),
+      );
+      const logger = { warn: vi.fn(), error: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+        logger,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+
+      expect(repository.softDelete).toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to list documents for binary cleanup"),
+        expect.any(Error),
+      );
+      expect(binaryContentStore.delete).not.toHaveBeenCalled();
+    });
+
+    it("continues deleting remaining files when one cleanup fails", async () => {
+      const repository = createProjectRepository();
+      repository.findForUser.mockResolvedValue({
+        project: createStoredProject(),
+        myRole: "admin",
+      });
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "bin-1", kind: "binary", path: "/a.png" }),
+        createStoredDocument({ id: "bin-2", kind: "binary", path: "/b.png" }),
+        createStoredDocument({ id: "bin-3", kind: "binary", path: "/c.png" }),
+      ]);
+      binaryContentStore.delete
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("disk error"))
+        .mockResolvedValueOnce(undefined);
+      const logger = { warn: vi.fn(), error: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+        logger,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+
+      expect(binaryContentStore.delete).toHaveBeenCalledTimes(3);
+      expect(logger.error).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -197,7 +405,7 @@ describe("project service", () => {
       repository.getMainDocumentId.mockResolvedValue("deleted-doc-id");
       documentLookup.findById.mockResolvedValue(null);
       documentLookup.findByPath.mockResolvedValue(fallbackDoc);
-      const logger = { warn: vi.fn() };
+      const logger = { warn: vi.fn(), error: vi.fn() };
       const service = createProjectService({
         projectRepository: repository,
         documentLookup,
@@ -235,7 +443,7 @@ describe("project service", () => {
       repository.getMainDocumentId.mockResolvedValue("binary-doc-id");
       documentLookup.findById.mockResolvedValue(binaryDoc);
       documentLookup.findByPath.mockResolvedValue(fallbackDoc);
-      const logger = { warn: vi.fn() };
+      const logger = { warn: vi.fn(), error: vi.fn() };
       const service = createProjectService({
         projectRepository: repository,
         documentLookup,
@@ -512,6 +720,18 @@ function createDocumentLookup() {
   return {
     findById: vi.fn<DocumentLookup["findById"]>(),
     findByPath: vi.fn<DocumentLookup["findByPath"]>(),
+  };
+}
+
+function createDocumentListing() {
+  return {
+    listForProject: vi.fn<(projectId: string) => Promise<StoredDocument[]>>(),
+  };
+}
+
+function createBinaryContentStore() {
+  return {
+    delete: vi.fn<(storagePath: string) => Promise<void>>(),
   };
 }
 
