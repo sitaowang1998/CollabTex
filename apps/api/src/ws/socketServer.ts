@@ -359,7 +359,6 @@ export async function openWorkspace(
   while (input.isLatestJoin()) {
     let joinedSessionHandle: ActiveDocumentSessionHandle | null = null;
     let joinedWorkspaceRoomName: string | null = null;
-    input.setActiveDocumentId(null);
 
     try {
       const openedWorkspace = await workspaceService.openDocument(

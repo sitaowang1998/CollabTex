@@ -96,7 +96,8 @@ Validation behavior:
 
 - payload must be an object
 - `documentId` must be a non-empty string
-- `awarenessB64` must be a non-empty valid base64 string
+- `awarenessB64` must be a non-empty valid base64 string with a maximum length
+  of 8192 characters
 - valid only after the socket has joined the matching workspace/document
 - available to any joined project member (all roles)
 
