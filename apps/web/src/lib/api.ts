@@ -25,6 +25,9 @@ let refreshInFlight: Promise<string> | null = null;
 
 async function attemptTokenRefresh(): Promise<string> {
   const data = await request<AuthResponse>("POST", "/auth/refresh");
+  if (!data.token) {
+    throw new ApiError(0, "Invalid refresh response: missing token");
+  }
   localStorage.setItem("token", data.token);
   return data.token;
 }
@@ -64,7 +67,13 @@ async function request<T>(
 
   // On 401, attempt a single token refresh and retry — but not for auth
   // endpoints themselves (to avoid infinite loops).
-  if (res.status === 401 && !AUTH_PATHS.has(path) && token) {
+  const currentToken = localStorage.getItem("token");
+  if (
+    res.status === 401 &&
+    !AUTH_PATHS.has(path) &&
+    token &&
+    currentToken === token
+  ) {
     let newToken: string | undefined;
     try {
       if (!refreshInFlight) {
