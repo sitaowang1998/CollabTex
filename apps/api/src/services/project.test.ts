@@ -713,6 +713,7 @@ function createProjectRepository() {
     softDelete: vi.fn<ProjectRepository["softDelete"]>(),
     getMainDocumentId: vi.fn<ProjectRepository["getMainDocumentId"]>(),
     setMainDocumentId: vi.fn<ProjectRepository["setMainDocumentId"]>(),
+    touchUpdatedAt: vi.fn<ProjectRepository["touchUpdatedAt"]>(),
   };
 }
 

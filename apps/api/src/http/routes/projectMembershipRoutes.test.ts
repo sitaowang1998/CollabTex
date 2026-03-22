@@ -473,6 +473,7 @@ function createMembershipTestApp() {
 
       return updatedProject;
     },
+    touchUpdatedAt: async () => {},
     softDelete: async ({ projectId, actorUserId, deletedAt }) => {
       const project = projectsById.get(projectId);
       const actorRole = membershipsByProjectId.get(projectId)?.get(actorUserId);

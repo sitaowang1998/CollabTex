@@ -632,6 +632,7 @@ async function setupCommentTestApp() {
     softDelete: async () => {
       throw new Error("Not implemented for comment route tests");
     },
+    touchUpdatedAt: async () => {},
   };
 
   const knownDocumentIds = new Set<string>();
