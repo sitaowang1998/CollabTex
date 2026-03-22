@@ -1,5 +1,5 @@
-// ProtectedRoute integration tests within the application routing structure.
-// ProtectedRoute is tested here (not in a co-located file) because its behavior
+// ProtectedRoute and PublicRoute integration tests within the application routing structure.
+// These are tested here (not in co-located files) because their behavior
 // is inherently tied to route transitions, redirects, and location state.
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
@@ -11,6 +11,7 @@ import type { AuthUser } from "@collab-tex/shared";
 import { AuthProvider } from "./contexts/AuthContext";
 import { useAuth } from "./contexts/useAuth";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PublicRoute from "./components/PublicRoute";
 import { api, ApiError } from "./lib/api";
 
 // Mock the external API boundary, not internal hooks
@@ -52,8 +53,13 @@ function renderWithRouter(
 ) {
   const router = createMemoryRouter(
     [
-      { path: "/login", element: <div>Login Page</div> },
-      { path: "/register", element: <div>Register Page</div> },
+      {
+        element: <PublicRoute />,
+        children: [
+          { path: "/login", element: <div>Login Page</div> },
+          { path: "/register", element: <div>Register Page</div> },
+        ],
+      },
       {
         element: <ProtectedRoute />,
         children: [
@@ -289,5 +295,55 @@ describe("ProtectedRoute", () => {
   it("renders 'Page not found' for unknown routes", () => {
     renderWithRouter("/nonexistent-page");
     expect(screen.getByText("Page not found")).toBeInTheDocument();
+  });
+});
+
+describe("PublicRoute", () => {
+  it("renders /login when unauthenticated", () => {
+    renderWithRouter("/login");
+    expect(screen.getByText("Login Page")).toBeInTheDocument();
+  });
+
+  it("renders /register when unauthenticated", () => {
+    renderWithRouter("/register");
+    expect(screen.getByText("Register Page")).toBeInTheDocument();
+  });
+
+  it("redirects /login to dashboard when authenticated", async () => {
+    localStorage.setItem("token", "valid-token");
+    const user: AuthUser = { id: "1", email: "a@b.com", name: "Alice" };
+    mockedApi.get.mockResolvedValue({ user });
+    renderWithRouter("/login");
+    await waitFor(() => {
+      expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    });
+  });
+
+  it("redirects /register to dashboard when authenticated", async () => {
+    localStorage.setItem("token", "valid-token");
+    const user: AuthUser = { id: "1", email: "a@b.com", name: "Alice" };
+    mockedApi.get.mockResolvedValue({ user });
+    renderWithRouter("/register");
+    await waitFor(() => {
+      expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    });
+  });
+
+  it("shows loading when verifying token on /login", () => {
+    localStorage.setItem("token", "valid-token");
+    mockedApi.get.mockImplementation(() => new Promise(() => {}));
+    renderWithRouter("/login");
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+  });
+
+  it("renders /login when token verification fails with error", async () => {
+    localStorage.setItem("token", "valid-token");
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockedApi.get.mockRejectedValue(new ApiError(500, "Server error"));
+    renderWithRouter("/login");
+    await waitFor(() => {
+      expect(screen.getByText("Login Page")).toBeInTheDocument();
+    });
+    consoleSpy.mockRestore();
   });
 });
