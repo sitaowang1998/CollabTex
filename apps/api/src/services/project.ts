@@ -143,31 +143,41 @@ export function createProjectService({
       });
     },
     deleteProject: async (input) => {
+      let binaryDocuments: StoredDocument[] = [];
+      if (documentListing && binaryContentStore) {
+        try {
+          const documents = await documentListing.listForProject(
+            input.projectId,
+          );
+          binaryDocuments = documents.filter((d) => d.kind === "binary");
+        } catch (err) {
+          logger.error(
+            `Failed to list documents for binary cleanup in project ${input.projectId}:`,
+            err,
+          );
+        }
+      }
+
       await projectRepository.softDelete({
         projectId: input.projectId,
         actorUserId: input.userId,
         deletedAt: new Date(),
       });
 
-      if (documentListing && binaryContentStore) {
-        const documents = await documentListing.listForProject(input.projectId);
-        const binaryDocuments = documents.filter((d) => d.kind === "binary");
+      if (binaryDocuments.length > 0 && binaryContentStore) {
+        const results = await allSettledInBatches(
+          binaryDocuments,
+          BINARY_IO_BATCH_SIZE,
+          (document) =>
+            binaryContentStore.delete(`${input.projectId}/${document.id}`),
+        );
 
-        if (binaryDocuments.length > 0) {
-          const results = await allSettledInBatches(
-            binaryDocuments,
-            BINARY_IO_BATCH_SIZE,
-            (document) =>
-              binaryContentStore.delete(`${input.projectId}/${document.id}`),
-          );
-
-          for (const result of results) {
-            if (result.status === "rejected") {
-              logger.error(
-                `Failed to clean up binary content after project delete ${input.projectId}:`,
-                result.reason,
-              );
-            }
+        for (const result of results) {
+          if (result.status === "rejected") {
+            logger.error(
+              `Failed to clean up binary content after project delete ${input.projectId}:`,
+              result.reason,
+            );
           }
         }
       }
