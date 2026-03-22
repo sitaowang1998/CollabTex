@@ -15,7 +15,10 @@ import type {
   StoredCommentThread,
   StoredCommentThreadWithComments,
 } from "../../services/comment.js";
-import { CommentDocumentNotFoundError } from "../../services/comment.js";
+import {
+  CommentDocumentNotFoundError,
+  CommentThreadNotFoundError,
+} from "../../services/comment.js";
 import { createCommentService } from "../../services/commentService.js";
 import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
@@ -787,7 +790,7 @@ function createInMemoryCommentRepository(
     updateThreadStatus: async ({ threadId, status }) => {
       const thread = threadsById.get(threadId);
       if (!thread) {
-        throw new CommentDocumentNotFoundError();
+        throw new CommentThreadNotFoundError();
       }
       const updated = { ...thread, status, updatedAt: new Date() };
       threadsById.set(threadId, updated);
