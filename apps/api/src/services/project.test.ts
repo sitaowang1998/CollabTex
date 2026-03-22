@@ -134,6 +134,28 @@ describe("project service", () => {
   });
 
   describe("binary content cleanup on delete", () => {
+    it("lists documents before soft-deleting the project", async () => {
+      const callOrder: string[] = [];
+      const repository = createProjectRepository();
+      repository.softDelete.mockImplementation(async () => {
+        callOrder.push("softDelete");
+      });
+      const documentListing = createDocumentListing();
+      documentListing.listForProject.mockImplementation(async () => {
+        callOrder.push("listForProject");
+        return [];
+      });
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore: createBinaryContentStore(),
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(callOrder).toEqual(["listForProject", "softDelete"]);
+    });
+
     it("deletes binary content for binary documents after soft-delete", async () => {
       const repository = createProjectRepository();
       repository.softDelete.mockResolvedValue(undefined);
