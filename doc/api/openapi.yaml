@@ -704,10 +704,34 @@ paths:
       - name: fileId
         in: path
         required: true
-        description: UUID of the binary document to upload content for.
+        description: UUID of the binary document.
         schema:
           type: string
           format: uuid
+    get:
+      tags:
+        - Documents
+      summary: Download binary file content
+      description: >
+        Returns the stored binary content for a document. Only binary-kind
+        documents are accepted; requesting content for a text document
+        returns 400. Requires project membership (any role).
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Binary file content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     post:
       tags:
         - Documents

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHttpApp } from "../app.js";
 import { signToken, type AuthService } from "../../services/auth.js";
 import {
+  BinaryContentNotFoundError,
   BinaryContentValidationError,
   type BinaryContentService,
 } from "../../services/binaryContent.js";
@@ -164,6 +165,119 @@ describe("binary content routes", () => {
         error: "content upload is only allowed for binary documents",
       });
   });
+
+  describe("GET /api/projects/:projectId/files/:fileId/content", () => {
+    it("downloads binary content and returns 200", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const content = Buffer.from("png data");
+      binaryContentService.downloadContent.mockResolvedValue(content);
+      const app = createTestApp(binaryContentService);
+
+      const response = await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(200)
+        .expect("content-type", /application\/octet-stream/);
+
+      expect(Buffer.from(response.body).toString()).toBe("png data");
+      expect(binaryContentService.downloadContent).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        actorUserId: "user-1",
+        fileId: FILE_ID,
+      });
+    });
+
+    it("returns 401 without a token", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .expect(401);
+    });
+
+    it("returns 400 for invalid projectId", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/not-a-uuid/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(400)
+        .expect({ error: "projectId must be a valid UUID" });
+    });
+
+    it("returns 400 for invalid fileId", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/not-a-uuid/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(400)
+        .expect({ error: "fileId must be a valid UUID" });
+    });
+
+    it("returns 404 when project is not found", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      binaryContentService.downloadContent.mockRejectedValue(
+        new ProjectNotFoundError(),
+      );
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(404)
+        .expect({ error: "project not found" });
+    });
+
+    it("returns 404 when document is not found", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      binaryContentService.downloadContent.mockRejectedValue(
+        new DocumentNotFoundError(),
+      );
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(404)
+        .expect({ error: "document not found" });
+    });
+
+    it("returns 404 when binary content is not found", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      binaryContentService.downloadContent.mockRejectedValue(
+        new BinaryContentNotFoundError(),
+      );
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(404)
+        .expect({ error: "binary content not found" });
+    });
+
+    it("returns 400 when document is not binary", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      binaryContentService.downloadContent.mockRejectedValue(
+        new BinaryContentValidationError(
+          "content download is only allowed for binary documents",
+        ),
+      );
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .get(`/api/projects/${PROJECT_ID}/files/${FILE_ID}/content`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .expect(400)
+        .expect({
+          error: "content download is only allowed for binary documents",
+        });
+    });
+  });
 });
 
 function createMockBinaryContentService() {
@@ -171,6 +285,9 @@ function createMockBinaryContentService() {
     uploadContent: vi
       .fn<BinaryContentService["uploadContent"]>()
       .mockResolvedValue(undefined),
+    downloadContent: vi
+      .fn<BinaryContentService["downloadContent"]>()
+      .mockResolvedValue(Buffer.from("")),
   };
 }
 

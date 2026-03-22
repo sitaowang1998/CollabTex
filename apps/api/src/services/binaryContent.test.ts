@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  BinaryContentNotFoundError,
   BinaryContentValidationError,
   createBinaryContentService,
   type BinaryContentStore,
@@ -193,6 +194,138 @@ describe("binaryContentService", () => {
       ).rejects.toThrow(BinaryContentValidationError);
 
       expect(binaryContentStore.put).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("downloadContent", () => {
+    it("returns content for a binary document", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const binaryContentStore = createMockBinaryContentStore();
+      documentRepository.findById.mockResolvedValue(createBinaryDocument());
+      const fileContent = Buffer.from("png data");
+      binaryContentStore.get.mockResolvedValue(fileContent);
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        binaryContentStore,
+      });
+
+      const result = await service.downloadContent({
+        projectId: PROJECT_ID,
+        actorUserId: USER_ID,
+        fileId: FILE_ID,
+      });
+
+      expect(result).toBe(fileContent);
+      expect(projectAccessService.requireProjectMember).toHaveBeenCalledWith(
+        PROJECT_ID,
+        USER_ID,
+      );
+      expect(documentRepository.findById).toHaveBeenCalledWith(
+        PROJECT_ID,
+        FILE_ID,
+      );
+      expect(binaryContentStore.get).toHaveBeenCalledWith(
+        `${PROJECT_ID}/${FILE_ID}`,
+      );
+    });
+
+    it("rejects when the project is not found", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const binaryContentStore = createMockBinaryContentStore();
+      projectAccessService.requireProjectMember.mockRejectedValue(
+        new ProjectNotFoundError(),
+      );
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        binaryContentStore,
+      });
+
+      await expect(
+        service.downloadContent({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          fileId: FILE_ID,
+        }),
+      ).rejects.toThrow(ProjectNotFoundError);
+    });
+
+    it("rejects when the document is not found", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const binaryContentStore = createMockBinaryContentStore();
+      documentRepository.findById.mockResolvedValue(null);
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        binaryContentStore,
+      });
+
+      await expect(
+        service.downloadContent({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          fileId: FILE_ID,
+        }),
+      ).rejects.toThrow(DocumentNotFoundError);
+
+      expect(binaryContentStore.get).not.toHaveBeenCalled();
+    });
+
+    it("rejects download for a text document", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const binaryContentStore = createMockBinaryContentStore();
+      documentRepository.findById.mockResolvedValue({
+        ...createBinaryDocument(),
+        kind: "text",
+      });
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        binaryContentStore,
+      });
+
+      await expect(
+        service.downloadContent({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          fileId: FILE_ID,
+        }),
+      ).rejects.toThrow(BinaryContentValidationError);
+
+      expect(binaryContentStore.get).not.toHaveBeenCalled();
+    });
+
+    it("throws when binary content is not found in store", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const binaryContentStore = createMockBinaryContentStore();
+      documentRepository.findById.mockResolvedValue(createBinaryDocument());
+      binaryContentStore.get.mockRejectedValue(
+        new BinaryContentNotFoundError(),
+      );
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        binaryContentStore,
+      });
+
+      await expect(
+        service.downloadContent({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          fileId: FILE_ID,
+        }),
+      ).rejects.toThrow(BinaryContentNotFoundError);
     });
   });
 });
