@@ -43,7 +43,7 @@ module.exports = defineConfig([
     },
   },
   {
-    files: ["*.{ts,tsx}"],
+    files: ["*.{ts,tsx}", "e2e/**/*.ts", "scripts/**/*.ts"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       ecmaVersion: 2020,
