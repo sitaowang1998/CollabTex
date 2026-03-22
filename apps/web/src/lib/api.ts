@@ -24,17 +24,7 @@ const AUTH_PATHS = new Set(["/auth/refresh", "/auth/login", "/auth/register"]);
 let refreshInFlight: Promise<string> | null = null;
 
 async function attemptTokenRefresh(): Promise<string> {
-  const res = await fetch(`${BASE_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!res.ok) {
-    throw new ApiError(res.status, "Token refresh failed");
-  }
-
-  const data = (await res.json()) as AuthResponse;
+  const data = await request<AuthResponse>("POST", "/auth/refresh");
   localStorage.setItem("token", data.token);
   return data.token;
 }
@@ -74,7 +64,7 @@ async function request<T>(
 
   // On 401, attempt a single token refresh and retry — but not for auth
   // endpoints themselves (to avoid infinite loops).
-  if (res.status === 401 && !AUTH_PATHS.has(path)) {
+  if (res.status === 401 && !AUTH_PATHS.has(path) && token) {
     let newToken: string | undefined;
     try {
       if (!refreshInFlight) {

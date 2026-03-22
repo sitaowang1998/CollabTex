@@ -94,16 +94,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .post<AuthResponse>("/auth/refresh")
         .then((data) => {
           if (cancelled) return;
-          if (!data.token && !data.user) {
+          if (!data.token) {
             console.warn(
-              "POST /auth/refresh returned 200 but no token or user. Possible API contract mismatch.",
+              "POST /auth/refresh returned 200 but no token. Possible API contract mismatch.",
               data,
             );
             return;
           }
-          if (data.token) {
-            localStorage.setItem("token", data.token);
-          }
+          localStorage.setItem("token", data.token);
           if (data.user) {
             dispatch({ type: "VERIFY_SUCCESS", user: data.user });
           }
