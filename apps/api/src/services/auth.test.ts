@@ -299,6 +299,48 @@ describe("auth service", () => {
       service.getAuthenticatedUser("missing"),
     ).rejects.toBeInstanceOf(AuthenticatedUserNotFoundError);
   });
+
+  it("refreshes a token for an existing user", async () => {
+    const service = createAuthService({
+      userRepository: createInMemoryUserRepository(),
+      passwordHasher: createPasswordHasher(),
+      jwtSecret: secret,
+      dummyPasswordHash,
+    });
+
+    await service.register({
+      email: "alice@example.com",
+      name: "Alice",
+      password: "secret",
+    });
+
+    const response = await service.refreshToken("user-1");
+
+    expect(response).toEqual({
+      token: expect.any(String),
+      user: {
+        id: "user-1",
+        email: "alice@example.com",
+        name: "Alice",
+      },
+    });
+
+    const payload = verifyToken(response.token, secret);
+    expect(payload.sub).toBe("user-1");
+  });
+
+  it("rejects token refresh for a deleted user", async () => {
+    const service = createAuthService({
+      userRepository: createInMemoryUserRepository(),
+      passwordHasher: createPasswordHasher(),
+      jwtSecret: secret,
+      dummyPasswordHash,
+    });
+
+    await expect(service.refreshToken("missing")).rejects.toBeInstanceOf(
+      AuthenticatedUserNotFoundError,
+    );
+  });
 });
 
 function createPasswordHasher(): PasswordHasher {

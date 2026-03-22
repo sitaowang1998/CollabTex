@@ -1,3 +1,5 @@
+import type { AuthResponse } from "@collab-tex/shared";
+
 const BASE_URL = "/api";
 
 export const NETWORK_ERROR_STATUS = 0 as const;
@@ -15,6 +17,24 @@ export class ApiError extends Error {
     );
     this.name = "ApiError";
   }
+}
+
+const AUTH_PATHS = new Set([
+  "/auth/refresh",
+  "/auth/login",
+  "/auth/register",
+  "/auth/me",
+]);
+
+let refreshInFlight: Promise<string> | null = null;
+
+async function attemptTokenRefresh(): Promise<string> {
+  const data = await request<AuthResponse>("POST", "/auth/refresh");
+  if (!data.token) {
+    throw new ApiError(0, "Invalid refresh response: missing token");
+  }
+  localStorage.setItem("token", data.token);
+  return data.token;
 }
 
 async function request<T>(
@@ -50,17 +70,62 @@ async function request<T>(
     );
   }
 
-  // No special 401 interception (e.g., auto-redirect or token refresh).
-  // 401s throw as normal ApiErrors. AuthContext catches 401s from /auth/me
-  // to coordinate session cleanup; other 401s are thrown to callers.
+  // On 401, attempt a single token refresh and retry — but not for auth
+  // endpoints themselves (to avoid infinite loops).
+  if (res.status === 401 && !AUTH_PATHS.has(path) && token) {
+    const currentToken = localStorage.getItem("token");
+    let retryToken: string | undefined;
+
+    if (currentToken && currentToken !== token) {
+      // Another request already refreshed — retry with the new token directly.
+      retryToken = currentToken;
+    } else if (currentToken === token) {
+      // Token unchanged — perform a refresh-and-retry.
+      try {
+        if (!refreshInFlight) {
+          refreshInFlight = attemptTokenRefresh();
+        }
+        retryToken = await refreshInFlight;
+      } catch (refreshErr) {
+        console.warn("Token refresh failed during 401 recovery:", refreshErr);
+      } finally {
+        refreshInFlight = null;
+      }
+    }
+    // If !currentToken (logged out), skip refresh entirely.
+
+    if (retryToken) {
+      const retryHeaders: Record<string, string> = {
+        Authorization: `Bearer ${retryToken}`,
+      };
+      if (body !== undefined) {
+        retryHeaders["Content-Type"] = "application/json";
+      }
+
+      try {
+        res = await fetch(`${BASE_URL}${path}`, {
+          method,
+          headers: retryHeaders,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch (err) {
+        throw new ApiError(
+          NETWORK_ERROR_STATUS,
+          err instanceof Error ? err.message : "Network error",
+          undefined,
+          { cause: err },
+        );
+      }
+    }
+  }
+
   if (!res.ok) {
     let message = res.statusText || `Request failed (${res.status})`;
     let fields: Record<string, string> | undefined;
 
     try {
       const data = await res.json();
-      // Handles string errors (per API spec) and structured errors with
-      // message + fields (for future validation endpoints).
       if (data.error) {
         if (typeof data.error === "string") {
           message = data.error;

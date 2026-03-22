@@ -18,6 +18,8 @@ import { AuthContext, authReducer, type AuthState } from "./AuthContextDef";
 const initialState = (hasToken: boolean): AuthState =>
   hasToken ? { status: "loading" } : { status: "unauthenticated" };
 
+const TOKEN_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     authReducer,
@@ -80,6 +82,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelledRef.current.cancelled = true;
     };
   }, [verifyAuth]);
+
+  // Proactive token refresh: while authenticated, periodically fetch a fresh
+  // token so the session survives beyond the 15-minute JWT expiry window.
+  useEffect(() => {
+    if (state.status !== "authenticated") return;
+    let cancelled = false;
+
+    const intervalId = setInterval(() => {
+      api
+        .post<AuthResponse>("/auth/refresh")
+        .then((data) => {
+          if (cancelled) return;
+          if (!data.token) {
+            console.warn(
+              "POST /auth/refresh returned 200 but no token. Possible API contract mismatch.",
+              data,
+            );
+            return;
+          }
+          localStorage.setItem("token", data.token);
+          if (data.user) {
+            dispatch({ type: "VERIFY_SUCCESS", user: data.user });
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          if (error instanceof ApiError && error.status === 401) {
+            localStorage.removeItem("token");
+            dispatch({ type: "LOGOUT" });
+          } else {
+            console.warn(
+              "Proactive token refresh failed (will retry next interval):",
+              error,
+            );
+          }
+        });
+    }, TOKEN_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [state.status]);
 
   /** @throws {ApiError} Callers must catch — auth failure is re-thrown after dispatching. */
   const login = useCallback(async (email: string, password: string) => {

@@ -1017,6 +1017,124 @@ describe("AuthContext", () => {
       renderHook(() => useAuth());
     }).toThrow("useAuth must be used within AuthProvider");
   });
+
+  describe("proactive token refresh", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("refreshes the token on interval while authenticated", async () => {
+      localStorage.setItem("token", "valid-token");
+      const user = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.get.mockResolvedValue({ user });
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "authenticated", user }),
+      );
+
+      const refreshedUser = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.post.mockResolvedValue({
+        token: "refreshed-token",
+        user: refreshedUser,
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      expect(mockedApi.post).toHaveBeenCalledWith("/auth/refresh");
+      expect(localStorage.getItem("token")).toBe("refreshed-token");
+    });
+
+    it("logs out when refresh returns 401", async () => {
+      localStorage.setItem("token", "valid-token");
+      const user = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.get.mockResolvedValue({ user });
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "authenticated", user }),
+      );
+
+      mockedApi.post.mockRejectedValue(new ApiError(401, "invalid token"));
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "unauthenticated" }),
+      );
+      expect(localStorage.getItem("token")).toBeNull();
+    });
+
+    it("does not refresh when unauthenticated", async () => {
+      const { result } = renderHook(() => useAuth(), { wrapper });
+      expect(result.current.state).toEqual({ status: "unauthenticated" });
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      expect(mockedApi.post).not.toHaveBeenCalled();
+    });
+
+    it("clears interval on logout", async () => {
+      localStorage.setItem("token", "valid-token");
+      const user = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.get.mockResolvedValue({ user });
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "authenticated", user }),
+      );
+
+      act(() => {
+        result.current.logout();
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      // post should not be called because interval was cleared on logout
+      expect(mockedApi.post).not.toHaveBeenCalled();
+    });
+
+    it("stays authenticated when refresh fails with non-401 error", async () => {
+      localStorage.setItem("token", "valid-token");
+      const user = { id: "1", email: "a@b.com", name: "Alice" };
+      mockedApi.get.mockResolvedValue({ user });
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { result } = renderHook(() => useAuth(), { wrapper });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ status: "authenticated", user }),
+      );
+
+      mockedApi.post.mockRejectedValue(new ApiError(500, "Server Error"));
+
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60 * 1000);
+      });
+
+      expect(result.current.state).toEqual({ status: "authenticated", user });
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Proactive token refresh failed (will retry next interval):",
+        expect.any(ApiError),
+      );
+      consoleSpy.mockRestore();
+    });
+  });
 });
 
 describe("authReducer", () => {
