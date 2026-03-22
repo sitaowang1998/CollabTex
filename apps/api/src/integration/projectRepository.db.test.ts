@@ -243,6 +243,64 @@ describe("project repository integration", () => {
     ).rejects.toBeInstanceOf(ProjectAdminRequiredError);
   });
 
+  it("touchUpdatedAt advances the timestamp for an active project", async () => {
+    const suffix = randomUUID();
+    const owner = await getDb().user.create({
+      data: {
+        email: `touch-ts-${suffix}@example.com`,
+        name: "Owner",
+        passwordHash: "hash",
+      },
+    });
+    const repository = createProjectRepository(getDb());
+    const project = await repository.createForOwner({
+      ownerUserId: owner.id,
+      name: `Touch ${suffix}`,
+    });
+
+    const before = project.updatedAt;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await repository.touchUpdatedAt(project.id);
+
+    const after = await getDb().project.findUnique({
+      where: { id: project.id },
+      select: { updatedAt: true },
+    });
+
+    expect(after!.updatedAt.getTime()).toBeGreaterThan(before.getTime());
+  });
+
+  it("touchUpdatedAt skips tombstoned projects without throwing", async () => {
+    const suffix = randomUUID();
+    const owner = await getDb().user.create({
+      data: {
+        email: `touch-tomb-${suffix}@example.com`,
+        name: "Owner",
+        passwordHash: "hash",
+      },
+    });
+    const repository = createProjectRepository(getDb());
+    const project = await repository.createForOwner({
+      ownerUserId: owner.id,
+      name: `Tombstoned ${suffix}`,
+    });
+
+    await repository.softDelete({
+      projectId: project.id,
+      actorUserId: owner.id,
+      deletedAt: new Date(),
+    });
+
+    await expect(repository.touchUpdatedAt(project.id)).resolves.not.toThrow();
+  });
+
+  it("touchUpdatedAt does not throw for a non-existent project ID", async () => {
+    const repository = createProjectRepository(getDb());
+    await expect(
+      repository.touchUpdatedAt(randomUUID()),
+    ).resolves.not.toThrow();
+  });
+
   it("re-checks actor admin status after waiting on the project lock", async () => {
     const suffix = randomUUID();
     const owner = await getDb().user.create({
