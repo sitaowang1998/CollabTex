@@ -43,7 +43,7 @@ export function createSocketServer(
     activeDocumentRegistry: ActiveDocumentRegistry;
     realtimeDocumentService: RealtimeDocumentService;
     projectAccessService: Pick<ProjectAccessService, "requireProjectMember">;
-    touchProjectTimestamp?: (projectId: string) => Promise<void>;
+    touchProjectTimestamp: (projectId: string) => Promise<void>;
   },
 ) {
   const io = new Server<
@@ -248,7 +248,9 @@ export function createSocketServer(
         void leaveActiveTextSession(socket, sessionState);
       }
 
-      if (disconnectedProjectId && dependencies.touchProjectTimestamp) {
+      // Fire-and-forget — best-effort timestamp update; the user is already
+      // leaving so there is no one to notify of failure.
+      if (disconnectedProjectId) {
         void dependencies
           .touchProjectTimestamp(disconnectedProjectId)
           .catch((error) => {

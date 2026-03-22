@@ -3246,6 +3246,71 @@ describe("socket server", () => {
       client.close();
     }
   });
+
+  it("calls touchProjectTimestamp with the correct project ID on disconnect", async () => {
+    const touchProjectTimestamp = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ touchProjectTimestamp });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    await new Promise<void>((resolve, reject) => {
+      client.once("workspace:opened", () => resolve());
+      client.once("connect_error", reject);
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+    });
+
+    client.close();
+    await waitForSocketFlush();
+
+    expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+  });
+
+  it("does not call touchProjectTimestamp when disconnecting without joining a project", async () => {
+    const touchProjectTimestamp = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ touchProjectTimestamp });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    await new Promise<void>((resolve, reject) => {
+      client.once("connect", () => resolve());
+      client.once("connect_error", reject);
+    });
+
+    client.close();
+    await waitForSocketFlush();
+
+    expect(touchProjectTimestamp).not.toHaveBeenCalled();
+  });
+
+  it("does not crash when touchProjectTimestamp rejects on disconnect", async () => {
+    const touchProjectTimestamp = vi
+      .fn()
+      .mockRejectedValue(new Error("db connection lost"));
+    socketServer = await createTestSocketServer({ touchProjectTimestamp });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    await new Promise<void>((resolve, reject) => {
+      client.once("workspace:opened", () => resolve());
+      client.once("connect_error", reject);
+      client.once("connect", () => {
+        client.emit("workspace:join", {
+          projectId: "project-123",
+          documentId: "doc-456",
+        });
+      });
+    });
+
+    client.close();
+    await waitForSocketFlush();
+
+    expect(touchProjectTimestamp).toHaveBeenCalledWith("project-123");
+  });
 });
 
 function createSequencedWorkspaceService(
