@@ -920,6 +920,7 @@ function createInMemoryProjectRepository(
         mainDocumentId: documentId,
       });
     },
+    touchUpdatedAt: async () => {},
     addMembership: (projectId, userId, role) => {
       const memberships = membershipsByProjectId.get(projectId);
 
