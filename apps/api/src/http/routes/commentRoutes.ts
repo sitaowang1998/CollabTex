@@ -152,7 +152,72 @@ export function createCommentRouter(
     },
   );
 
+  router.patch(
+    "/api/projects/:projectId/threads/:threadId",
+    requireAuth,
+    async (req, res, next) => {
+      const projectId = parseUuidParam(req.params.projectId, "projectId");
+      const threadId = parseUuidParam(req.params.threadId, "threadId");
+      const body = parseUpdateThreadStatusRequest(req.body);
+
+      if (projectId instanceof HttpError) {
+        next(projectId);
+        return;
+      }
+
+      if (threadId instanceof HttpError) {
+        next(threadId);
+        return;
+      }
+
+      if (body instanceof HttpError) {
+        next(body);
+        return;
+      }
+
+      try {
+        const authenticatedRequest = req as AuthenticatedRequest;
+
+        const thread = await commentService.updateThreadStatus({
+          projectId,
+          threadId,
+          actorUserId: authenticatedRequest.userId,
+          status: body.status,
+        });
+
+        res.json({ thread: serializeThread(thread) });
+      } catch (error) {
+        next(mapCommentError(error));
+      }
+    },
+  );
+
   return router;
+}
+
+const VALID_THREAD_STATUSES = ["open", "resolved"] as const;
+
+type UpdateThreadStatusBody = { status: "open" | "resolved" };
+
+function parseUpdateThreadStatusRequest(
+  raw: unknown,
+): UpdateThreadStatusBody | HttpError {
+  if (!isObject(raw)) {
+    return new HttpError(400, "request body must be an object");
+  }
+
+  const status = (raw as Record<string, unknown>).status;
+  if (
+    typeof status !== "string" ||
+    !VALID_THREAD_STATUSES.includes(status as "open" | "resolved")
+  ) {
+    return new HttpError(
+      400,
+      `status must be one of: ${VALID_THREAD_STATUSES.join(", ")}`,
+    );
+  }
+
+  return { status: status as "open" | "resolved" };
 }
 
 type CreateThreadBody = {

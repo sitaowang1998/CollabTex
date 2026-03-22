@@ -358,6 +358,104 @@ describe("comment service", () => {
       ).rejects.toBeInstanceOf(CommentAuthorNotFoundError);
     });
   });
+
+  describe("updateThreadStatus", () => {
+    it("updates status after verifying commenter role", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      const thread = createThread();
+      const updatedThread = createThreadWithComments({ status: "resolved" });
+      commentRepository.findThreadById.mockResolvedValue(thread);
+      projectAccessService.requireProjectRole.mockResolvedValue(
+        createProjectWithRole("commenter"),
+      );
+      commentRepository.updateThreadStatus.mockResolvedValue(updatedThread);
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      const result = await service.updateThreadStatus({
+        projectId: "project-1",
+        threadId: "thread-1",
+        actorUserId: "user-1",
+        status: "resolved",
+      });
+
+      expect(result).toBe(updatedThread);
+      expect(commentRepository.findThreadById).toHaveBeenCalledWith("thread-1");
+      expect(projectAccessService.requireProjectRole).toHaveBeenCalledWith(
+        "project-1",
+        "user-1",
+        ["admin", "editor", "commenter"],
+      );
+      expect(commentRepository.updateThreadStatus).toHaveBeenCalledWith({
+        threadId: "thread-1",
+        status: "resolved",
+      });
+    });
+
+    it("rejects when thread does not exist", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      commentRepository.findThreadById.mockResolvedValue(null);
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      await expect(
+        service.updateThreadStatus({
+          projectId: "project-1",
+          threadId: "missing-thread",
+          actorUserId: "user-1",
+          status: "resolved",
+        }),
+      ).rejects.toBeInstanceOf(CommentThreadNotFoundError);
+      expect(projectAccessService.requireProjectRole).not.toHaveBeenCalled();
+      expect(commentRepository.updateThreadStatus).not.toHaveBeenCalled();
+    });
+
+    it("rejects when thread belongs to a different project", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      commentRepository.findThreadById.mockResolvedValue(createThread());
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      await expect(
+        service.updateThreadStatus({
+          projectId: "other-project",
+          threadId: "thread-1",
+          actorUserId: "user-1",
+          status: "resolved",
+        }),
+      ).rejects.toBeInstanceOf(CommentThreadNotFoundError);
+      expect(projectAccessService.requireProjectRole).not.toHaveBeenCalled();
+      expect(commentRepository.updateThreadStatus).not.toHaveBeenCalled();
+    });
+
+    it("rejects for reader role", async () => {
+      const { commentRepository, projectAccessService } = createDependencies();
+      commentRepository.findThreadById.mockResolvedValue(createThread());
+      projectAccessService.requireProjectRole.mockRejectedValue(
+        new ProjectRoleRequiredError(["admin", "editor", "commenter"]),
+      );
+      const service = createCommentService({
+        commentRepository,
+        projectAccessService,
+      });
+
+      await expect(
+        service.updateThreadStatus({
+          projectId: "project-1",
+          threadId: "thread-1",
+          actorUserId: "user-1",
+          status: "resolved",
+        }),
+      ).rejects.toBeInstanceOf(ProjectRoleRequiredError);
+      expect(commentRepository.updateThreadStatus).not.toHaveBeenCalled();
+    });
+  });
 });
 
 function createDependencies() {
@@ -368,6 +466,7 @@ function createDependencies() {
         vi.fn<CommentRepository["listThreadsForDocument"]>(),
       addComment: vi.fn<CommentRepository["addComment"]>(),
       findThreadById: vi.fn<CommentRepository["findThreadById"]>(),
+      updateThreadStatus: vi.fn<CommentRepository["updateThreadStatus"]>(),
     },
     projectAccessService: {
       requireProjectMember:

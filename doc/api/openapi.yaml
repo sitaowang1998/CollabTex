@@ -450,6 +450,37 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/threads/{threadId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ThreadId"
+    patch:
+      tags:
+        - Comments
+      summary: Update comment thread status (resolve/reopen)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommentThreadRequest"
+      responses:
+        "200":
+          description: Thread status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommentThreadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/projects/{projectId}/threads/{threadId}/reply:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -1491,6 +1522,14 @@ components:
           description: The initial comment body.
           minLength: 1
           maxLength: 10000
+    UpdateCommentThreadRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/CommentThreadStatus"
     ReplyToThreadRequest:
       type: object
       additionalProperties: false

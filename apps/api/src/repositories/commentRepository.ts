@@ -138,6 +138,43 @@ export function createCommentRepository(
 
       return thread ? mapThread(thread) : null;
     },
+
+    updateThreadStatus: async ({ threadId, status }) =>
+      databaseClient.$transaction(async (tx) => {
+        const thread = await tx.commentThread.findFirst({
+          where: {
+            id: threadId,
+            project: { tombstoneAt: null },
+          },
+          select: { id: true, projectId: true },
+        });
+
+        if (!thread) {
+          throw new CommentThreadNotFoundError();
+        }
+
+        await lockActiveProject(tx, thread.projectId);
+
+        try {
+          const updated = await tx.commentThread.update({
+            where: { id: threadId },
+            data: { status },
+            include: {
+              comments: {
+                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              },
+            },
+          });
+
+          return mapThreadWithComments(updated);
+        } catch (error) {
+          if (isPrismaKnownRequestLikeError(error) && error.code === "P2025") {
+            throw new CommentThreadNotFoundError();
+          }
+
+          throw error;
+        }
+      }),
   };
 }
 

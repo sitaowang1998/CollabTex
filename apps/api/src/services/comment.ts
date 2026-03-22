@@ -42,6 +42,10 @@ export type CommentRepository = {
     body: string;
   }) => Promise<StoredComment>;
   findThreadById: (threadId: string) => Promise<StoredCommentThread | null>;
+  updateThreadStatus: (input: {
+    threadId: string;
+    status: "open" | "resolved";
+  }) => Promise<StoredCommentThreadWithComments>;
 };
 
 export class CommentThreadNotFoundError extends Error {
