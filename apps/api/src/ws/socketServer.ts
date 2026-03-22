@@ -346,7 +346,7 @@ export async function openWorkspace(
     isLatestJoin: () => boolean;
     getActiveWorkspaceRoomName: () => string | null;
     setActiveWorkspaceRoomName: (roomName: string) => void;
-    setActiveDocumentId: (documentId: string) => void;
+    setActiveDocumentId: (documentId: string | null) => void;
     getActiveProjectRoomName: () => string | null;
     setActiveProjectRoomName: (roomName: string) => void;
     getActiveTextSession: () => ActiveTextSessionState | null;
@@ -359,6 +359,7 @@ export async function openWorkspace(
   while (input.isLatestJoin()) {
     let joinedSessionHandle: ActiveDocumentSessionHandle | null = null;
     let joinedWorkspaceRoomName: string | null = null;
+    input.setActiveDocumentId(null);
 
     try {
       const openedWorkspace = await workspaceService.openDocument(
@@ -849,6 +850,8 @@ function parseSyncRequest(
   return { documentId };
 }
 
+const MAX_AWARENESS_B64_LENGTH = 8192;
+
 function parsePresenceUpdateRequest(
   value: unknown,
 ): { documentId: string; awarenessB64: string } | WorkspaceErrorEvent {
@@ -875,6 +878,13 @@ function parsePresenceUpdateRequest(
     return {
       code: "INVALID_REQUEST",
       message: "awarenessB64 is required",
+    };
+  }
+
+  if (awarenessB64.length > MAX_AWARENESS_B64_LENGTH) {
+    return {
+      code: "INVALID_REQUEST",
+      message: `awarenessB64 exceeds maximum length of ${MAX_AWARENESS_B64_LENGTH}`,
     };
   }
 

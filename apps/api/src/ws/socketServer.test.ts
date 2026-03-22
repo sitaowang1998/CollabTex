@@ -3131,6 +3131,17 @@ describe("socket server", () => {
       expect(error.code).toBe("INVALID_REQUEST");
       expect(error.message).toBe("awarenessB64 must be valid base64");
 
+      // Oversized awarenessB64
+      errorPromise = collectError();
+      const oversizedB64 = Buffer.from("x".repeat(6200)).toString("base64");
+      client.emit("presence.update", {
+        documentId: "doc-456",
+        awarenessB64: oversizedB64,
+      });
+      error = await errorPromise;
+      expect(error.code).toBe("INVALID_REQUEST");
+      expect(error.message).toContain("exceeds maximum length");
+
       // Non-object payload
       errorPromise = collectError();
       client.emit("presence.update", "not an object" as never);
@@ -3173,6 +3184,65 @@ describe("socket server", () => {
     } finally {
       reader.close();
       receiver.close();
+    }
+  });
+
+  it("does not broadcast presence.update to peers on a different document", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const otherDocPeer = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    try {
+      await joinAndWaitForSync(sender, "doc-456");
+      await joinAndWaitForSync(otherDocPeer, "doc-second");
+
+      let otherDocPeerReceivedPresence = false;
+      otherDocPeer.once("presence.update", () => {
+        otherDocPeerReceivedPresence = true;
+      });
+
+      sender.emit("presence.update", {
+        documentId: "doc-456",
+        awarenessB64: "AQIDBA==",
+      });
+
+      await waitForSocketFlush();
+      expect(otherDocPeerReceivedPresence).toBe(false);
+    } finally {
+      sender.close();
+      otherDocPeer.close();
+    }
+  });
+
+  it("rejects presence.update for old document after switching to a new document", async () => {
+    socketServer = await createTestSocketServer();
+    const client = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+
+    try {
+      await joinAndWaitForSync(client, "doc-456");
+      await joinAndWaitForSync(client, "doc-second");
+
+      const errorPromise = new Promise<WorkspaceErrorEvent>((resolve) => {
+        client.once("realtime:error", resolve);
+      });
+
+      client.emit("presence.update", {
+        documentId: "doc-456",
+        awarenessB64: "AQIDBA==",
+      });
+
+      const error = await errorPromise;
+
+      expect(error.code).toBe("INVALID_REQUEST");
+      expect(error.message).toBe("socket is not joined to this document");
+    } finally {
+      client.close();
     }
   });
 });
