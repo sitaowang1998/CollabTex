@@ -45,7 +45,7 @@ describe("workspace export service", () => {
       createStoredSnapshot(),
     ]);
     snapshotStore.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "doc-1": {
           path: "/main.tex",
@@ -132,7 +132,7 @@ describe("workspace export service", () => {
       createStoredSnapshot(),
     ]);
     snapshotStore.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "bin-1": {
           path: "/figures/diagram.png",

@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { CollaborationService } from "./collaboration.js";
+import type {
+  CommentRepository,
+  StoredCommentThreadWithComments,
+} from "./comment.js";
 import {
   InvalidDocumentPathError,
   normalizeDocumentPath,
@@ -45,9 +49,28 @@ export type SnapshotDocumentState =
   | SnapshotTextDocumentState
   | SnapshotBinaryDocumentState;
 
+export type SnapshotCommentState = {
+  id: string;
+  authorId: string | null;
+  body: string;
+  createdAt: string;
+};
+
+export type SnapshotCommentThreadState = {
+  id: string;
+  documentId: string;
+  status: "open" | "resolved";
+  startAnchor: string;
+  endAnchor: string;
+  quotedText: string;
+  createdAt: string;
+  updatedAt: string;
+  comments: SnapshotCommentState[];
+};
+
 export type ProjectSnapshotState = {
-  version: 2;
   documents: Record<string, SnapshotDocumentState>;
+  commentThreads: SnapshotCommentThreadState[];
 };
 
 export type SnapshotStore = {
@@ -135,6 +158,7 @@ export function createSnapshotService({
   projectStateRepository,
   binaryContentStore,
   documentLookup,
+  commentThreadLookup,
   getResetPublisher = () => noopResetPublisher,
 }: {
   snapshotRepository: SnapshotRepository;
@@ -144,6 +168,7 @@ export function createSnapshotService({
   projectStateRepository: ProjectStateRepository;
   binaryContentStore: Pick<BinaryContentStore, "get" | "put" | "delete">;
   documentLookup: Pick<DocumentRepository, "listForProject">;
+  commentThreadLookup: Pick<CommentRepository, "listThreadsForProject">;
   getResetPublisher?: () => SnapshotResetPublisher;
 }): SnapshotService {
   return {
@@ -179,17 +204,21 @@ export function createSnapshotService({
       documents,
       message = null,
     }) => {
-      const previousState = await loadLatestProjectSnapshotState(
-        snapshotRepository,
-        snapshotStore,
-        projectId,
-      );
+      const [previousState, commentThreads] = await Promise.all([
+        loadLatestProjectSnapshotState(
+          snapshotRepository,
+          snapshotStore,
+          projectId,
+        ),
+        commentThreadLookup.listThreadsForProject(projectId),
+      ]);
       const nextState = await buildProjectSnapshotState({
         projectId,
         documents,
         previousState,
         documentTextStateRepository,
         binaryContentStore,
+        commentThreads,
       });
       const storagePath = createSnapshotStoragePath(projectId);
 
@@ -222,6 +251,9 @@ export function createSnapshotService({
         snapshotState: targetState,
         collaborationService,
       });
+      const restoredCommentThreads = deserializeCommentThreads(
+        targetState.commentThreads,
+      );
       const checkpointStoragePath = createSnapshotStoragePath(projectId);
 
       await snapshotStore.writeProjectSnapshot(
@@ -233,6 +265,7 @@ export function createSnapshotService({
         projectId,
         actorUserId,
         restoredDocuments,
+        restoredCommentThreads,
         checkpointSnapshot: {
           storagePath: checkpointStoragePath,
           message: `Restored from snapshot ${targetSnapshot.id}`,
@@ -300,6 +333,7 @@ export async function buildProjectSnapshotState({
   previousState,
   documentTextStateRepository,
   binaryContentStore,
+  commentThreads,
 }: {
   projectId: string;
   documents: StoredDocument[];
@@ -309,6 +343,7 @@ export async function buildProjectSnapshotState({
     "findByDocumentIds"
   >;
   binaryContentStore: Pick<BinaryContentStore, "get">;
+  commentThreads: StoredCommentThreadWithComments[];
 }): Promise<ProjectSnapshotState> {
   const textDocuments = documents.filter((d) => d.kind === "text");
   const binaryDocuments = documents.filter((d) => d.kind === "binary");
@@ -352,15 +387,15 @@ export async function buildProjectSnapshotState({
   }
 
   return {
-    version: 2,
     documents: nextDocuments,
+    commentThreads: serializeCommentThreads(commentThreads),
   };
 }
 
 export function createEmptyProjectSnapshotState(): ProjectSnapshotState {
   return {
-    version: 2,
     documents: {},
+    commentThreads: [],
   };
 }
 
@@ -369,12 +404,6 @@ export function parseProjectSnapshotState(
 ): ProjectSnapshotState {
   if (!isObject(value)) {
     throw new InvalidSnapshotDataError("snapshot payload must be an object");
-  }
-
-  if (value.version !== 2) {
-    throw new InvalidSnapshotDataError(
-      "snapshot payload uses an unsupported format",
-    );
   }
 
   if (!isObject(value.documents)) {
@@ -444,9 +473,14 @@ export function parseProjectSnapshotState(
 
   assertSnapshotPathsDoNotConflict(Object.values(documents));
 
-  return {
-    version: 2,
+  const commentThreads = parseSnapshotCommentThreads(
+    value.commentThreads,
     documents,
+  );
+
+  return {
+    documents,
+    commentThreads,
   };
 }
 
@@ -731,6 +765,200 @@ function assertSnapshotPathsDoNotConflict(
       );
     }
   }
+}
+
+function serializeCommentThreads(
+  threads: StoredCommentThreadWithComments[],
+): SnapshotCommentThreadState[] {
+  return threads.map((thread) => ({
+    id: thread.id,
+    documentId: thread.documentId,
+    status: thread.status,
+    startAnchor: thread.startAnchor,
+    endAnchor: thread.endAnchor,
+    quotedText: thread.quotedText,
+    createdAt: thread.createdAt.toISOString(),
+    updatedAt: thread.updatedAt.toISOString(),
+    comments: thread.comments.map((comment) => ({
+      id: comment.id,
+      authorId: comment.authorId,
+      body: comment.body,
+      createdAt: comment.createdAt.toISOString(),
+    })),
+  }));
+}
+
+export type RestoredCommentThread = {
+  id: string;
+  documentId: string;
+  status: "open" | "resolved";
+  startAnchor: string;
+  endAnchor: string;
+  quotedText: string;
+  createdAt: Date;
+  updatedAt: Date;
+  comments: Array<{
+    id: string;
+    authorId: string | null;
+    body: string;
+    createdAt: Date;
+  }>;
+};
+
+function deserializeCommentThreads(
+  threads: SnapshotCommentThreadState[],
+): RestoredCommentThread[] {
+  return threads.map((thread) => ({
+    id: thread.id,
+    documentId: thread.documentId,
+    status: thread.status,
+    startAnchor: thread.startAnchor,
+    endAnchor: thread.endAnchor,
+    quotedText: thread.quotedText,
+    createdAt: new Date(thread.createdAt),
+    updatedAt: new Date(thread.updatedAt),
+    comments: thread.comments.map((comment) => ({
+      id: comment.id,
+      authorId: comment.authorId,
+      body: comment.body,
+      createdAt: new Date(comment.createdAt),
+    })),
+  }));
+}
+
+function parseSnapshotCommentThreads(
+  value: unknown,
+  documents: Record<string, SnapshotDocumentState>,
+): SnapshotCommentThreadState[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new InvalidSnapshotDataError(
+      "snapshot commentThreads must be an array",
+    );
+  }
+
+  const documentIds = new Set(Object.keys(documents));
+
+  return value.map((entry, index) => {
+    if (!isObject(entry)) {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}] must be an object`,
+      );
+    }
+
+    if (typeof entry.id !== "string" || !UUID_PATTERN.test(entry.id)) {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].id must be a valid UUID`,
+      );
+    }
+
+    if (
+      typeof entry.documentId !== "string" ||
+      !documentIds.has(entry.documentId)
+    ) {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].documentId must reference a document in the snapshot`,
+      );
+    }
+
+    if (entry.status !== "open" && entry.status !== "resolved") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].status must be "open" or "resolved"`,
+      );
+    }
+
+    if (typeof entry.startAnchor !== "string") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].startAnchor must be a string`,
+      );
+    }
+
+    if (typeof entry.endAnchor !== "string") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].endAnchor must be a string`,
+      );
+    }
+
+    if (typeof entry.quotedText !== "string") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].quotedText must be a string`,
+      );
+    }
+
+    if (typeof entry.createdAt !== "string") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].createdAt must be a string`,
+      );
+    }
+
+    if (typeof entry.updatedAt !== "string") {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].updatedAt must be a string`,
+      );
+    }
+
+    if (!Array.isArray(entry.comments)) {
+      throw new InvalidSnapshotDataError(
+        `snapshot commentThreads[${index}].comments must be an array`,
+      );
+    }
+
+    const comments = (entry.comments as unknown[]).map(
+      (comment, commentIndex) => {
+        if (!isObject(comment)) {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}] must be an object`,
+          );
+        }
+
+        if (typeof comment.id !== "string" || !UUID_PATTERN.test(comment.id)) {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}].id must be a valid UUID`,
+          );
+        }
+
+        if (comment.authorId !== null && typeof comment.authorId !== "string") {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}].authorId must be a string or null`,
+          );
+        }
+
+        if (typeof comment.body !== "string") {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}].body must be a string`,
+          );
+        }
+
+        if (typeof comment.createdAt !== "string") {
+          throw new InvalidSnapshotDataError(
+            `snapshot commentThreads[${index}].comments[${commentIndex}].createdAt must be a string`,
+          );
+        }
+
+        return {
+          id: comment.id as string,
+          authorId: comment.authorId as string | null,
+          body: comment.body as string,
+          createdAt: comment.createdAt as string,
+        };
+      },
+    );
+
+    return {
+      id: entry.id as string,
+      documentId: entry.documentId as string,
+      status: entry.status as "open" | "resolved",
+      startAnchor: entry.startAnchor as string,
+      endAnchor: entry.endAnchor as string,
+      quotedText: entry.quotedText as string,
+      createdAt: entry.createdAt as string,
+      updatedAt: entry.updatedAt as string,
+      comments,
+    };
+  });
 }
 
 const UUID_PATTERN =

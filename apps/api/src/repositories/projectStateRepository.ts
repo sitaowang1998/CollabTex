@@ -2,7 +2,10 @@ import { Prisma } from "@prisma/client";
 import type { DocumentKind } from "@collab-tex/shared";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import { DOCUMENT_WRITE_ROLES } from "../services/document.js";
-import type { StoredSnapshot } from "../services/snapshot.js";
+import type {
+  StoredSnapshot,
+  RestoredCommentThread,
+} from "../services/snapshot.js";
 import {
   ProjectNotFoundError,
   ProjectRoleRequiredError,
@@ -23,6 +26,7 @@ export type ProjectStateRepository = {
     projectId: string;
     actorUserId: string;
     restoredDocuments: RestoredProjectDocumentState[];
+    restoredCommentThreads: RestoredCommentThread[];
     checkpointSnapshot: {
       storagePath: string;
       message: string | null;
@@ -53,6 +57,7 @@ export function createProjectStateRepository(
       projectId,
       actorUserId,
       restoredDocuments,
+      restoredCommentThreads,
       checkpointSnapshot,
     }) =>
       databaseClient.$transaction(async (tx) => {
@@ -222,6 +227,65 @@ export function createProjectStateRepository(
             persistedState.documentId,
             persistedState.version,
           );
+        }
+
+        await tx.commentThread.deleteMany({
+          where: { projectId },
+        });
+
+        if (restoredCommentThreads.length > 0) {
+          const allAuthorIds = new Set<string>();
+
+          for (const thread of restoredCommentThreads) {
+            for (const comment of thread.comments) {
+              if (comment.authorId !== null) {
+                allAuthorIds.add(comment.authorId);
+              }
+            }
+          }
+
+          const existingUsers =
+            allAuthorIds.size > 0
+              ? await tx.user.findMany({
+                  where: { id: { in: [...allAuthorIds] } },
+                  select: { id: true },
+                })
+              : [];
+          const existingUserIds = new Set(existingUsers.map((u) => u.id));
+
+          await tx.commentThread.createMany({
+            data: restoredCommentThreads.map((thread) => ({
+              id: thread.id,
+              projectId,
+              documentId: thread.documentId,
+              status: thread.status,
+              startAnchor: thread.startAnchor,
+              endAnchor: thread.endAnchor,
+              quotedText: thread.quotedText,
+              createdAt: thread.createdAt,
+              updatedAt: thread.updatedAt,
+            })),
+          });
+
+          const allComments = restoredCommentThreads.flatMap((thread) =>
+            thread.comments.map((comment) => ({
+              id: comment.id,
+              threadId: thread.id,
+              authorId:
+                comment.authorId !== null &&
+                existingUserIds.has(comment.authorId)
+                  ? comment.authorId
+                  : null,
+              body: comment.body,
+              createdAt: comment.createdAt,
+            })),
+          );
+
+          if (allComments.length > 0) {
+            await tx.comment.createMany({
+              data: allComments,
+            });
+          }
         }
 
         const snapshot = await tx.snapshot.create({

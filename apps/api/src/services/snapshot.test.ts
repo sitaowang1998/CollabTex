@@ -39,6 +39,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     await expect(
@@ -60,11 +61,12 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([snapshot]);
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-1": {
           path: "/main.tex",
@@ -92,6 +94,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -107,7 +110,7 @@ describe("snapshot service", () => {
     store.readProjectSnapshot
       .mockRejectedValueOnce(new SnapshotDataNotFoundError())
       .mockResolvedValueOnce({
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -146,6 +149,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([]);
@@ -186,7 +190,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -219,6 +223,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
@@ -231,7 +236,7 @@ describe("snapshot service", () => {
       createdAt: new Date("2026-03-02T00:00:00.000Z"),
     }));
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-2": {
           path: "/figure.png",
@@ -259,7 +264,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -286,6 +291,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -310,7 +316,7 @@ describe("snapshot service", () => {
     store.readProjectSnapshot
       .mockRejectedValueOnce(new InvalidSnapshotDataError("invalid snapshot"))
       .mockResolvedValueOnce({
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -337,7 +343,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -384,13 +390,14 @@ describe("snapshot service", () => {
       projectStateRepository,
       binaryContentStore,
       documentLookup,
+      commentThreadLookup: createCommentThreadLookup(),
       getResetPublisher: () => resetPublisher,
     });
     const targetSnapshot = createStoredSnapshot();
 
     repository.findById.mockResolvedValue(targetSnapshot);
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-1": {
           path: "/main.tex",
@@ -432,7 +439,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -509,6 +516,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([]);
@@ -547,11 +555,12 @@ describe("snapshot service", () => {
       projectStateRepository,
       binaryContentStore,
       documentLookup,
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.findById.mockResolvedValue(createStoredSnapshot());
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-2": {
           path: "/figure.png",
@@ -589,18 +598,6 @@ describe("snapshot service", () => {
   it("rejects malformed or unsupported snapshot payloads", () => {
     expect(() =>
       parseProjectSnapshotState({
-        version: 1,
-        documents: {},
-      }),
-    ).toThrow(
-      new InvalidSnapshotDataError(
-        "snapshot payload uses an unsupported format",
-      ),
-    );
-
-    expect(() =>
-      parseProjectSnapshotState({
-        version: 2,
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "/same.tex",
@@ -622,7 +619,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "not-a-uuid": {
             path: "/main.tex",
@@ -638,7 +635,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "docs/main.tex",
@@ -656,7 +653,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "/docs",
@@ -727,6 +724,12 @@ function createDocumentLookup() {
   listForProject.mockResolvedValue([]);
 
   return { listForProject };
+}
+
+function createCommentThreadLookup() {
+  return {
+    listThreadsForProject: vi.fn().mockResolvedValue([]),
+  };
 }
 
 function createResetPublisher() {

@@ -26,7 +26,7 @@ describe("local filesystem snapshot store", () => {
     const store = createLocalFilesystemSnapshotStore(rootDirectory);
 
     await store.writeProjectSnapshot("project-1/one.json", {
-      version: 2,
+      commentThreads: [],
       documents: {
         "11111111-1111-1111-1111-111111111111": {
           path: "/main.tex",
@@ -40,7 +40,7 @@ describe("local filesystem snapshot store", () => {
     await expect(
       store.readProjectSnapshot("project-1/one.json"),
     ).resolves.toEqual({
-      version: 2,
+      commentThreads: [],
       documents: {
         "11111111-1111-1111-1111-111111111111": {
           path: "/main.tex",
@@ -85,7 +85,7 @@ describe("local filesystem snapshot store", () => {
 
     await expect(
       store.writeProjectSnapshot("../escape.json", {
-        version: 2,
+        commentThreads: [],
         documents: {},
       }),
     ).rejects.toThrow(

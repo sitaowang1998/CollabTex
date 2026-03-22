@@ -192,6 +192,9 @@ function createRuntime() {
       delete: async () => {},
     },
     documentLookup: documentRepository,
+    commentThreadLookup: {
+      listThreadsForProject: async () => [],
+    },
   });
   const currentTextStateService = createCurrentTextStateService({
     documentTextStateRepository,
