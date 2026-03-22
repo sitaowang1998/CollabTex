@@ -151,10 +151,13 @@ export function createProjectRepository(
       return project?.mainDocumentId ?? null;
     },
     touchUpdatedAt: async (projectId) => {
-      await databaseClient.$executeRaw`
+      const affected = await databaseClient.$executeRaw`
         UPDATE "Project" SET "updatedAt" = NOW()
         WHERE id = ${projectId}::uuid AND "tombstoneAt" IS NULL
       `;
+      if (affected === 0) {
+        console.warn("touchUpdatedAt matched zero rows", { projectId });
+      }
     },
     setMainDocumentId: async ({ projectId, documentId }) => {
       try {
