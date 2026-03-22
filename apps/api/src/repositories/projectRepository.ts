@@ -150,6 +150,12 @@ export function createProjectRepository(
       });
       return project?.mainDocumentId ?? null;
     },
+    touchUpdatedAt: async (projectId) => {
+      await databaseClient.$executeRaw`
+        UPDATE "Project" SET "updatedAt" = NOW()
+        WHERE id = ${projectId}::uuid AND "tombstoneAt" IS NULL
+      `;
+    },
     setMainDocumentId: async ({ projectId, documentId }) => {
       try {
         await databaseClient.$transaction(async (tx) => {

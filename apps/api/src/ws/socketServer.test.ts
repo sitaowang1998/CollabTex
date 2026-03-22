@@ -680,6 +680,7 @@ describe("socket server", () => {
       setActiveProjectRoomName: (roomName: string) => {
         activeProjectRoomName = roomName;
       },
+      setActiveProjectId: () => {},
       getActiveTextSession: () => activeTextSession,
       swapActiveTextSession: (nextSession: typeof activeTextSession | null) => {
         const previousSession = activeTextSession;

@@ -43,6 +43,7 @@ export function createSocketServer(
     activeDocumentRegistry: ActiveDocumentRegistry;
     realtimeDocumentService: RealtimeDocumentService;
     projectAccessService: Pick<ProjectAccessService, "requireProjectMember">;
+    touchProjectTimestamp?: (projectId: string) => Promise<void>;
   },
 ) {
   const io = new Server<
@@ -78,6 +79,7 @@ export function createSocketServer(
     let latestJoinSequence = 0;
     let activeWorkspaceRoomName: string | null = null;
     let activeProjectRoomName: string | null = null;
+    let activeProjectId: string | null = null;
     let activeDocumentId: string | null = null;
     let activeTextSession: ActiveTextSessionState | null = null;
 
@@ -117,6 +119,9 @@ export function createSocketServer(
         getActiveProjectRoomName: () => activeProjectRoomName,
         setActiveProjectRoomName: (roomName) => {
           activeProjectRoomName = roomName;
+        },
+        setActiveProjectId: (projectId) => {
+          activeProjectId = projectId;
         },
         getActiveTextSession: () => activeTextSession,
         swapActiveTextSession: (nextSession) => {
@@ -234,11 +239,25 @@ export function createSocketServer(
 
     socket.on("disconnect", (reason) => {
       const sessionState = activeTextSession;
+      const disconnectedProjectId = activeProjectId;
       activeTextSession = null;
       activeDocumentId = null;
+      activeProjectId = null;
 
       if (sessionState) {
         void leaveActiveTextSession(socket, sessionState);
+      }
+
+      if (disconnectedProjectId && dependencies.touchProjectTimestamp) {
+        void dependencies
+          .touchProjectTimestamp(disconnectedProjectId)
+          .catch((error) => {
+            console.error(
+              "Failed to touch project timestamp on disconnect",
+              { socketId: socket.id, projectId: disconnectedProjectId },
+              error,
+            );
+          });
       }
 
       console.log("disconnect", socket.id, reason);
@@ -353,6 +372,7 @@ export async function openWorkspace(
     setActiveDocumentId: (documentId: string | null) => void;
     getActiveProjectRoomName: () => string | null;
     setActiveProjectRoomName: (roomName: string) => void;
+    setActiveProjectId: (projectId: string) => void;
     getActiveTextSession: () => ActiveTextSessionState | null;
     swapActiveTextSession: (
       nextSession: ActiveTextSessionState | null,
@@ -1084,6 +1104,7 @@ async function joinProjectRoom(
     isLatestJoin: () => boolean;
     getActiveProjectRoomName: () => string | null;
     setActiveProjectRoomName: (roomName: string) => void;
+    setActiveProjectId: (projectId: string) => void;
   },
   projectId: string,
 ): Promise<boolean> {
@@ -1109,6 +1130,7 @@ async function joinProjectRoom(
   }
 
   input.setActiveProjectRoomName(nextProjectRoomName);
+  input.setActiveProjectId(projectId);
   return true;
 }
 

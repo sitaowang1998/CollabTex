@@ -71,6 +71,7 @@ export type ProjectRepository = {
     projectId: string;
     documentId: string;
   }) => Promise<void>;
+  touchUpdatedAt: (projectId: string) => Promise<void>;
 };
 
 export type SetMainDocumentInput = {
