@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSnapshotManagementService } from "./snapshotManagement.js";
 import type { ProjectAccessService, ProjectWithRole } from "./projectAccess.js";
-import type { SnapshotService, StoredSnapshot } from "./snapshot.js";
+import type {
+  ProjectSnapshotState,
+  SnapshotService,
+  StoredSnapshot,
+} from "./snapshot.js";
 
 describe("snapshot management service", () => {
   it("requires project membership before listing snapshots", async () => {
@@ -52,6 +56,58 @@ describe("snapshot management service", () => {
     expect(snapshotService.listProjectSnapshots).toHaveBeenCalledWith(
       "project-1",
     );
+  });
+
+  it("requires project membership before getting snapshot content", async () => {
+    const projectAccessService = createProjectAccessService();
+    const snapshotService = createSnapshotService();
+    projectAccessService.requireProjectMember.mockRejectedValue(
+      new Error("membership required"),
+    );
+    const service = createSnapshotManagementService({
+      projectAccessService,
+      snapshotService,
+    });
+
+    await expect(
+      service.getSnapshotContent({
+        projectId: "project-1",
+        snapshotId: "snapshot-1",
+        userId: "user-1",
+      }),
+    ).rejects.toThrow("membership required");
+
+    expect(snapshotService.getProjectSnapshotContent).not.toHaveBeenCalled();
+  });
+
+  it("returns snapshot content after membership succeeds", async () => {
+    const projectAccessService = createProjectAccessService();
+    const snapshotService = createSnapshotService();
+    const contentResult = {
+      snapshot: createStoredSnapshot(),
+      state: createSnapshotState(),
+    };
+    projectAccessService.requireProjectMember.mockResolvedValue(
+      createProjectWithRole("reader"),
+    );
+    snapshotService.getProjectSnapshotContent.mockResolvedValue(contentResult);
+    const service = createSnapshotManagementService({
+      projectAccessService,
+      snapshotService,
+    });
+
+    await expect(
+      service.getSnapshotContent({
+        projectId: "project-1",
+        snapshotId: "snapshot-1",
+        userId: "user-1",
+      }),
+    ).resolves.toBe(contentResult);
+
+    expect(snapshotService.getProjectSnapshotContent).toHaveBeenCalledWith({
+      projectId: "project-1",
+      snapshotId: "snapshot-1",
+    });
   });
 
   it("requires admin or editor before restoring a snapshot", async () => {
@@ -121,11 +177,22 @@ function createProjectAccessService() {
 
 function createSnapshotService(): Pick<
   SnapshotService,
-  "listProjectSnapshots" | "restoreProjectSnapshot"
+  | "listProjectSnapshots"
+  | "getProjectSnapshotContent"
+  | "restoreProjectSnapshot"
 > {
   return {
     listProjectSnapshots: vi.fn<SnapshotService["listProjectSnapshots"]>(),
+    getProjectSnapshotContent:
+      vi.fn<SnapshotService["getProjectSnapshotContent"]>(),
     restoreProjectSnapshot: vi.fn<SnapshotService["restoreProjectSnapshot"]>(),
+  };
+}
+
+function createSnapshotState(): ProjectSnapshotState {
+  return {
+    documents: {},
+    commentThreads: [],
   };
 }
 

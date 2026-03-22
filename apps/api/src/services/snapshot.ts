@@ -123,6 +123,10 @@ export type SnapshotService = {
     input: CaptureProjectSnapshotInput,
   ) => Promise<StoredSnapshot>;
   listProjectSnapshots: (projectId: string) => Promise<StoredSnapshot[]>;
+  getProjectSnapshotContent: (input: {
+    projectId: string;
+    snapshotId: string;
+  }) => Promise<{ snapshot: StoredSnapshot; state: ProjectSnapshotState }>;
   restoreProjectSnapshot: (
     input: RestoreProjectSnapshotInput,
   ) => Promise<StoredSnapshot>;
@@ -239,6 +243,19 @@ export function createSnapshotService({
     },
     listProjectSnapshots: async (projectId) =>
       snapshotRepository.listForProject(projectId),
+    getProjectSnapshotContent: async ({ projectId, snapshotId }) => {
+      const snapshot = await snapshotRepository.findById(projectId, snapshotId);
+
+      if (!snapshot) {
+        throw new SnapshotNotFoundError();
+      }
+
+      const state = await snapshotStore.readProjectSnapshot(
+        snapshot.storagePath,
+      );
+
+      return { snapshot, state };
+    },
     restoreProjectSnapshot: async ({ projectId, snapshotId, actorUserId }) => {
       const targetSnapshot = await snapshotRepository.findById(
         projectId,

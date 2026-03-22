@@ -54,6 +54,110 @@ describe("snapshot routes", () => {
     });
   });
 
+  it("returns snapshot content with documents and comment threads", async () => {
+    const snapshotManagementService = createSnapshotManagementService();
+    snapshotManagementService.getSnapshotContent.mockResolvedValue({
+      snapshot: {
+        id: "7aa64dc2-f494-43c2-ad99-98d0ec4afd2b",
+        projectId: "6f35c2aa-fd34-4905-a370-7d9642244166",
+        message: "initial",
+        authorId: "user-1",
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+        storagePath: "project-1/snapshot.json",
+      },
+      state: {
+        documents: {
+          "doc-1": {
+            path: "/main.tex",
+            kind: "text",
+            mime: null,
+            textContent: "\\section{Hello}",
+          },
+          "doc-2": {
+            path: "/image.png",
+            kind: "binary",
+            mime: "image/png",
+            binaryContentBase64: "iVBORw0KGgo=",
+          },
+        },
+        commentThreads: [
+          {
+            id: "thread-1",
+            documentId: "doc-1",
+            status: "open",
+            startAnchor: "a1",
+            endAnchor: "a2",
+            quotedText: "Hello",
+            createdAt: "2026-03-01T12:00:00.000Z",
+            updatedAt: "2026-03-01T12:00:00.000Z",
+            comments: [
+              {
+                id: "comment-1",
+                authorId: "user-1",
+                body: "Looks good",
+                createdAt: "2026-03-01T12:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const app = createSnapshotTestApp(snapshotManagementService);
+
+    const response = await request(app)
+      .get(
+        "/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/snapshots/7aa64dc2-f494-43c2-ad99-98d0ec4afd2b",
+      )
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      snapshot: {
+        id: "7aa64dc2-f494-43c2-ad99-98d0ec4afd2b",
+        projectId: "6f35c2aa-fd34-4905-a370-7d9642244166",
+        message: "initial",
+        authorId: "user-1",
+        createdAt: "2026-03-01T12:00:00.000Z",
+      },
+      documents: [
+        {
+          documentId: "doc-1",
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "\\section{Hello}",
+        },
+        {
+          documentId: "doc-2",
+          path: "/image.png",
+          kind: "binary",
+          mime: "image/png",
+          textContent: null,
+        },
+      ],
+      commentThreads: [
+        {
+          id: "thread-1",
+          documentId: "doc-1",
+          status: "open",
+          startAnchor: "a1",
+          endAnchor: "a2",
+          quotedText: "Hello",
+          createdAt: "2026-03-01T12:00:00.000Z",
+          updatedAt: "2026-03-01T12:00:00.000Z",
+          comments: [
+            {
+              id: "comment-1",
+              authorId: "user-1",
+              body: "Looks good",
+              createdAt: "2026-03-01T12:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("restores a snapshot for editors and admins", async () => {
     const snapshotManagementService = createSnapshotManagementService();
     snapshotManagementService.restoreSnapshot.mockResolvedValue({
@@ -161,6 +265,8 @@ function createSnapshotTestApp(
 function createSnapshotManagementService() {
   return {
     listSnapshots: vi.fn<SnapshotManagementService["listSnapshots"]>(),
+    getSnapshotContent:
+      vi.fn<SnapshotManagementService["getSnapshotContent"]>(),
     restoreSnapshot: vi.fn<SnapshotManagementService["restoreSnapshot"]>(),
   };
 }
