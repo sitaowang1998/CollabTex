@@ -685,7 +685,7 @@ describe("snapshot restore integration", () => {
     expect(restoredThreads[0]?.comments[1]?.body).toBe("Second comment");
   });
 
-  it("clears comment threads when restoring a snapshot without commentThreads", async () => {
+  it("clears comment threads when restoring a snapshot with empty commentThreads", async () => {
     const suffix = randomUUID();
     const snapshotRoot = await mkdtemp(
       path.join(os.tmpdir(), "collabtex-snapshot-no-comments-"),

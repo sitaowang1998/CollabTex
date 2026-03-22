@@ -204,7 +204,7 @@ export function createSnapshotService({
       documents,
       message = null,
     }) => {
-      const [previousState, commentThreads] = await Promise.all([
+      const [previousState, allCommentThreads] = await Promise.all([
         loadLatestProjectSnapshotState(
           snapshotRepository,
           snapshotStore,
@@ -212,6 +212,12 @@ export function createSnapshotService({
         ),
         commentThreadLookup.listThreadsForProject(projectId),
       ]);
+      const capturedDocumentIds = new Set(
+        documents.map((document) => document.id),
+      );
+      const commentThreads = allCommentThreads.filter((thread) =>
+        capturedDocumentIds.has(thread.documentId),
+      );
       const nextState = await buildProjectSnapshotState({
         projectId,
         documents,
@@ -993,7 +999,11 @@ function parseSnapshotCommentThreads(
 }
 
 function isValidIsoDateString(value: string): boolean {
-  return !isNaN(new Date(value).getTime());
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    return false;
+  }
+  return date.toISOString() === value;
 }
 
 const UUID_PATTERN =
