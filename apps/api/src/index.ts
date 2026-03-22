@@ -143,6 +143,8 @@ async function main() {
     const projectService = createProjectService({
       projectRepository,
       documentLookup: documentRepository,
+      documentListing: documentRepository,
+      binaryContentStore,
       projectAccessService,
     });
     const membershipService = createMembershipService({

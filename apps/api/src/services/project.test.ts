@@ -133,6 +133,90 @@ describe("project service", () => {
     });
   });
 
+  describe("binary content cleanup on delete", () => {
+    it("deletes binary content for binary documents after soft-delete", async () => {
+      const repository = createProjectRepository();
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "text-doc", kind: "text" }),
+        createStoredDocument({ id: "bin-1", kind: "binary", path: "/img.png" }),
+        createStoredDocument({ id: "bin-2", kind: "binary", path: "/fig.pdf" }),
+      ]);
+      binaryContentStore.delete.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(binaryContentStore.delete).toHaveBeenCalledTimes(2);
+      expect(binaryContentStore.delete).toHaveBeenCalledWith("project-1/bin-1");
+      expect(binaryContentStore.delete).toHaveBeenCalledWith("project-1/bin-2");
+    });
+
+    it("skips binary cleanup when no binary documents exist", async () => {
+      const repository = createProjectRepository();
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "text-doc", kind: "text" }),
+      ]);
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+      });
+
+      await service.deleteProject({ projectId: "project-1", userId: "user-1" });
+
+      expect(binaryContentStore.delete).not.toHaveBeenCalled();
+    });
+
+    it("continues successfully when binary cleanup fails", async () => {
+      const repository = createProjectRepository();
+      repository.softDelete.mockResolvedValue(undefined);
+      const documentListing = createDocumentListing();
+      const binaryContentStore = createBinaryContentStore();
+      documentListing.listForProject.mockResolvedValue([
+        createStoredDocument({ id: "bin-1", kind: "binary", path: "/img.png" }),
+      ]);
+      binaryContentStore.delete.mockRejectedValue(new Error("disk error"));
+      const logger = { warn: vi.fn(), error: vi.fn() };
+      const service = createProjectService({
+        projectRepository: repository,
+        documentListing,
+        binaryContentStore,
+        logger,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to clean up binary content"),
+        expect.any(Error),
+      );
+    });
+
+    it("skips binary cleanup when dependencies not provided", async () => {
+      const repository = createProjectRepository();
+      repository.softDelete.mockResolvedValue(undefined);
+      const service = createProjectService({
+        projectRepository: repository,
+      });
+
+      await expect(
+        service.deleteProject({ projectId: "project-1", userId: "user-1" }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe("getMainDocument", () => {
     it("returns explicit document when set", async () => {
       const repository = createProjectRepository();
@@ -512,6 +596,18 @@ function createDocumentLookup() {
   return {
     findById: vi.fn<DocumentLookup["findById"]>(),
     findByPath: vi.fn<DocumentLookup["findByPath"]>(),
+  };
+}
+
+function createDocumentListing() {
+  return {
+    listForProject: vi.fn<(projectId: string) => Promise<StoredDocument[]>>(),
+  };
+}
+
+function createBinaryContentStore() {
+  return {
+    delete: vi.fn<(storagePath: string) => Promise<void>>(),
   };
 }
 

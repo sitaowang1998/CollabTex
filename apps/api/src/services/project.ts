@@ -5,6 +5,8 @@ import {
   type ProjectWithRole,
   type StoredProject,
 } from "./projectAccess.js";
+import { type BinaryContentStore } from "./binaryContent.js";
+import { BINARY_IO_BATCH_SIZE, allSettledInBatches } from "./concurrency.js";
 import { DOCUMENT_WRITE_ROLES, type StoredDocument } from "./document.js";
 
 export type DocumentLookup = {
@@ -104,6 +106,8 @@ export function createProjectService({
     findById: async () => null,
     findByPath: async () => null,
   },
+  documentListing,
+  binaryContentStore,
   projectAccessService = createProjectAccessService({
     projectRepository: projectRepository as ProjectAccessRepository,
   }),
@@ -111,8 +115,15 @@ export function createProjectService({
 }: {
   projectRepository: ProjectRepository;
   documentLookup?: DocumentLookup;
+  documentListing?: {
+    listForProject: (projectId: string) => Promise<StoredDocument[]>;
+  };
+  binaryContentStore?: Pick<BinaryContentStore, "delete">;
   projectAccessService?: ProjectAccessService;
-  logger?: { warn: (message: string) => void };
+  logger?: {
+    warn: (message: string) => void;
+    error: (...args: unknown[]) => void;
+  };
 }): ProjectService {
   return {
     createProject: async (input) =>
@@ -137,6 +148,29 @@ export function createProjectService({
         actorUserId: input.userId,
         deletedAt: new Date(),
       });
+
+      if (documentListing && binaryContentStore) {
+        const documents = await documentListing.listForProject(input.projectId);
+        const binaryDocuments = documents.filter((d) => d.kind === "binary");
+
+        if (binaryDocuments.length > 0) {
+          const results = await allSettledInBatches(
+            binaryDocuments,
+            BINARY_IO_BATCH_SIZE,
+            (document) =>
+              binaryContentStore.delete(`${input.projectId}/${document.id}`),
+          );
+
+          for (const result of results) {
+            if (result.status === "rejected") {
+              logger.error(
+                `Failed to clean up binary content after project delete ${input.projectId}:`,
+                result.reason,
+              );
+            }
+          }
+        }
+      }
     },
     getMainDocument: async (projectId, userId) => {
       await projectAccessService.requireProjectMember(projectId, userId);
