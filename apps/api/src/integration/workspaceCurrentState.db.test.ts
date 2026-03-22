@@ -134,6 +134,9 @@ function createRuntime(snapshotRoot: string) {
       delete: async () => {},
     },
     documentLookup: createDocumentRepository(getDb()),
+    commentThreadLookup: {
+      listThreadsForProject: async () => [],
+    },
   });
   const currentTextStateService = createCurrentTextStateService({
     documentTextStateRepository,
@@ -171,7 +174,7 @@ async function writeSnapshot({
   authorId: string;
 }) {
   await snapshotStore.writeProjectSnapshot(storagePath, {
-    version: 2,
+    commentThreads: [],
     documents: {
       [documentId]: {
         path: "/main.tex",

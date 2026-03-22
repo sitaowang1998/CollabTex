@@ -89,6 +89,7 @@ async function main() {
     let resetPublisher: SnapshotResetPublisher = {
       emitDocumentReset: async () => {},
     };
+    const commentRepository = createCommentRepository(databaseClient);
     const snapshotService = createSnapshotService({
       snapshotRepository,
       snapshotStore,
@@ -97,6 +98,7 @@ async function main() {
       projectStateRepository,
       binaryContentStore,
       documentLookup: documentRepository,
+      commentThreadLookup: commentRepository,
       getResetPublisher: () => resetPublisher,
     });
     const currentTextStateService = createCurrentTextStateService({
@@ -149,7 +151,7 @@ async function main() {
       projectAccessService,
     });
     const commentService = createCommentService({
-      commentRepository: createCommentRepository(databaseClient),
+      commentRepository,
       projectAccessService,
     });
     const snapshotManagementService = createSnapshotManagementService({

@@ -209,6 +209,9 @@ describe("binary compile pipeline integration", () => {
         projectStateRepository,
         binaryContentStore,
         documentLookup: documentRepository,
+        commentThreadLookup: {
+          listThreadsForProject: async () => [],
+        },
         getResetPublisher: () => ({
           emitDocumentReset: async () => {},
         }),

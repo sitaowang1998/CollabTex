@@ -39,6 +39,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     await expect(
@@ -60,11 +61,12 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([snapshot]);
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-1": {
           path: "/main.tex",
@@ -92,6 +94,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore: createBinaryContentStore(),
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -107,7 +110,7 @@ describe("snapshot service", () => {
     store.readProjectSnapshot
       .mockRejectedValueOnce(new SnapshotDataNotFoundError())
       .mockResolvedValueOnce({
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -146,6 +149,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([]);
@@ -186,7 +190,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -219,6 +223,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
@@ -231,7 +236,7 @@ describe("snapshot service", () => {
       createdAt: new Date("2026-03-02T00:00:00.000Z"),
     }));
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-2": {
           path: "/figure.png",
@@ -259,7 +264,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -286,6 +291,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([
@@ -310,7 +316,7 @@ describe("snapshot service", () => {
     store.readProjectSnapshot
       .mockRejectedValueOnce(new InvalidSnapshotDataError("invalid snapshot"))
       .mockResolvedValueOnce({
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -337,7 +343,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-2": {
             path: "/figure.png",
@@ -384,13 +390,14 @@ describe("snapshot service", () => {
       projectStateRepository,
       binaryContentStore,
       documentLookup,
+      commentThreadLookup: createCommentThreadLookup(),
       getResetPublisher: () => resetPublisher,
     });
     const targetSnapshot = createStoredSnapshot();
 
     repository.findById.mockResolvedValue(targetSnapshot);
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-1": {
           path: "/main.tex",
@@ -432,7 +439,7 @@ describe("snapshot service", () => {
     expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
       expect.stringMatching(/^project-1\/.+\.json$/),
       {
-        version: 2,
+        commentThreads: [],
         documents: {
           "document-1": {
             path: "/main.tex",
@@ -509,6 +516,7 @@ describe("snapshot service", () => {
       projectStateRepository: createProjectStateRepository(),
       binaryContentStore,
       documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.listForProject.mockResolvedValue([]);
@@ -547,11 +555,12 @@ describe("snapshot service", () => {
       projectStateRepository,
       binaryContentStore,
       documentLookup,
+      commentThreadLookup: createCommentThreadLookup(),
     });
 
     repository.findById.mockResolvedValue(createStoredSnapshot());
     store.readProjectSnapshot.mockResolvedValue({
-      version: 2,
+      commentThreads: [],
       documents: {
         "document-2": {
           path: "/figure.png",
@@ -589,18 +598,6 @@ describe("snapshot service", () => {
   it("rejects malformed or unsupported snapshot payloads", () => {
     expect(() =>
       parseProjectSnapshotState({
-        version: 1,
-        documents: {},
-      }),
-    ).toThrow(
-      new InvalidSnapshotDataError(
-        "snapshot payload uses an unsupported format",
-      ),
-    );
-
-    expect(() =>
-      parseProjectSnapshotState({
-        version: 2,
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "/same.tex",
@@ -622,7 +619,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "not-a-uuid": {
             path: "/main.tex",
@@ -638,7 +635,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "docs/main.tex",
@@ -656,7 +653,7 @@ describe("snapshot service", () => {
 
     expect(() =>
       parseProjectSnapshotState({
-        version: 2,
+        commentThreads: [],
         documents: {
           "11111111-1111-1111-1111-111111111111": {
             path: "/docs",
@@ -677,6 +674,249 @@ describe("snapshot service", () => {
         "snapshot document paths must not contain file/descendant conflicts",
       ),
     );
+  });
+
+  it("rejects malformed comment thread data in snapshot payloads", () => {
+    const validDoc = {
+      "11111111-1111-1111-1111-111111111111": {
+        path: "/main.tex",
+        kind: "text",
+        mime: null,
+        textContent: "body",
+      },
+    };
+
+    // commentThreads must be an array
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: "not-an-array",
+      }),
+    ).toThrow("snapshot commentThreads must be an array");
+
+    // thread id must be a valid UUID
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "not-a-uuid",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[0].id must be a valid UUID");
+
+    // duplicate thread ids
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "c",
+            endAnchor: "d",
+            quotedText: "q2",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[1].id is duplicated");
+
+    // thread documentId must reference a document in the snapshot
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "99999999-9999-9999-9999-999999999999",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow(
+      "commentThreads[0].documentId must reference a document in the snapshot",
+    );
+
+    // invalid date string
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "not-a-date",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [],
+          },
+        ],
+      }),
+    ).toThrow("commentThreads[0].createdAt must be a valid ISO date string");
+
+    // duplicate comment ids
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: null,
+                body: "one",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: null,
+                body: "two",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("comments[1].id is duplicated");
+
+    // comment authorId must be a valid UUID when non-null
+    expect(() =>
+      parseProjectSnapshotState({
+        documents: validDoc,
+        commentThreads: [
+          {
+            id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            documentId: "11111111-1111-1111-1111-111111111111",
+            status: "open",
+            startAnchor: "a",
+            endAnchor: "b",
+            quotedText: "q",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            comments: [
+              {
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                authorId: "not-a-uuid",
+                body: "text",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow("comments[0].authorId must be a valid UUID or null");
+  });
+
+  it("parses valid comment threads in snapshot payloads", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+      commentThreads: [
+        {
+          id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          documentId: "11111111-1111-1111-1111-111111111111",
+          status: "open",
+          startAnchor: "a",
+          endAnchor: "b",
+          quotedText: "q",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-02T00:00:00.000Z",
+          comments: [
+            {
+              id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+              authorId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+              body: "hello",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.commentThreads).toHaveLength(1);
+    expect(result.commentThreads[0]?.id).toBe(
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    );
+    expect(result.commentThreads[0]?.comments).toHaveLength(1);
+    expect(result.commentThreads[0]?.comments[0]?.body).toBe("hello");
+  });
+
+  it("defaults commentThreads to null when field is absent", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+    });
+
+    expect(result.commentThreads).toBeNull();
+  });
+
+  it("parses explicit empty commentThreads as empty array", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+      commentThreads: [],
+    });
+
+    expect(result.commentThreads).toEqual([]);
   });
 });
 
@@ -727,6 +967,12 @@ function createDocumentLookup() {
   listForProject.mockResolvedValue([]);
 
   return { listForProject };
+}
+
+function createCommentThreadLookup() {
+  return {
+    listThreadsForProject: vi.fn().mockResolvedValue([]),
+  };
 }
 
 function createResetPublisher() {

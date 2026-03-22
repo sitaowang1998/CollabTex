@@ -32,6 +32,9 @@ export type CommentRepository = {
     authorId: string;
     body: string;
   }) => Promise<StoredCommentThreadWithComments>;
+  listThreadsForProject: (
+    projectId: string,
+  ) => Promise<StoredCommentThreadWithComments[]>;
   listThreadsForDocument: (input: {
     projectId: string;
     documentId: string;

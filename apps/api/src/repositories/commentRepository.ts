@@ -73,6 +73,23 @@ export function createCommentRepository(
         }
       }),
 
+    listThreadsForProject: async (projectId) => {
+      const threads = await databaseClient.commentThread.findMany({
+        where: {
+          projectId,
+          project: { tombstoneAt: null },
+        },
+        include: {
+          comments: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+
+      return threads.map(mapThreadWithComments);
+    },
+
     listThreadsForDocument: async ({ projectId, documentId }) => {
       const threads = await databaseClient.commentThread.findMany({
         where: {
