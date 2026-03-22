@@ -773,6 +773,97 @@ describe("snapshot restore integration", () => {
     expect(threads).toHaveLength(0);
   });
 
+  it("preserves existing comment threads when restoring a legacy snapshot without commentThreads field", async () => {
+    const suffix = randomUUID();
+    const snapshotRoot = await mkdtemp(
+      path.join(os.tmpdir(), "collabtex-snapshot-legacy-"),
+    );
+    const owner = await createUser(`snapshot-legacy-${suffix}@example.com`);
+    const project = await createProject(owner.id, `Snapshot Legacy ${suffix}`);
+    const documentRepository = createDocumentRepository(getDb());
+    const textStateRepository = createDocumentTextStateRepository(getDb());
+    const commentRepository = createCommentRepository(getDb());
+    const collaborationService = createCollaborationService();
+    const doc = await documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/main.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+
+    await textStateRepository.create({
+      documentId: doc.id,
+      ...createStoredTextState(collaborationService, "\\section{Content}"),
+    });
+
+    await commentRepository.createThread({
+      projectId: project.id,
+      documentId: doc.id,
+      startAnchor: "a",
+      endAnchor: "b",
+      quotedText: "q",
+      authorId: owner.id,
+      body: "should survive restore",
+    });
+
+    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+    const snapshotStoragePath = `${project.id}/legacy.json`;
+    const absoluteSnapshotPath = path.join(snapshotRoot, snapshotStoragePath);
+    await mkdir(path.dirname(absoluteSnapshotPath), { recursive: true });
+    await writeFile(
+      absoluteSnapshotPath,
+      JSON.stringify({
+        documents: {
+          [doc.id]: {
+            path: "/main.tex",
+            kind: "text",
+            mime: "text/x-tex",
+            textContent: "\\section{Content}",
+          },
+        },
+      }),
+      "utf8",
+    );
+    const targetSnapshot = await getDb().snapshot.create({
+      data: {
+        projectId: project.id,
+        storagePath: snapshotStoragePath,
+        message: "Legacy snapshot",
+        authorId: owner.id,
+      },
+    });
+    const service = createSnapshotService({
+      snapshotRepository: createSnapshotRepository(getDb()),
+      snapshotStore,
+      documentTextStateRepository: textStateRepository,
+      collaborationService,
+      projectStateRepository: createProjectStateRepository(getDb()),
+      binaryContentStore: createNoopBinaryContentStore(),
+      documentLookup: documentRepository,
+      commentThreadLookup: commentRepository,
+      getResetPublisher: () => ({
+        emitDocumentReset: vi.fn(),
+      }),
+    });
+
+    await service.restoreProjectSnapshot({
+      projectId: project.id,
+      snapshotId: targetSnapshot.id,
+      actorUserId: owner.id,
+    });
+
+    const threads = await getDb().commentThread.findMany({
+      where: { projectId: project.id },
+      include: {
+        comments: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+      },
+    });
+
+    expect(threads).toHaveLength(1);
+    expect(threads[0]?.comments[0]?.body).toBe("should survive restore");
+  });
+
   it("restores comments correctly when switching between older and latest snapshots", async () => {
     const suffix = randomUUID();
     const snapshotRoot = await mkdtemp(

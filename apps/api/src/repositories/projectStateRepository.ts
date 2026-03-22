@@ -26,7 +26,7 @@ export type ProjectStateRepository = {
     projectId: string;
     actorUserId: string;
     restoredDocuments: RestoredProjectDocumentState[];
-    restoredCommentThreads: RestoredCommentThread[];
+    restoredCommentThreads: RestoredCommentThread[] | null;
     checkpointSnapshot: {
       storagePath: string;
       message: string | null;
@@ -229,11 +229,16 @@ export function createProjectStateRepository(
           );
         }
 
-        await tx.commentThread.deleteMany({
-          where: { projectId },
-        });
+        if (restoredCommentThreads !== null) {
+          await tx.commentThread.deleteMany({
+            where: { projectId },
+          });
+        }
 
-        if (restoredCommentThreads.length > 0) {
+        if (
+          restoredCommentThreads !== null &&
+          restoredCommentThreads.length > 0
+        ) {
           const allAuthorIds = new Set<string>();
 
           for (const thread of restoredCommentThreads) {

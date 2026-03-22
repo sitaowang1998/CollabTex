@@ -70,7 +70,7 @@ export type SnapshotCommentThreadState = {
 
 export type ProjectSnapshotState = {
   documents: Record<string, SnapshotDocumentState>;
-  commentThreads: SnapshotCommentThreadState[];
+  commentThreads: SnapshotCommentThreadState[] | null;
 };
 
 export type SnapshotStore = {
@@ -812,8 +812,12 @@ export type RestoredCommentThread = {
 };
 
 function deserializeCommentThreads(
-  threads: SnapshotCommentThreadState[],
-): RestoredCommentThread[] {
+  threads: SnapshotCommentThreadState[] | null,
+): RestoredCommentThread[] | null {
+  if (threads === null) {
+    return null;
+  }
+
   return threads.map((thread) => ({
     id: thread.id,
     documentId: thread.documentId,
@@ -835,9 +839,9 @@ function deserializeCommentThreads(
 function parseSnapshotCommentThreads(
   value: unknown,
   documents: Record<string, SnapshotDocumentState>,
-): SnapshotCommentThreadState[] {
+): SnapshotCommentThreadState[] | null {
   if (value === undefined || value === null) {
-    return [];
+    return null;
   }
 
   if (!Array.isArray(value)) {

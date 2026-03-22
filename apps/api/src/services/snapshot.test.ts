@@ -888,7 +888,7 @@ describe("snapshot service", () => {
     expect(result.commentThreads[0]?.comments[0]?.body).toBe("hello");
   });
 
-  it("defaults commentThreads to empty when field is absent", () => {
+  it("defaults commentThreads to null when field is absent", () => {
     const result = parseProjectSnapshotState({
       documents: {
         "11111111-1111-1111-1111-111111111111": {
@@ -898,6 +898,22 @@ describe("snapshot service", () => {
           textContent: "body",
         },
       },
+    });
+
+    expect(result.commentThreads).toBeNull();
+  });
+
+  it("parses explicit empty commentThreads as empty array", () => {
+    const result = parseProjectSnapshotState({
+      documents: {
+        "11111111-1111-1111-1111-111111111111": {
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          textContent: "body",
+        },
+      },
+      commentThreads: [],
     });
 
     expect(result.commentThreads).toEqual([]);
