@@ -7,7 +7,11 @@ import {
 } from "./projectAccess.js";
 import { type BinaryContentStore } from "./binaryContent.js";
 import { BINARY_IO_BATCH_SIZE, allSettledInBatches } from "./concurrency.js";
-import { DOCUMENT_WRITE_ROLES, type StoredDocument } from "./document.js";
+import {
+  DOCUMENT_WRITE_ROLES,
+  type DocumentRepository,
+  type StoredDocument,
+} from "./document.js";
 
 export type DocumentLookup = {
   findById: (
@@ -115,9 +119,7 @@ export function createProjectService({
 }: {
   projectRepository: ProjectRepository;
   documentLookup?: DocumentLookup;
-  documentListing?: {
-    listForProject: (projectId: string) => Promise<StoredDocument[]>;
-  };
+  documentListing?: Pick<DocumentRepository, "listForProject">;
   binaryContentStore?: Pick<BinaryContentStore, "delete">;
   projectAccessService?: ProjectAccessService;
   logger?: {
