@@ -10,9 +10,7 @@ test.describe("Auth flow", () => {
     await page.getByRole("button", { name: "Create account" }).click();
 
     await expect(page).toHaveURL("/");
-    await expect(
-      page.getByRole("heading", { name: "Dashboard" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   });
 
   test("login with registered user redirects to dashboard", async ({
@@ -37,9 +35,7 @@ test.describe("Auth flow", () => {
     await page.getByRole("button", { name: "Log in" }).click();
 
     await expect(page).toHaveURL("/");
-    await expect(
-      page.getByRole("heading", { name: "Dashboard" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   });
 
   test("login with wrong credentials shows error", async ({ page }) => {
@@ -120,9 +116,7 @@ test.describe("Auth flow", () => {
 
     // Should redirect back to /
     await expect(page).toHaveURL("/");
-    await expect(
-      page.getByRole("heading", { name: "Dashboard" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   });
 
   test("submit button is disabled while request is in flight", async ({

@@ -69,17 +69,28 @@ function spawnServer(
   command: string,
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv },
-): ChildProcess {
+): { child: ChildProcess; failed: Promise<never> } {
   const child = spawn(command, args, {
     cwd: opts.cwd ?? repoRoot,
     env: { ...process.env, ...opts.env },
     stdio: "inherit",
     detached: true,
   });
-  child.once("error", (err) => {
-    console.error(`Server process error (${command}): ${formatError(err)}`);
+  const failed = new Promise<never>((_, reject) => {
+    child.once("error", (err) => {
+      reject(new Error(`Failed to spawn ${command}: ${formatError(err)}`));
+    });
+    child.once("exit", (code, sig) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `${command} exited unexpectedly (code=${code}, signal=${sig})`,
+          ),
+        );
+      }
+    });
   });
-  return child;
+  return { child, failed };
 }
 
 async function waitForServer(
@@ -109,10 +120,11 @@ async function waitForServer(
 function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid !== undefined) {
     try {
-      // Negative PID kills the entire process group (npx + its children)
       process.kill(-child.pid, signal);
-    } catch {
-      /* already dead */
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException)?.code !== "ESRCH") {
+        console.warn(`Failed to kill process group ${child.pid}:`, err);
+      }
     }
   }
 }
@@ -172,7 +184,11 @@ async function main() {
     if (viteProcess) killProcessGroup(viteProcess, "SIGKILL");
     if (backendProcess) killProcessGroup(backendProcess, "SIGKILL");
     teardownCompose(composeEnv)
-      .catch(() => {})
+      .catch((err) =>
+        console.error(
+          `Teardown failed (manual cleanup may be needed): ${formatError(err)}`,
+        ),
+      )
       .finally(() => process.exit(1));
   }
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -211,7 +227,7 @@ async function main() {
     // 3. Start backend
     const clientOrigin = `http://localhost:${vitePort}`;
     console.log(`Starting backend on port ${apiPort}...`);
-    backendProcess = spawnServer(npxCommand, ["tsx", "src/index.ts"], {
+    const backend = spawnServer(npxCommand, ["tsx", "src/index.ts"], {
       cwd: apiRoot,
       env: {
         ...composeEnv,
@@ -221,22 +237,26 @@ async function main() {
         NODE_ENV: "test",
       },
     });
-    await waitForServer(`http://localhost:${apiPort}/api/auth/me`, "Backend");
+    backendProcess = backend.child;
+    await Promise.race([
+      waitForServer(`http://localhost:${apiPort}/api/auth/me`, "Backend"),
+      backend.failed,
+    ]);
 
     // 4. Start Vite dev server
     console.log(`Starting Vite dev server on port ${vitePort}...`);
-    viteProcess = spawnServer(
-      npxCommand,
-      ["vite", "--port", String(vitePort)],
-      {
-        cwd: webRoot,
-        env: {
-          ...composeEnv,
-          VITE_API_TARGET: `http://localhost:${apiPort}`,
-        },
+    const vite = spawnServer(npxCommand, ["vite", "--port", String(vitePort)], {
+      cwd: webRoot,
+      env: {
+        ...composeEnv,
+        VITE_API_TARGET: `http://localhost:${apiPort}`,
       },
-    );
-    await waitForServer(`http://localhost:${vitePort}`, "Vite dev server");
+    });
+    viteProcess = vite.child;
+    await Promise.race([
+      waitForServer(`http://localhost:${vitePort}`, "Vite dev server"),
+      vite.failed,
+    ]);
 
     // 5. Run Playwright tests
     console.log("Running Playwright tests...");
