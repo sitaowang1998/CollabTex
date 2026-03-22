@@ -206,7 +206,11 @@ export function createSocketServer(
         return;
       }
 
-      if (!activeWorkspaceRoomName || request.documentId !== activeDocumentId) {
+      if (
+        !activeWorkspaceRoomName ||
+        request.documentId !== activeDocumentId ||
+        !socket.rooms.has(activeWorkspaceRoomName)
+      ) {
         socket.emit("realtime:error", {
           code: "INVALID_REQUEST",
           message: "socket is not joined to this document",
