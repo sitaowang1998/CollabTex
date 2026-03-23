@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
-import type { Project, ProjectSummary } from "@collab-tex/shared";
+import type {
+  Project,
+  ProjectSummary,
+  ProjectDocumentResponse,
+} from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +69,23 @@ export default function CreateProjectModal({
       const { project } = await api.post<ProjectMutationResponse>("/projects", {
         name: trimmed,
       });
+
+      // Best-effort: create default main.tex and set as main document
+      try {
+        const { document } = await api.post<ProjectDocumentResponse>(
+          `/projects/${project.id}/files`,
+          { path: "/main.tex", kind: "text" },
+        );
+        await api.put(`/projects/${project.id}/main-document`, {
+          documentId: document.id,
+        });
+      } catch (err) {
+        console.error("Failed to create default main.tex:", err);
+        setError(
+          "Project created, but default main.tex could not be set up. You can create it manually.",
+        );
+      }
+
       onCreated({
         id: project.id,
         name: project.name,

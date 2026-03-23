@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, copyFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 import process from "node:process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -168,6 +169,15 @@ async function main() {
   console.log(`Starting API on port ${apiPort}...`);
   const api = spawnServer(npxCommand, ["tsx", "watch", "src/index.ts"], {
     cwd: apiRoot,
+    env: {
+      SNAPSHOT_STORAGE_ROOT: join(tmpdir(), "collabtex-dev", "snapshots"),
+      BINARY_CONTENT_STORAGE_ROOT: join(
+        tmpdir(),
+        "collabtex-dev",
+        "binary-content",
+      ),
+      COMPILE_STORAGE_ROOT: join(tmpdir(), "collabtex-dev", "compiles"),
+    },
   });
   const apiProcess = api.child;
 

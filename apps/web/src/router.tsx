@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
+import ProjectEditorPage from "./pages/ProjectEditorPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
 import { RouteErrorFallback } from "./components/RouteErrorFallback";
@@ -21,7 +22,7 @@ export const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           { path: "/", element: <DashboardPage /> },
-          { path: "/projects/:projectId", element: <div>Project</div> },
+          { path: "/projects/:projectId", element: <ProjectEditorPage /> },
         ],
       },
       { path: "*", element: <div>Page not found</div> },

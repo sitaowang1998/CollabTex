@@ -13,6 +13,7 @@ vi.mock("../lib/api", async (importOriginal) => {
       post: vi.fn(),
       patch: vi.fn(),
       delete: vi.fn(),
+      put: vi.fn(),
     },
   };
 });
@@ -87,7 +88,14 @@ describe("CreateProjectModal", () => {
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-01T00:00:00Z",
     };
-    mockedApi.post.mockResolvedValueOnce({ project });
+    mockedApi.post.mockImplementation((path: string) => {
+      if (path === "/projects") return Promise.resolve({ project });
+      // main.tex creation
+      return Promise.resolve({
+        document: { id: "d1", path: "/main.tex" },
+      });
+    });
+    mockedApi.put.mockResolvedValue(undefined);
     renderModal(vi.fn(), onCreated);
 
     await user.type(screen.getByLabelText("Project name"), "Test Project");
@@ -103,6 +111,37 @@ describe("CreateProjectModal", () => {
     });
     expect(mockedApi.post).toHaveBeenCalledWith("/projects", {
       name: "Test Project",
+    });
+  });
+
+  it("creates main.tex and sets as main document after project creation", async () => {
+    const user = userEvent.setup();
+    const project = {
+      id: "p1",
+      name: "Test",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    mockedApi.post.mockImplementation((path: string) => {
+      if (path === "/projects") return Promise.resolve({ project });
+      return Promise.resolve({
+        document: { id: "doc-main", path: "/main.tex" },
+      });
+    });
+    mockedApi.put.mockResolvedValue(undefined);
+    renderModal();
+
+    await user.type(screen.getByLabelText("Project name"), "Test");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(mockedApi.post).toHaveBeenCalledWith("/projects/p1/files", {
+        path: "/main.tex",
+        kind: "text",
+      });
+    });
+    expect(mockedApi.put).toHaveBeenCalledWith("/projects/p1/main-document", {
+      documentId: "doc-main",
     });
   });
 
@@ -169,6 +208,34 @@ describe("CreateProjectModal", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Name already exists")).toBeInTheDocument();
+    });
+  });
+
+  it("still calls onCreated when main.tex creation fails", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const project = {
+      id: "p1",
+      name: "Test",
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    mockedApi.post.mockImplementation((path: string) => {
+      if (path === "/projects") return Promise.resolve({ project });
+      return Promise.reject(new ApiError(500, "Internal error"));
+    });
+    renderModal(vi.fn(), onCreated);
+
+    await user.type(screen.getByLabelText("Project name"), "Test");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalledWith({
+        id: "p1",
+        name: "Test",
+        myRole: "admin",
+        updatedAt: "2026-01-01T00:00:00Z",
+      });
     });
   });
 });
