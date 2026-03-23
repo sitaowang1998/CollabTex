@@ -259,6 +259,7 @@ export function createSnapshotService({
       } catch (error) {
         console.error(
           `Failed to read snapshot content: project=${projectId}, snapshot=${snapshotId}, path=${snapshot.storagePath}`,
+          error,
         );
         throw error;
       }

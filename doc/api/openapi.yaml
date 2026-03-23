@@ -396,12 +396,15 @@ paths:
     get:
       tags:
         - Snapshots
-      summary: View the full content of a historical snapshot
+      summary: View a historical snapshot with text document content and metadata
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Snapshot metadata with document contents and comment threads
+          description: >-
+            Snapshot metadata with text document contents and comment threads.
+            Binary documents are included as metadata only; their content is not
+            returned in this response.
           content:
             application/json:
               schema:
@@ -413,7 +416,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: The snapshot blob is unreadable, invalid, or stored in an unsupported format.
+          description: The snapshot blob is invalid or stored in an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The snapshot data blob could not be found or read due to an internal server error.
           content:
             application/json:
               schema:
