@@ -7,6 +7,7 @@ import { parseUuidParam } from "../validation/requestValidation.js";
 import {
   InvalidSnapshotDataError,
   SnapshotDataNotFoundError,
+  type SnapshotDocumentState,
   type StoredSnapshot,
 } from "../../services/snapshot.js";
 import {
@@ -43,6 +44,43 @@ export function createSnapshotRouter(
 
         res.json({
           snapshots: snapshots.map(serializeSnapshot),
+        });
+      } catch (error) {
+        next(mapSnapshotError(error));
+      }
+    },
+  );
+
+  router.get(
+    "/api/projects/:projectId/snapshots/:snapshotId",
+    requireAuth,
+    async (req, res, next) => {
+      try {
+        const authenticatedRequest = req as AuthenticatedRequest;
+        const projectId = parseUuidParam(req.params.projectId, "projectId");
+        const snapshotId = parseUuidParam(req.params.snapshotId, "snapshotId");
+
+        if (projectId instanceof HttpError) {
+          next(projectId);
+          return;
+        }
+
+        if (snapshotId instanceof HttpError) {
+          next(snapshotId);
+          return;
+        }
+
+        const { snapshot, state } =
+          await snapshotManagementService.getSnapshotContent({
+            projectId,
+            snapshotId,
+            userId: authenticatedRequest.userId,
+          });
+
+        res.json({
+          snapshot: serializeSnapshot(snapshot),
+          documents: serializeSnapshotDocuments(state.documents),
+          commentThreads: state.commentThreads,
         });
       } catch (error) {
         next(mapSnapshotError(error));
@@ -105,14 +143,14 @@ function mapSnapshotError(error: unknown): Error {
   }
 
   if (error instanceof SnapshotDataNotFoundError) {
-    return new HttpError(422, "selected snapshot data is missing");
+    return new HttpError(500, "snapshot data is unavailable");
   }
 
   if (error instanceof Error) {
     return error;
   }
 
-  return new Error("Unknown snapshot error");
+  return new Error(`Unknown snapshot error: ${String(error)}`);
 }
 
 function serializeSnapshot(snapshot: StoredSnapshot) {
@@ -123,4 +161,16 @@ function serializeSnapshot(snapshot: StoredSnapshot) {
     authorId: snapshot.authorId,
     createdAt: snapshot.createdAt.toISOString(),
   };
+}
+
+function serializeSnapshotDocuments(
+  documents: Record<string, SnapshotDocumentState>,
+) {
+  return Object.entries(documents).map(([documentId, doc]) => ({
+    documentId,
+    path: doc.path,
+    kind: doc.kind,
+    mime: doc.mime,
+    textContent: doc.kind === "text" ? doc.textContent : null,
+  }));
 }

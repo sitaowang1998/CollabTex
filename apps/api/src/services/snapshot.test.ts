@@ -595,6 +595,101 @@ describe("snapshot service", () => {
     }
   });
 
+  it("returns snapshot metadata and state for getProjectSnapshotContent", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const storedSnapshot = createStoredSnapshot();
+    const snapshotState = {
+      documents: {
+        "document-1": {
+          path: "/main.tex",
+          kind: "text" as const,
+          mime: null,
+          textContent: "hello",
+        },
+      },
+      commentThreads: [],
+    };
+    repository.findById.mockResolvedValue(storedSnapshot);
+    store.readProjectSnapshot.mockResolvedValue(snapshotState);
+
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository: createDocumentTextStateRepository(),
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
+    });
+
+    const result = await service.getProjectSnapshotContent({
+      projectId: "project-1",
+      snapshotId: "snapshot-1",
+    });
+
+    expect(result.snapshot).toBe(storedSnapshot);
+    expect(result.state).toBe(snapshotState);
+    expect(repository.findById).toHaveBeenCalledWith("project-1", "snapshot-1");
+    expect(store.readProjectSnapshot).toHaveBeenCalledWith(
+      storedSnapshot.storagePath,
+    );
+  });
+
+  it("throws SnapshotNotFoundError when snapshot does not exist", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    repository.findById.mockResolvedValue(null);
+
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository: createDocumentTextStateRepository(),
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
+    });
+
+    await expect(
+      service.getProjectSnapshotContent({
+        projectId: "project-1",
+        snapshotId: "nonexistent",
+      }),
+    ).rejects.toThrow("Snapshot not found");
+
+    expect(store.readProjectSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("propagates snapshot store errors from getProjectSnapshotContent", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    repository.findById.mockResolvedValue(createStoredSnapshot());
+    store.readProjectSnapshot.mockRejectedValue(
+      new SnapshotDataNotFoundError(),
+    );
+
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository: createDocumentTextStateRepository(),
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore: createBinaryContentStore(),
+      documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
+    });
+
+    await expect(
+      service.getProjectSnapshotContent({
+        projectId: "project-1",
+        snapshotId: "snapshot-1",
+      }),
+    ).rejects.toThrow("Snapshot data not found");
+  });
+
   it("rejects malformed or unsupported snapshot payloads", () => {
     expect(() =>
       parseProjectSnapshotState({
