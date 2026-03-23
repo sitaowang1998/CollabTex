@@ -227,14 +227,84 @@ describe("snapshot routes", () => {
     await request(app)
       .post(`/api/projects/${projectId}/snapshots/${snapshotId}/restore`)
       .set("authorization", `Bearer ${createToken()}`)
-      .expect(422)
-      .expect({ error: "selected snapshot data is missing" });
+      .expect(500)
+      .expect({ error: "snapshot data is unavailable" });
 
     await request(app)
       .post(`/api/projects/${projectId}/snapshots/${snapshotId}/restore`)
       .set("authorization", `Bearer ${createToken()}`)
       .expect(422)
       .expect({ error: "snapshot payload uses an unsupported format" });
+  });
+
+  it("maps errors from the get snapshot content endpoint", async () => {
+    const snapshotManagementService = createSnapshotManagementService();
+    snapshotManagementService.getSnapshotContent
+      .mockRejectedValueOnce(new SnapshotNotFoundError())
+      .mockRejectedValueOnce(new ProjectNotFoundError())
+      .mockRejectedValueOnce(new SnapshotDataNotFoundError());
+    const app = createSnapshotTestApp(snapshotManagementService);
+    const projectId = "6f35c2aa-fd34-4905-a370-7d9642244166";
+    const snapshotId = "7aa64dc2-f494-43c2-ad99-98d0ec4afd2b";
+
+    await request(app)
+      .get(`/api/projects/${projectId}/snapshots/${snapshotId}`)
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(404)
+      .expect({ error: "snapshot not found" });
+
+    await request(app)
+      .get(`/api/projects/${projectId}/snapshots/${snapshotId}`)
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(404)
+      .expect({ error: "project not found" });
+
+    await request(app)
+      .get(`/api/projects/${projectId}/snapshots/${snapshotId}`)
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(500)
+      .expect({ error: "snapshot data is unavailable" });
+  });
+
+  it("rejects invalid snapshot id with 400", async () => {
+    const snapshotManagementService = createSnapshotManagementService();
+    const app = createSnapshotTestApp(snapshotManagementService);
+
+    await request(app)
+      .get(
+        "/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/snapshots/not-a-uuid",
+      )
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(400);
+  });
+
+  it("returns empty documents and null comment threads for legacy snapshots", async () => {
+    const snapshotManagementService = createSnapshotManagementService();
+    snapshotManagementService.getSnapshotContent.mockResolvedValue({
+      snapshot: {
+        id: "7aa64dc2-f494-43c2-ad99-98d0ec4afd2b",
+        projectId: "6f35c2aa-fd34-4905-a370-7d9642244166",
+        message: null,
+        authorId: null,
+        createdAt: new Date("2026-03-01T12:00:00.000Z"),
+        storagePath: "project-1/snapshot.json",
+      },
+      state: {
+        documents: {},
+        commentThreads: null,
+      },
+    });
+    const app = createSnapshotTestApp(snapshotManagementService);
+
+    const response = await request(app)
+      .get(
+        "/api/projects/6f35c2aa-fd34-4905-a370-7d9642244166/snapshots/7aa64dc2-f494-43c2-ad99-98d0ec4afd2b",
+      )
+      .set("authorization", `Bearer ${createToken()}`)
+      .expect(200);
+
+    expect(response.body.documents).toEqual([]);
+    expect(response.body.commentThreads).toBeNull();
   });
 });
 

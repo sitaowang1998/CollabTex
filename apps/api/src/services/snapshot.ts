@@ -250,11 +250,18 @@ export function createSnapshotService({
         throw new SnapshotNotFoundError();
       }
 
-      const state = await snapshotStore.readProjectSnapshot(
-        snapshot.storagePath,
-      );
+      try {
+        const state = await snapshotStore.readProjectSnapshot(
+          snapshot.storagePath,
+        );
 
-      return { snapshot, state };
+        return { snapshot, state };
+      } catch (error) {
+        console.error(
+          `Failed to read snapshot content: project=${projectId}, snapshot=${snapshotId}, path=${snapshot.storagePath}`,
+        );
+        throw error;
+      }
     },
     restoreProjectSnapshot: async ({ projectId, snapshotId, actorUserId }) => {
       const targetSnapshot = await snapshotRepository.findById(

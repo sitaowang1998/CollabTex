@@ -143,14 +143,15 @@ function mapSnapshotError(error: unknown): Error {
   }
 
   if (error instanceof SnapshotDataNotFoundError) {
-    return new HttpError(422, "selected snapshot data is missing");
+    console.error("Snapshot data missing from store:", error);
+    return new HttpError(500, "snapshot data is unavailable");
   }
 
   if (error instanceof Error) {
     return error;
   }
 
-  return new Error("Unknown snapshot error");
+  return new Error(`Unknown snapshot error: ${String(error)}`);
 }
 
 function serializeSnapshot(snapshot: StoredSnapshot) {
