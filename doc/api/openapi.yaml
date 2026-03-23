@@ -453,7 +453,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: The selected snapshot blob is unreadable, invalid, or stored in an unsupported format.
+          description: The snapshot blob is invalid or stored in an unsupported format.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The snapshot data blob could not be found or read due to an internal server error.
           content:
             application/json:
               schema:
