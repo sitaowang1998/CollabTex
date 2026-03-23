@@ -16,7 +16,10 @@ import {
 } from "../repositories/snapshotRefreshJobRepository.js";
 import { BinaryContentNotFoundError } from "../services/binaryContent.js";
 import { createCollaborationService } from "../services/collaboration.js";
-import { createSnapshotService } from "../services/snapshot.js";
+import {
+  createSnapshotService,
+  type SnapshotService,
+} from "../services/snapshot.js";
 import { createSnapshotRefreshProcessor } from "../services/snapshotRefresh.js";
 import { createTestDatabaseClient } from "../test/db/createTestDatabaseClient.js";
 
@@ -32,20 +35,21 @@ function getDb(): DatabaseClient {
 }
 
 /**
- * Drain all claimable jobs from the queue using a real processor so
- * leftover jobs from other tests do not interfere.
+ * Drain all claimable jobs from the queue so leftover jobs from other tests
+ * do not interfere. Uses claimNextJob directly to avoid the ambiguity of
+ * processNextJob returning false on both empty queue and job failure.
  */
 async function drainLeftovers() {
-  const processor = buildProcessor();
-  while (await processor.processor.processNextJob()) {
-    // keep processing
+  const { snapshotRefreshJobRepository } = buildProcessor();
+  while (true) {
+    const job = await snapshotRefreshJobRepository.claimNextJob();
+    if (!job) break;
+    await snapshotRefreshJobRepository.markJobSucceeded(job.id);
   }
 }
 
 function buildProcessor(overrides?: {
-  snapshotService?: {
-    captureProjectSnapshot: (...args: unknown[]) => Promise<never>;
-  };
+  snapshotService?: Pick<SnapshotService, "captureProjectSnapshot">;
 }) {
   const snapshotRoot = path.join(tmpRoot, `snapshots-${randomUUID()}`);
   const snapshotRefreshJobRepository =
@@ -69,7 +73,7 @@ function buildProcessor(overrides?: {
       projectStateRepository,
       binaryContentStore: {
         get: async () => {
-          throw new BinaryContentNotFoundError("no binary content in test");
+          throw new BinaryContentNotFoundError();
         },
         put: async () => {},
         delete: async () => {},

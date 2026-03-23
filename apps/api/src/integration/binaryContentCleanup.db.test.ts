@@ -60,7 +60,7 @@ describe("binary content cleanup on delete integration", () => {
     const binaryContentStore =
       createLocalFilesystemBinaryContentStore(binaryRoot);
 
-    const stubSnapshotService = {
+    const stubSnapshotService: SnapshotService = {
       loadDocumentContent: async () => null,
       captureProjectSnapshot: async () => {
         throw new Error("not implemented in test");
@@ -72,7 +72,7 @@ describe("binary content cleanup on delete integration", () => {
       restoreProjectSnapshot: async () => {
         throw new Error("not implemented in test");
       },
-    } as unknown as SnapshotService;
+    };
 
     const documentService = createDocumentService({
       documentRepository,
