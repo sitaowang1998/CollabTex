@@ -37,10 +37,15 @@ async function attemptTokenRefresh(): Promise<string> {
   return data.token;
 }
 
+export type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  options?: RequestOptions,
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
@@ -59,7 +64,9 @@ async function request<T>(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(30_000),
+      signal: options?.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
+        : AbortSignal.timeout(30_000),
     });
   } catch (err) {
     throw new ApiError(
@@ -169,8 +176,12 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>("GET", path),
-  post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
-  delete: (path: string): Promise<void> => request<void>("DELETE", path),
+  get: <T>(path: string, options?: RequestOptions) =>
+    request<T>("GET", path, undefined, options),
+  post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>("POST", path, body, options),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>("PATCH", path, body, options),
+  delete: (path: string, options?: RequestOptions): Promise<void> =>
+    request<void>("DELETE", path, undefined, options),
 };
