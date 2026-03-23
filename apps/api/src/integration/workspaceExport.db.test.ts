@@ -30,6 +30,23 @@ function getDb(): DatabaseClient {
   return db;
 }
 
+function createTextState(text: string): {
+  yjsState: Uint8Array;
+  textContent: string;
+} {
+  const collaborationService = createCollaborationService();
+  const doc = collaborationService.createDocumentFromText(text);
+
+  try {
+    return {
+      yjsState: doc.exportUpdate(),
+      textContent: doc.getText(),
+    };
+  } finally {
+    doc.destroy();
+  }
+}
+
 describe("workspace export integration", () => {
   beforeAll(async () => {
     db = createTestDatabaseClient();
@@ -44,7 +61,9 @@ describe("workspace export integration", () => {
       await db.$disconnect();
     }
     if (tmpRoot) {
-      await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+      await rm(tmpRoot, { recursive: true, force: true }).catch((err) =>
+        console.warn("Temp dir cleanup failed:", err),
+      );
     }
   });
 
@@ -114,21 +133,18 @@ describe("workspace export integration", () => {
       mime: "image/png",
     });
 
-    // Persist text state
+    const textState = createTextState("\\documentclass{article}");
     await deps.documentTextStateRepository.create({
       documentId: textDoc.id,
-      yjsState: new Uint8Array([0]),
-      textContent: "\\documentclass{article}",
+      ...textState,
     });
 
-    // Upload binary content
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     await deps.helpers.binaryContentStore.put(
       `${project.id}/${binaryDoc.id}`,
       pngBytes,
     );
 
-    // Capture snapshot so export has fallback data
     const documents = await deps.documentRepository.listForProject(project.id);
     await deps.helpers.snapshotService.captureProjectSnapshot({
       projectId: project.id,
@@ -152,7 +168,7 @@ describe("workspace export integration", () => {
     );
     expect(binaryFile).toBeDefined();
     expect(binaryFile!.kind).toBe("binary");
-    expect(Buffer.isBuffer(binaryFile!.content)).toBe(true);
+    expect(binaryFile!.content).toEqual(pngBytes);
   });
 
   it("prefers mutable text state over snapshot content", async () => {
@@ -169,11 +185,10 @@ describe("workspace export integration", () => {
       mime: "text/x-tex",
     });
 
-    // Create initial text state and snapshot with "v1"
+    const v1State = createTextState("version 1");
     await deps.documentTextStateRepository.create({
       documentId: textDoc.id,
-      yjsState: new Uint8Array([0]),
-      textContent: "version 1",
+      ...v1State,
     });
 
     const documents = await deps.documentRepository.listForProject(project.id);
@@ -183,11 +198,10 @@ describe("workspace export integration", () => {
       documents,
     });
 
-    // Update text state to "v2"
+    const v2State = createTextState("version 2");
     await deps.documentTextStateRepository.update({
       documentId: textDoc.id,
-      yjsState: new Uint8Array([1]),
-      textContent: "version 2",
+      ...v2State,
       expectedVersion: 1,
     });
 
@@ -215,7 +229,6 @@ describe("workspace export integration", () => {
       mime: "image/png",
     });
 
-    // Upload binary so snapshot captures it, then remove from mutable store
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
     await deps.helpers.binaryContentStore.put(
       `${project.id}/${binaryDoc.id}`,
@@ -239,9 +252,54 @@ describe("workspace export integration", () => {
     expect(files).toHaveLength(1);
     expect(files[0]!.kind).toBe("binary");
     expect(files[0]!.relativePath).toBe("image.png");
-    // Content should be decoded from snapshot base64
-    expect(Buffer.isBuffer(files[0]!.content)).toBe(true);
-    expect((files[0]!.content as Buffer).length).toBeGreaterThan(0);
+    // Content decoded from snapshot base64 should match original bytes
+    expect(files[0]!.content).toEqual(pngBytes);
+  });
+
+  it("exports text document with no state and no snapshot as empty string", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`export-nostate-${suffix}@example.com`);
+    const project = await createProject(
+      owner.id,
+      `ExportNoState ${suffix}`,
+    );
+    const deps = buildDeps();
+
+    await deps.documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/empty.tex",
+      kind: "text",
+      mime: "text/x-tex",
+    });
+
+    const files = await assembleProjectFiles(deps, project.id);
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toEqual({
+      relativePath: "empty.tex",
+      kind: "text",
+      content: "",
+    });
+  });
+
+  it("skips binary document with no mutable content and no snapshot", async () => {
+    const suffix = randomUUID();
+    const owner = await createUser(`export-nobin-${suffix}@example.com`);
+    const project = await createProject(owner.id, `ExportNoBin ${suffix}`);
+    const deps = buildDeps();
+
+    await deps.documentRepository.createDocument({
+      projectId: project.id,
+      actorUserId: owner.id,
+      path: "/missing.png",
+      kind: "binary",
+      mime: "image/png",
+    });
+
+    const files = await assembleProjectFiles(deps, project.id);
+
+    expect(files).toEqual([]);
   });
 
   it("exports empty project as empty array", async () => {

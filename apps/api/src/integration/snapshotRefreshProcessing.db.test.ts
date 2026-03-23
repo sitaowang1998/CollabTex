@@ -31,16 +31,64 @@ function getDb(): DatabaseClient {
 }
 
 /**
- * Drain the processor queue until no more jobs are available.
- * This ensures our test job is processed even if other tests left
- * queued jobs in the shared database.
+ * Drain all claimable jobs from the queue using a real processor so
+ * leftover jobs from other tests do not interfere.
  */
-async function drainQueue(
-  processor: ReturnType<typeof createSnapshotRefreshProcessor>,
-) {
-  while (await processor.processNextJob()) {
+async function drainLeftovers() {
+  const processor = buildProcessor();
+  while (await processor.processor.processNextJob()) {
     // keep processing
   }
+}
+
+function buildProcessor(overrides?: {
+  snapshotService?: {
+    captureProjectSnapshot: (...args: unknown[]) => Promise<never>;
+  };
+}) {
+  const snapshotRoot = path.join(tmpRoot, `snapshots-${randomUUID()}`);
+  const snapshotRefreshJobRepository =
+    createSnapshotRefreshJobRepository(getDb());
+  const documentRepository = createDocumentRepository(getDb());
+  const projectRepository = createProjectRepository(getDb());
+  const snapshotRepository = createSnapshotRepository(getDb());
+  const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
+  const documentTextStateRepository =
+    createDocumentTextStateRepository(getDb());
+  const projectStateRepository = createProjectStateRepository(getDb());
+  const collaborationService = createCollaborationService();
+
+  const snapshotService =
+    overrides?.snapshotService ??
+    createSnapshotService({
+      snapshotRepository,
+      snapshotStore,
+      documentTextStateRepository,
+      collaborationService,
+      projectStateRepository,
+      binaryContentStore: {
+        get: async () => Buffer.alloc(0),
+        put: async () => {},
+        delete: async () => {},
+      },
+      documentLookup: documentRepository,
+      commentThreadLookup: {
+        listThreadsForProject: async () => [],
+      },
+    });
+
+  const processor = createSnapshotRefreshProcessor({
+    snapshotRefreshJobRepository,
+    projectLookup: projectRepository,
+    snapshotService,
+    documentRepository,
+  });
+
+  return {
+    processor,
+    snapshotRefreshJobRepository,
+    snapshotRepository,
+  };
 }
 
 describe("snapshot refresh processing integration", () => {
@@ -57,59 +105,11 @@ describe("snapshot refresh processing integration", () => {
       await db.$disconnect();
     }
     if (tmpRoot) {
-      await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+      await rm(tmpRoot, { recursive: true, force: true }).catch((err) =>
+        console.warn("Temp dir cleanup failed:", err),
+      );
     }
   });
-
-  function buildProcessor(overrides?: {
-    snapshotService?: {
-      captureProjectSnapshot: (...args: unknown[]) => Promise<never>;
-    };
-  }) {
-    const snapshotRoot = path.join(tmpRoot, `snapshots-${randomUUID()}`);
-    const snapshotRefreshJobRepository =
-      createSnapshotRefreshJobRepository(getDb());
-    const documentRepository = createDocumentRepository(getDb());
-    const projectRepository = createProjectRepository(getDb());
-    const snapshotRepository = createSnapshotRepository(getDb());
-    const snapshotStore = createLocalFilesystemSnapshotStore(snapshotRoot);
-    const documentTextStateRepository =
-      createDocumentTextStateRepository(getDb());
-    const projectStateRepository = createProjectStateRepository(getDb());
-    const collaborationService = createCollaborationService();
-
-    const snapshotService =
-      overrides?.snapshotService ??
-      createSnapshotService({
-        snapshotRepository,
-        snapshotStore,
-        documentTextStateRepository,
-        collaborationService,
-        projectStateRepository,
-        binaryContentStore: {
-          get: async () => Buffer.alloc(0),
-          put: async () => {},
-          delete: async () => {},
-        },
-        documentLookup: documentRepository,
-        commentThreadLookup: {
-          listThreadsForProject: async () => [],
-        },
-      });
-
-    const processor = createSnapshotRefreshProcessor({
-      snapshotRefreshJobRepository,
-      projectLookup: projectRepository,
-      snapshotService,
-      documentRepository,
-    });
-
-    return {
-      processor,
-      snapshotRefreshJobRepository,
-      snapshotRepository,
-    };
-  }
 
   it("claims and processes a queued job successfully", async () => {
     const suffix = randomUUID();
@@ -124,6 +124,8 @@ describe("snapshot refresh processing integration", () => {
       mime: "text/x-tex",
     });
 
+    await drainLeftovers();
+
     await getDb().$transaction(async (tx) => {
       await queueSnapshotRefreshJob(tx, {
         projectId: project.id,
@@ -132,12 +134,15 @@ describe("snapshot refresh processing integration", () => {
     });
 
     const { processor, snapshotRepository } = buildProcessor();
-    await drainQueue(processor);
+    const result = await processor.processNextJob();
+
+    expect(result).toBe(true);
 
     const jobs = await getDb().snapshotRefreshJob.findMany({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
+    expect(jobs[0]).not.toBeNull();
     expect(jobs[0]).toEqual(
       expect.objectContaining({
         status: "succeeded",
@@ -155,6 +160,8 @@ describe("snapshot refresh processing integration", () => {
     const owner = await createUser(`snap-fail-${suffix}@example.com`);
     const project = await createProject(owner.id, `SnapFail ${suffix}`);
 
+    await drainLeftovers();
+
     await getDb().$transaction(async (tx) => {
       await queueSnapshotRefreshJob(tx, {
         projectId: project.id,
@@ -170,13 +177,14 @@ describe("snapshot refresh processing integration", () => {
       },
     });
 
-    // Drain processes all jobs; our test job will fail while others may succeed
-    await drainQueue(processor);
+    const result = await processor.processNextJob();
+    expect(result).toBe(false);
 
     const job = await getDb().snapshotRefreshJob.findFirst({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
+    expect(job).not.toBeNull();
     expect(job).toEqual(
       expect.objectContaining({
         status: "failed",
@@ -191,10 +199,7 @@ describe("snapshot refresh processing integration", () => {
     const owner = await createUser(`snap-retry-${suffix}@example.com`);
     const project = await createProject(owner.id, `SnapRetry ${suffix}`);
 
-    // First drain any existing queued/failed jobs so they don't interfere
-    const { snapshotRefreshJobRepository } = buildProcessor();
-    const drainProcessor = buildProcessor();
-    await drainQueue(drainProcessor.processor);
+    await drainLeftovers();
 
     const now = Date.now();
     const jobIds: string[] = [];
@@ -215,15 +220,21 @@ describe("snapshot refresh processing integration", () => {
       jobIds.push(job.id);
     }
 
+    const snapshotRefreshJobRepository =
+      createSnapshotRefreshJobRepository(getDb());
+
     const claimed1 = await snapshotRefreshJobRepository.claimNextJob();
+    expect(claimed1).not.toBeNull();
     expect(claimed1!.id).toBe(jobIds[0]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed1!.id);
 
     const claimed2 = await snapshotRefreshJobRepository.claimNextJob();
+    expect(claimed2).not.toBeNull();
     expect(claimed2!.id).toBe(jobIds[1]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed2!.id);
 
     const claimed3 = await snapshotRefreshJobRepository.claimNextJob();
+    expect(claimed3).not.toBeNull();
     expect(claimed3!.id).toBe(jobIds[2]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed3!.id);
   });
@@ -232,6 +243,8 @@ describe("snapshot refresh processing integration", () => {
     const suffix = randomUUID();
     const owner = await createUser(`snap-del-${suffix}@example.com`);
     const project = await createProject(owner.id, `SnapDel ${suffix}`);
+
+    await drainLeftovers();
 
     await getDb().$transaction(async (tx) => {
       await queueSnapshotRefreshJob(tx, {
@@ -246,12 +259,15 @@ describe("snapshot refresh processing integration", () => {
     });
 
     const { processor, snapshotRepository } = buildProcessor();
-    await drainQueue(processor);
+    const result = await processor.processNextJob();
+
+    expect(result).toBe(true);
 
     const job = await getDb().snapshotRefreshJob.findFirst({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
+    expect(job).not.toBeNull();
     expect(job).toEqual(
       expect.objectContaining({
         status: "succeeded",
@@ -286,18 +302,34 @@ describe("snapshot refresh processing integration", () => {
       },
     });
 
-    const { processor, snapshotRefreshJobRepository } = buildProcessor();
+    const { snapshotRefreshJobRepository } = buildProcessor();
     const recovered =
       await snapshotRefreshJobRepository.recoverInterruptedJobs();
     expect(recovered).toBeGreaterThanOrEqual(1);
 
-    await drainQueue(processor);
+    await drainLeftovers();
 
-    const job = await getDb().snapshotRefreshJob.findFirst({
-      where: { projectId: project.id },
-      orderBy: { createdAt: "desc" },
+    await getDb().$transaction(async (tx) => {
+      await queueSnapshotRefreshJob(tx, {
+        projectId: project.id,
+        requestedByUserId: owner.id,
+      });
     });
-    expect(job).toEqual(
+
+    // The recovered job (now failed) should be retried
+    const { processor: freshProcessor } = buildProcessor();
+    const result = await freshProcessor.processNextJob();
+    expect(result).toBe(true);
+
+    const jobs = await getDb().snapshotRefreshJob.findMany({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // The original job was recovered from processing → failed, then retried
+    const recoveredJob = jobs.find((j) => j.attemptCount === 2);
+    expect(recoveredJob).not.toBeNull();
+    expect(recoveredJob).toEqual(
       expect.objectContaining({
         status: "succeeded",
         attemptCount: 2,

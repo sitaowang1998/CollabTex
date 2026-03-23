@@ -38,7 +38,9 @@ describe("binary content cleanup on delete integration", () => {
       await db.$disconnect();
     }
     if (tmpRoot) {
-      await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
+      await rm(tmpRoot, { recursive: true, force: true }).catch((err) =>
+        console.warn("Temp dir cleanup failed:", err),
+      );
     }
   });
 
@@ -58,7 +60,7 @@ describe("binary content cleanup on delete integration", () => {
       createLocalFilesystemBinaryContentStore(binaryRoot);
 
     const stubSnapshotService = {
-      loadDocumentContent: async () => "",
+      loadDocumentContent: async () => null,
       captureProjectSnapshot: async () => {
         throw new Error("not implemented in test");
       },
@@ -179,12 +181,18 @@ describe("binary content cleanup on delete integration", () => {
       mime: "text/x-tex",
     });
 
-    // Should not throw — no binary cleanup needed
     await documentService.deleteNode({
       projectId: project.id,
       actorUserId: owner.id,
       path: "/main.tex",
     });
+
+    // Verify document was removed from DB
+    const deleted = await documentRepository.findByPath(
+      project.id,
+      "/main.tex",
+    );
+    expect(deleted).toBeNull();
   });
 
   it("deleting binary document with no uploaded content does not error", async () => {
@@ -202,12 +210,18 @@ describe("binary content cleanup on delete integration", () => {
       mime: "image/png",
     });
 
-    // Should not throw — idempotent delete in store
     await documentService.deleteNode({
       projectId: project.id,
       actorUserId: owner.id,
       path: "/empty.png",
     });
+
+    // Verify document was removed from DB
+    const deleted = await documentRepository.findByPath(
+      project.id,
+      "/empty.png",
+    );
+    expect(deleted).toBeNull();
   });
 });
 

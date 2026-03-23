@@ -60,7 +60,8 @@ describe("auth integration", () => {
     });
 
     expect(registerResult.user.email).toBe(email);
-    expect(registerResult.token).toBeTruthy();
+    const registerPayload = verifyToken(registerResult.token, JWT_SECRET);
+    expect(registerPayload.sub).toBe(registerResult.user.id);
 
     const loginResult = await authService.login({
       email,
@@ -114,10 +115,8 @@ describe("auth integration", () => {
 
     expect(refreshResult.user.id).toBe(registerResult.user.id);
     expect(refreshResult.user.email).toBe(email);
-    expect(refreshResult.token).toBeTruthy();
-
-    const payload = verifyToken(refreshResult.token, JWT_SECRET);
-    expect(payload.sub).toBe(registerResult.user.id);
+    const refreshPayload = verifyToken(refreshResult.token, JWT_SECRET);
+    expect(refreshPayload.sub).toBe(registerResult.user.id);
   });
 
   it("returns authenticated user data", async () => {
