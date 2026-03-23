@@ -88,15 +88,18 @@ async function request<T>(
       retryToken = currentToken;
     } else if (currentToken === token) {
       // Token unchanged — perform a refresh-and-retry.
+      let isInitiator = false;
       try {
         if (!refreshInFlight) {
           refreshInFlight = attemptTokenRefresh();
+          isInitiator = true;
         }
         retryToken = await refreshInFlight;
       } catch (refreshErr) {
         console.warn("Token refresh failed during 401 recovery:", refreshErr);
+        localStorage.removeItem("token");
       } finally {
-        refreshInFlight = null;
+        if (isInitiator) refreshInFlight = null;
       }
     }
     // If !currentToken (logged out), skip refresh entirely.
@@ -114,7 +117,9 @@ async function request<T>(
           method,
           headers: retryHeaders,
           body: body !== undefined ? JSON.stringify(body) : undefined,
-          signal: AbortSignal.timeout(30_000),
+          signal: options?.signal
+            ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
+            : AbortSignal.timeout(30_000),
         });
       } catch (err) {
         throw new ApiError(
@@ -159,7 +164,8 @@ async function request<T>(
 
   if (res.status === 204) {
     // DELETE and some PATCH endpoints return 204 per API spec; other methods indicate a mismatch.
-    if (method === "DELETE" || method === "PATCH") return undefined as T;
+    if (method === "DELETE" || method === "PATCH" || method === "PUT")
+      return undefined as T;
     throw new ApiError(204, `Unexpected empty response from ${method} ${path}`);
   }
 
@@ -182,6 +188,11 @@ export const api = {
     request<T>("POST", path, body, options),
   patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PATCH", path, body, options),
-  delete: (path: string, options?: RequestOptions): Promise<void> =>
-    request<void>("DELETE", path, undefined, options),
+  delete: (
+    path: string,
+    body?: unknown,
+    options?: RequestOptions,
+  ): Promise<void> => request<void>("DELETE", path, body, options),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>("PUT", path, body, options),
 };
