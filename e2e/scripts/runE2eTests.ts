@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 import process from "node:process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -235,6 +236,13 @@ async function main() {
         JWT_SECRET: "e2e-test-secret",
         CLIENT_ORIGIN: clientOrigin,
         NODE_ENV: "test",
+        SNAPSHOT_STORAGE_ROOT: join(tmpdir(), "collabtex-e2e", "snapshots"),
+        BINARY_CONTENT_STORAGE_ROOT: join(
+          tmpdir(),
+          "collabtex-e2e",
+          "binary-content",
+        ),
+        COMPILE_STORAGE_ROOT: join(tmpdir(), "collabtex-e2e", "compiles"),
       },
     });
     backendProcess = backend.child;
