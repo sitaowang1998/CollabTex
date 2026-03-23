@@ -129,9 +129,7 @@ describe("auth integration", () => {
       password: "password",
     });
 
-    const user = await authService.getAuthenticatedUser(
-      registerResult.user.id,
-    );
+    const user = await authService.getAuthenticatedUser(registerResult.user.id);
 
     expect(user).toEqual({
       id: registerResult.user.id,

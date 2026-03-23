@@ -51,9 +51,7 @@ describe("workspace export integration", () => {
   beforeAll(async () => {
     db = createTestDatabaseClient();
     await db.$connect();
-    tmpRoot = await mkdtemp(
-      path.join(os.tmpdir(), "collabtex-export-test-"),
-    );
+    tmpRoot = await mkdtemp(path.join(os.tmpdir(), "collabtex-export-test-"));
   });
 
   afterAll(async () => {
@@ -163,9 +161,7 @@ describe("workspace export integration", () => {
       content: "\\documentclass{article}",
     });
 
-    const binaryFile = files.find(
-      (f) => f.relativePath === "figures/logo.png",
-    );
+    const binaryFile = files.find((f) => f.relativePath === "figures/logo.png");
     expect(binaryFile).toBeDefined();
     expect(binaryFile!.kind).toBe("binary");
     expect(binaryFile!.content).toEqual(pngBytes);
@@ -259,10 +255,7 @@ describe("workspace export integration", () => {
   it("exports text document with no state and no snapshot as empty string", async () => {
     const suffix = randomUUID();
     const owner = await createUser(`export-nostate-${suffix}@example.com`);
-    const project = await createProject(
-      owner.id,
-      `ExportNoState ${suffix}`,
-    );
+    const project = await createProject(owner.id, `ExportNoState ${suffix}`);
     const deps = buildDeps();
 
     await deps.documentRepository.createDocument({

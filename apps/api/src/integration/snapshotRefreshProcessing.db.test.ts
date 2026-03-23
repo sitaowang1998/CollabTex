@@ -14,6 +14,7 @@ import {
   createSnapshotRefreshJobRepository,
   queueSnapshotRefreshJob,
 } from "../repositories/snapshotRefreshJobRepository.js";
+import { BinaryContentNotFoundError } from "../services/binaryContent.js";
 import { createCollaborationService } from "../services/collaboration.js";
 import { createSnapshotService } from "../services/snapshot.js";
 import { createSnapshotRefreshProcessor } from "../services/snapshotRefresh.js";
@@ -67,7 +68,9 @@ function buildProcessor(overrides?: {
       collaborationService,
       projectStateRepository,
       binaryContentStore: {
-        get: async () => Buffer.alloc(0),
+        get: async () => {
+          throw new BinaryContentNotFoundError("no binary content in test");
+        },
         put: async () => {},
         delete: async () => {},
       },
@@ -142,7 +145,7 @@ describe("snapshot refresh processing integration", () => {
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
-    expect(jobs[0]).not.toBeNull();
+    expect(jobs.length).toBeGreaterThanOrEqual(1);
     expect(jobs[0]).toEqual(
       expect.objectContaining({
         status: "succeeded",
@@ -184,13 +187,14 @@ describe("snapshot refresh processing integration", () => {
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
-    expect(job).not.toBeNull();
+    expect(job).toBeDefined();
     expect(job).toEqual(
       expect.objectContaining({
         status: "failed",
         lastError: "snapshot refresh failed; see logs for details",
       }),
     );
+    expect(job!.attemptCount).toBeGreaterThanOrEqual(1);
     expect(job!.finishedAt).not.toBeNull();
   });
 
@@ -224,17 +228,17 @@ describe("snapshot refresh processing integration", () => {
       createSnapshotRefreshJobRepository(getDb());
 
     const claimed1 = await snapshotRefreshJobRepository.claimNextJob();
-    expect(claimed1).not.toBeNull();
+    expect(claimed1).toBeDefined();
     expect(claimed1!.id).toBe(jobIds[0]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed1!.id);
 
     const claimed2 = await snapshotRefreshJobRepository.claimNextJob();
-    expect(claimed2).not.toBeNull();
+    expect(claimed2).toBeDefined();
     expect(claimed2!.id).toBe(jobIds[1]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed2!.id);
 
     const claimed3 = await snapshotRefreshJobRepository.claimNextJob();
-    expect(claimed3).not.toBeNull();
+    expect(claimed3).toBeDefined();
     expect(claimed3!.id).toBe(jobIds[2]);
     await snapshotRefreshJobRepository.markJobSucceeded(claimed3!.id);
   });
@@ -267,7 +271,7 @@ describe("snapshot refresh processing integration", () => {
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
     });
-    expect(job).not.toBeNull();
+    expect(job).toBeDefined();
     expect(job).toEqual(
       expect.objectContaining({
         status: "succeeded",
@@ -292,6 +296,8 @@ describe("snapshot refresh processing integration", () => {
       mime: "text/x-tex",
     });
 
+    await drainLeftovers();
+
     await getDb().snapshotRefreshJob.create({
       data: {
         projectId: project.id,
@@ -307,29 +313,17 @@ describe("snapshot refresh processing integration", () => {
       await snapshotRefreshJobRepository.recoverInterruptedJobs();
     expect(recovered).toBeGreaterThanOrEqual(1);
 
-    await drainLeftovers();
-
-    await getDb().$transaction(async (tx) => {
-      await queueSnapshotRefreshJob(tx, {
-        projectId: project.id,
-        requestedByUserId: owner.id,
-      });
-    });
-
-    // The recovered job (now failed) should be retried
-    const { processor: freshProcessor } = buildProcessor();
-    const result = await freshProcessor.processNextJob();
+    // The recovered job is now "failed" and should be retried directly
+    const { processor } = buildProcessor();
+    const result = await processor.processNextJob();
     expect(result).toBe(true);
 
-    const jobs = await getDb().snapshotRefreshJob.findMany({
+    const job = await getDb().snapshotRefreshJob.findFirst({
       where: { projectId: project.id },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
     });
-
-    // The original job was recovered from processing → failed, then retried
-    const recoveredJob = jobs.find((j) => j.attemptCount === 2);
-    expect(recoveredJob).not.toBeNull();
-    expect(recoveredJob).toEqual(
+    expect(job).toBeDefined();
+    expect(job).toEqual(
       expect.objectContaining({
         status: "succeeded",
         attemptCount: 2,

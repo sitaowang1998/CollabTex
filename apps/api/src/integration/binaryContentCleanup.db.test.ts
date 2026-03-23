@@ -9,7 +9,10 @@ import { createDocumentRepository } from "../repositories/documentRepository.js"
 import { createProjectRepository } from "../repositories/projectRepository.js";
 import { createProjectAccessService } from "../services/projectAccess.js";
 import { BinaryContentNotFoundError } from "../services/binaryContent.js";
-import { createDocumentService, type DocumentService } from "../services/document.js";
+import {
+  createDocumentService,
+  type DocumentService,
+} from "../services/document.js";
 import type { SnapshotService } from "../services/snapshot.js";
 import { createTestDatabaseClient } from "../test/db/createTestDatabaseClient.js";
 
@@ -28,9 +31,7 @@ describe("binary content cleanup on delete integration", () => {
   beforeAll(async () => {
     db = createTestDatabaseClient();
     await db.$connect();
-    tmpRoot = await mkdtemp(
-      path.join(os.tmpdir(), "collabtex-cleanup-test-"),
-    );
+    tmpRoot = await mkdtemp(path.join(os.tmpdir(), "collabtex-cleanup-test-"));
   });
 
   afterAll(async () => {
