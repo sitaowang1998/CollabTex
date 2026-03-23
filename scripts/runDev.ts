@@ -48,27 +48,62 @@ function spawnServer(
   command: string,
   args: string[],
   opts: { cwd?: string; env?: NodeJS.ProcessEnv },
-): ChildProcess {
+): { child: ChildProcess; failed: Promise<never> } {
   const child = spawn(command, args, {
     cwd: opts.cwd ?? repoRoot,
     env: { ...process.env, ...opts.env },
     stdio: "inherit",
     detached: true,
   });
-  child.once("error", (err) => {
-    console.error(`Server process error (${command}): ${formatError(err)}`);
+  const failed = new Promise<never>((_, reject) => {
+    child.once("error", (err) => {
+      reject(new Error(`Failed to spawn ${command}: ${formatError(err)}`));
+    });
+    child.once("exit", (code, sig) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `${command} exited unexpectedly (code=${code}, signal=${sig})`,
+          ),
+        );
+      }
+    });
   });
-  return child;
+  return { child, failed };
 }
 
 function killProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid !== undefined) {
     try {
       process.kill(-child.pid, signal);
-    } catch {
-      /* already dead */
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException)?.code !== "ESRCH") {
+        console.warn(`Failed to kill process group ${child.pid}:`, err);
+      }
     }
   }
+}
+
+function killProcess(child: ChildProcess): Promise<void> {
+  return new Promise((res) => {
+    if (child.exitCode !== null) {
+      res();
+      return;
+    }
+    const escalate = setTimeout(() => {
+      killProcessGroup(child, "SIGKILL");
+    }, 5_000);
+    const giveUp = setTimeout(() => {
+      console.error("Process did not exit after SIGKILL, abandoning cleanup");
+      res();
+    }, 10_000);
+    child.once("exit", () => {
+      clearTimeout(escalate);
+      clearTimeout(giveUp);
+      res();
+    });
+    killProcessGroup(child, "SIGTERM");
+  });
 }
 
 async function waitForServer(
@@ -82,7 +117,13 @@ async function waitForServer(
       await fetch(url);
       console.log(`${label} is ready`);
       return;
-    } catch {
+    } catch (err) {
+      if (
+        !(err instanceof TypeError) ||
+        !/fetch|network|connect/i.test(err.message)
+      ) {
+        console.warn(`${label} health check error:`, err);
+      }
       await new Promise((r) => setTimeout(r, 500));
     }
   }
@@ -125,12 +166,13 @@ async function main() {
 
   // 4. Start servers
   console.log(`Starting API on port ${apiPort}...`);
-  const apiProcess = spawnServer(npxCommand, ["tsx", "watch", "src/index.ts"], {
+  const api = spawnServer(npxCommand, ["tsx", "watch", "src/index.ts"], {
     cwd: apiRoot,
   });
+  const apiProcess = api.child;
 
   console.log(`Starting Vite on port ${vitePort}...`);
-  const viteProcess = spawnServer(
+  const vite = spawnServer(
     npxCommand,
     ["vite", "--port", String(vitePort), "--host"],
     {
@@ -138,13 +180,24 @@ async function main() {
       env: { VITE_API_TARGET: `http://localhost:${apiPort}` },
     },
   );
+  const viteProcess = vite.child;
 
   function cleanup() {
     console.log("\nShutting down...");
-    killProcessGroup(viteProcess, "SIGTERM");
-    killProcessGroup(apiProcess, "SIGTERM");
-    teardownCompose()
-      .catch(() => {})
+    Promise.all([
+      killProcess(viteProcess).catch((err) =>
+        console.error(`Failed to stop Vite: ${formatError(err)}`),
+      ),
+      killProcess(apiProcess).catch((err) =>
+        console.error(`Failed to stop API: ${formatError(err)}`),
+      ),
+    ])
+      .then(() => teardownCompose())
+      .catch((err) =>
+        console.error(
+          `Teardown failed (manual cleanup may be needed): ${formatError(err)}`,
+        ),
+      )
       .finally(() => process.exit(0));
   }
 
@@ -152,8 +205,14 @@ async function main() {
     process.once(signal, cleanup);
   }
 
-  await waitForServer(`http://localhost:${apiPort}/api/auth/me`, "API");
-  await waitForServer(`http://localhost:${vitePort}`, "Vite");
+  await Promise.race([
+    waitForServer(`http://localhost:${apiPort}/api/auth/me`, "API"),
+    api.failed,
+  ]);
+  await Promise.race([
+    waitForServer(`http://localhost:${vitePort}`, "Vite"),
+    vite.failed,
+  ]);
 
   console.log(`\nDev servers ready:`);
   console.log(`  Frontend: http://localhost:${vitePort}`);
