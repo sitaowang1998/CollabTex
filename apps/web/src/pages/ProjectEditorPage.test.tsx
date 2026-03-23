@@ -250,8 +250,9 @@ describe("ProjectEditorPage", () => {
       return Promise.resolve({});
     });
 
-    // Trigger create action via New File button
-    await user.click(screen.getByRole("button", { name: "New File" }));
+    // Trigger create action via New toolbar menu
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New File" }));
     await user.type(screen.getByLabelText("File path"), "new.tex");
     const dialog = screen.getByRole("dialog");
     const createBtn = Array.from(dialog.querySelectorAll("button")).find(
