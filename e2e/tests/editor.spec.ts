@@ -26,6 +26,14 @@ async function registerAndCreateProject(
   await expect(page).toHaveURL(/\/projects\/[a-f0-9-]+/);
 }
 
+async function clickToolbarAction(
+  page: import("@playwright/test").Page,
+  name: "New File" | "New Folder" | "Upload File",
+) {
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("menuitem", { name }).click();
+}
+
 test.describe("Editor Page", () => {
   test("loads editor page with project name, branding, and default main.tex", async ({
     page,
@@ -48,7 +56,7 @@ test.describe("Editor Page", () => {
     await registerAndCreateProject(page, "File Test Project");
     const tree = page.getByTestId("file-tree");
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await expect(page.getByRole("dialog")).toBeVisible();
 
     // Input should not have leading /
@@ -76,7 +84,7 @@ test.describe("Editor Page", () => {
   test("create a folder via New Folder button", async ({ page }) => {
     await registerAndCreateProject(page, "Folder Project");
 
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await expect(page.getByRole("dialog")).toBeVisible();
 
     await page.getByLabel("Folder name").fill("chapters");
@@ -93,7 +101,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("chapters");
     await page
       .getByRole("dialog")
@@ -105,7 +113,7 @@ test.describe("Editor Page", () => {
     await tree.getByText("chapters").click();
 
     // Create file — should appear inside the selected folder
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     const input = page.getByLabel("File path");
     // Should be pre-filled with "chapters/"
     await expect(input).toHaveValue("chapters/");
@@ -123,7 +131,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("docs");
     await page
       .getByRole("dialog")
@@ -133,7 +141,7 @@ test.describe("Editor Page", () => {
 
     // Create a file inside the folder
     await tree.getByText("docs").click();
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("docs/readme.tex");
     await page
       .getByRole("dialog")
@@ -151,7 +159,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("assets");
     await page
       .getByRole("dialog")
@@ -161,7 +169,7 @@ test.describe("Editor Page", () => {
 
     // Create a file inside the folder
     await tree.getByText("assets").click();
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("assets/temp.tex");
     await page
       .getByRole("dialog")
@@ -205,14 +213,14 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder and file inside it
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("src");
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Create" })
       .click();
     await tree.getByText("src").click();
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("src/first.tex");
     await page
       .getByRole("dialog")
@@ -224,7 +232,7 @@ test.describe("Editor Page", () => {
     await tree.getByText("first.tex").click();
 
     // Click New File — should use the file's parent folder
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     const input = page.getByLabel("File path");
     await expect(input).toHaveValue("src/");
   });
@@ -235,7 +243,7 @@ test.describe("Editor Page", () => {
     await registerAndCreateProject(page, "MultiSelect Root Folder");
 
     // Create an empty local folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("docs");
     await page
       .getByRole("dialog")
@@ -277,7 +285,7 @@ test.describe("Editor Page", () => {
     await registerAndCreateProject(page, "MultiSelect Subfolder");
 
     // Create a parent folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("chapters");
     await page
       .getByRole("dialog")
@@ -287,7 +295,7 @@ test.describe("Editor Page", () => {
 
     // Select "chapters" and create a subfolder inside it
     await page.getByText("chapters").click();
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("drafts");
     await page
       .getByRole("dialog")
@@ -319,7 +327,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create parent folder "chapters"
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("chapters");
     await page
       .getByRole("dialog")
@@ -329,7 +337,7 @@ test.describe("Editor Page", () => {
 
     // Select chapters, create a subfolder "drafts" inside
     await tree.getByText("chapters").click();
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("drafts");
     await page
       .getByRole("dialog")
@@ -339,7 +347,7 @@ test.describe("Editor Page", () => {
 
     // Now create a file inside chapters (this triggers refreshTree which could wipe local folders)
     await tree.getByText("chapters").click();
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("chapters/intro.tex");
     await page
       .getByRole("dialog")
@@ -369,14 +377,14 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create folder "chapters" with subfolder "drafts"
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("chapters");
     await page
       .getByRole("dialog")
       .getByRole("button", { name: "Create" })
       .click();
     await tree.getByText("chapters").click();
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("drafts");
     await page
       .getByRole("dialog")
@@ -386,7 +394,7 @@ test.describe("Editor Page", () => {
 
     // Create a file inside drafts (makes it "real" on the API side)
     await tree.getByText("drafts").click();
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("chapters/drafts/temp.tex");
     await page
       .getByRole("dialog")
@@ -544,7 +552,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("chapters");
     await page
       .getByRole("dialog")
@@ -553,7 +561,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("chapters")).toBeVisible();
 
     // Create a file at root
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("intro.tex");
     await page
       .getByRole("dialog")
@@ -588,7 +596,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("archive");
     await page
       .getByRole("dialog")
@@ -597,7 +605,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("archive")).toBeVisible();
 
     // Create two files at root
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("a.tex");
     await page
       .getByRole("dialog")
@@ -605,7 +613,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("a.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("b.tex");
     await page
       .getByRole("dialog")
@@ -646,7 +654,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create files at different depths under /chapters
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("chapters/intro.tex");
     await page
       .getByRole("dialog")
@@ -654,7 +662,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("intro.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("chapters/sub/deep.tex");
     await page
       .getByRole("dialog")
@@ -663,7 +671,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("deep.tex")).toBeVisible();
 
     // Create destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("archive");
     await page
       .getByRole("dialog")
@@ -707,7 +715,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("dest");
     await page
       .getByRole("dialog")
@@ -716,7 +724,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("dest")).toBeVisible();
 
     // Create two files at root
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("x.tex");
     await page
       .getByRole("dialog")
@@ -724,7 +732,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("x.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("y.tex");
     await page
       .getByRole("dialog")
@@ -780,7 +788,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create files at different depths
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("src/a.tex");
     await page
       .getByRole("dialog")
@@ -788,7 +796,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("a.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("src/lib/b.tex");
     await page
       .getByRole("dialog")
@@ -797,7 +805,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("b.tex")).toBeVisible();
 
     // Create destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("dest");
     await page
       .getByRole("dialog")
@@ -856,7 +864,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("dest");
     await page
       .getByRole("dialog")
@@ -865,7 +873,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("dest")).toBeVisible();
 
     // Create a file
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("draggable.tex");
     await page
       .getByRole("dialog")
@@ -917,7 +925,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a file inside a folder
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("docs/only.tex");
     await page
       .getByRole("dialog")
@@ -951,7 +959,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("dest");
     await page
       .getByRole("dialog")
@@ -960,7 +968,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("dest")).toBeVisible();
 
     // Create two files in /src
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("src/a.tex");
     await page
       .getByRole("dialog")
@@ -968,7 +976,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("a.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("src/b.tex");
     await page
       .getByRole("dialog")
@@ -1004,7 +1012,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create a file in /archive
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("archive/existing.tex");
     await page
       .getByRole("dialog")
@@ -1013,7 +1021,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("existing.tex")).toBeVisible();
 
     // Create a file in /chapters
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("chapters/newcomer.tex");
     await page
       .getByRole("dialog")
@@ -1046,7 +1054,7 @@ test.describe("Editor Page", () => {
     const tree = page.getByTestId("file-tree");
 
     // Create /a.tex at root and /folder/b.tex in a subfolder
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("a.tex");
     await page
       .getByRole("dialog")
@@ -1054,7 +1062,7 @@ test.describe("Editor Page", () => {
       .click();
     await expect(tree.getByText("a.tex")).toBeVisible();
 
-    await page.getByRole("button", { name: "New File" }).click();
+    await clickToolbarAction(page, "New File");
     await page.getByLabel("File path").fill("myfolder/b.tex");
     await page
       .getByRole("dialog")
@@ -1063,7 +1071,7 @@ test.describe("Editor Page", () => {
     await expect(tree.getByText("b.tex")).toBeVisible();
 
     // Create destination folder
-    await page.getByRole("button", { name: "New Folder" }).click();
+    await clickToolbarAction(page, "New Folder");
     await page.getByLabel("Folder name").fill("dest");
     await page
       .getByRole("dialog")
@@ -1095,5 +1103,51 @@ test.describe("Editor Page", () => {
     // myfolder may appear twice (empty source + under dest), so check first()
     const myfolderNodes = tree.getByText("myfolder");
     await expect(myfolderNodes.first()).toBeVisible();
+  });
+
+  test("upload a binary file via Upload File button", async ({ page }) => {
+    await registerAndCreateProject(page, "Upload Test Project");
+    const tree = page.getByTestId("file-tree");
+
+    await page.getByRole("button", { name: "New" }).click();
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("menuitem", { name: "Upload File" }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: "test-image.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("fake-png-content"),
+    });
+
+    await expect(tree.getByText("test-image.png")).toBeVisible();
+  });
+
+  test("upload a binary file into a subfolder via context menu", async ({
+    page,
+  }) => {
+    await registerAndCreateProject(page, "Upload Subfolder Project");
+    const tree = page.getByTestId("file-tree");
+
+    // Create a folder first
+    await clickToolbarAction(page, "New Folder");
+    await page.getByLabel("Folder name").fill("images");
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Create" })
+      .click();
+    await expect(tree.getByText("images")).toBeVisible();
+
+    // Right-click folder and choose Upload File
+    await tree.getByText("images").click({ button: "right" });
+    const fileChooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("menuitem", { name: "Upload File" }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: "logo.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("fake-logo"),
+    });
+
+    await expect(tree.getByText("logo.png")).toBeVisible();
   });
 });

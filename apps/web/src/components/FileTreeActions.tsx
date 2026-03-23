@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type FormEvent,
+} from "react";
 import type { ProjectDocumentResponse } from "@collab-tex/shared";
 import type { FileTreeAction } from "@/components/FileTree";
 import { api, ApiError } from "@/lib/api";
@@ -110,6 +116,17 @@ export default function FileTreeActions({
   if (action.type === "rename") {
     return (
       <RenameAction
+        projectId={projectId}
+        action={action}
+        onClose={onClose}
+        onComplete={onComplete}
+      />
+    );
+  }
+
+  if (action.type === "upload") {
+    return (
+      <UploadAction
         projectId={projectId}
         action={action}
         onClose={onClose}
@@ -812,6 +829,158 @@ function MoveMultipleAction({
               )}
             </div>
           </form>
+        </CardContent>
+      </Card>
+    </ModalOverlay>
+  );
+}
+
+function UploadAction({
+  projectId,
+  action,
+  onClose,
+  onComplete,
+}: {
+  projectId: string;
+  action: Extract<FileTreeAction, { type: "upload" }>;
+  onClose: () => void;
+  onComplete: () => void;
+}) {
+  const [error, setError] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const onCloseRef = useRef(onClose);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    onCompleteRef.current = onComplete;
+  });
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    function handleCancel() {
+      onCloseRef.current();
+    }
+    input.addEventListener("cancel", handleCancel);
+    input.click();
+
+    return () => {
+      input.removeEventListener("cancel", handleCancel);
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const handleFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) {
+        onCloseRef.current();
+        return;
+      }
+
+      setFileName(file.name);
+      setIsUploading(true);
+      setError("");
+
+      const parentPath = action.parentPath;
+      const filePath =
+        parentPath === "/" ? `/${file.name}` : `${parentPath}/${file.name}`;
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      let createdDocumentId: string | null = null;
+      try {
+        const { document } = await api.post<ProjectDocumentResponse>(
+          `/projects/${projectId}/files`,
+          {
+            path: filePath,
+            kind: "binary",
+            mime: file.type || "application/octet-stream",
+          },
+          { signal: controller.signal },
+        );
+        createdDocumentId = document.id;
+        await api.uploadFile(
+          `/projects/${projectId}/files/${document.id}/content`,
+          file,
+          { signal: controller.signal },
+        );
+        onCompleteRef.current();
+        onCloseRef.current();
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // Clean up orphaned document if creation succeeded but upload failed
+        if (createdDocumentId) {
+          try {
+            await api.delete(`/projects/${projectId}/nodes`, {
+              path: filePath,
+            });
+          } catch {
+            // best-effort cleanup
+          }
+        }
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 413
+              ? "File too large. Maximum size is 50 MB."
+              : err.message,
+          );
+        } else {
+          console.error("Upload failed:", err);
+          setError("An unexpected error occurred");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsUploading(false);
+        }
+      }
+    },
+    [projectId, action.parentPath],
+  );
+
+  if (!isUploading && !error) {
+    return (
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <ModalOverlay label="Upload error" onClose={onClose}>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <h2 className="text-xl font-semibold">Upload Error</h2>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-sm text-destructive" role="alert">
+              {error}
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </ModalOverlay>
+    );
+  }
+
+  return (
+    <ModalOverlay label="Uploading file" onClose={onClose}>
+      <Card className="w-full max-w-sm">
+        <CardContent className="py-6 text-center">
+          <p className="text-sm text-muted-foreground">Uploading {fileName}…</p>
         </CardContent>
       </Card>
     </ModalOverlay>

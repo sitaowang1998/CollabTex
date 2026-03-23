@@ -29,7 +29,8 @@ export type FileTreeAction =
     }
   | { type: "delete"; path: string; name: string }
   | { type: "delete-multiple"; items: { path: string; name: string }[] }
-  | { type: "set-main"; documentId: string; path: string };
+  | { type: "set-main"; documentId: string; path: string }
+  | { type: "upload"; parentPath: string };
 
 type FileTreeProps = {
   nodes: FileTreeNode[];
@@ -109,8 +110,8 @@ export default function FileTree({
     () => new Set(),
   );
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [toolbarMenuOpen, setToolbarMenuOpen] = useState(false);
   const lastClickedRef = useRef<string | null>(null);
-
   const closeMenu = useCallback(() => setContextMenu(null), []);
 
   useEffect(() => {
@@ -255,27 +256,25 @@ export default function FileTree({
     >
       <div className="flex h-full flex-col">
         {canMutate(myRole) && (
-          <div className="flex gap-1 border-b px-2 py-1">
+          <div className="relative border-b px-2 py-1">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 text-xs"
-              onClick={() =>
-                onAction({ type: "create", parentPath: activeParent })
-              }
+              className="w-full text-xs"
+              onClick={() => setToolbarMenuOpen((v) => !v)}
             >
-              New File
+              New
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 text-xs"
-              onClick={() =>
-                onAction({ type: "create-folder", parentPath: activeParent })
-              }
-            >
-              New Folder
-            </Button>
+            {toolbarMenuOpen && (
+              <ToolbarMenu
+                onAction={(action) => {
+                  setToolbarMenuOpen(false);
+                  onAction(action);
+                }}
+                onClose={() => setToolbarMenuOpen(false)}
+                activeParent={activeParent}
+              />
+            )}
           </div>
         )}
 
@@ -513,6 +512,81 @@ function FileRow({
   );
 }
 
+function ToolbarMenu({
+  onAction,
+  onClose,
+  activeParent,
+}: {
+  onAction: (action: FileTreeAction) => void;
+  onClose: () => void;
+  activeParent: string;
+}) {
+  const items: { label: string; action: FileTreeAction }[] = [
+    { label: "New File", action: { type: "create", parentPath: activeParent } },
+    {
+      label: "New Folder",
+      action: { type: "create-folder", parentPath: activeParent },
+    },
+    {
+      label: "Upload File",
+      action: { type: "upload", parentPath: activeParent },
+    },
+  ];
+
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const first =
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    first?.focus();
+  }, []);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const btns = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitem"]',
+        ) ?? [],
+      );
+      const idx = btns.indexOf(document.activeElement as HTMLButtonElement);
+      const next =
+        e.key === "ArrowDown"
+          ? (idx + 1) % btns.length
+          : (idx - 1 + btns.length) % btns.length;
+      btns[next]?.focus();
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        ref={menuRef}
+        className="absolute left-2 right-2 z-50 mt-1 rounded-md border bg-popover py-1 shadow-md"
+        role="menu"
+        onKeyDown={handleKeyDown}
+      >
+        {items.map((item) => (
+          <button
+            key={item.label}
+            className="w-full px-3 py-1.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
+            role="menuitem"
+            onClick={() => onAction(item.action)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function ContextMenuOverlay({
   menu,
   mainDocumentId,
@@ -580,6 +654,10 @@ function ContextMenuOverlay({
     items.push({
       label: "New Folder",
       action: { type: "create-folder", parentPath: node.path },
+    });
+    items.push({
+      label: "Upload File",
+      action: { type: "upload", parentPath: node.path },
     });
   }
 

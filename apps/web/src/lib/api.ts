@@ -41,6 +41,93 @@ export type RequestOptions = {
   signal?: AbortSignal;
 };
 
+function wrapNetworkError(err: unknown): never {
+  throw new ApiError(
+    NETWORK_ERROR_STATUS,
+    err instanceof Error ? err.message : "Network error",
+    undefined,
+    { cause: err },
+  );
+}
+
+function buildSignal(
+  userSignal: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
+  return userSignal
+    ? AbortSignal.any([userSignal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
+}
+
+async function tryRefreshToken(
+  path: string,
+  originalToken: string,
+): Promise<string | undefined> {
+  if (AUTH_PATHS.has(path)) return undefined;
+
+  const currentToken = localStorage.getItem("token");
+
+  if (currentToken && currentToken !== originalToken) {
+    return currentToken;
+  }
+
+  if (currentToken === originalToken) {
+    let isInitiator = false;
+    try {
+      if (!refreshInFlight) {
+        refreshInFlight = attemptTokenRefresh();
+        isInitiator = true;
+      }
+      return await refreshInFlight;
+    } catch (refreshErr) {
+      console.warn("Token refresh failed during 401 recovery:", refreshErr);
+      localStorage.removeItem("token");
+    } finally {
+      if (isInitiator) refreshInFlight = null;
+    }
+  }
+
+  return undefined;
+}
+
+async function parseErrorResponse(res: Response): Promise<never> {
+  let message = res.statusText || `Request failed (${res.status})`;
+  let fields: Record<string, string> | undefined;
+
+  try {
+    const data = await res.json();
+    if (data.error) {
+      if (typeof data.error === "string") {
+        message = data.error;
+      } else {
+        message =
+          data.error.message ??
+          (res.statusText || `Request failed (${res.status})`);
+        fields = data.error.fields;
+      }
+    }
+  } catch (e) {
+    if (!(e instanceof SyntaxError))
+      throw new ApiError(
+        res.status,
+        res.statusText || `Request failed (${res.status})`,
+        undefined,
+        { cause: e },
+      );
+    // body wasn't JSON, use statusText
+  }
+
+  throw new ApiError(res.status, message, fields);
+}
+
+async function safeFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    wrapNetworkError(err);
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -58,51 +145,20 @@ async function request<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${BASE_URL}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: options?.signal
-        ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
-        : AbortSignal.timeout(30_000),
-    });
-  } catch (err) {
-    throw new ApiError(
-      NETWORK_ERROR_STATUS,
-      err instanceof Error ? err.message : "Network error",
-      undefined,
-      { cause: err },
-    );
-  }
+  const signal = buildSignal(options?.signal, 30_000);
+  const serializedBody = body !== undefined ? JSON.stringify(body) : undefined;
+
+  let res = await safeFetch(`${BASE_URL}${path}`, {
+    method,
+    headers,
+    body: serializedBody,
+    signal,
+  });
 
   // On 401, attempt a single token refresh and retry — but not for auth
   // endpoints themselves (to avoid infinite loops).
-  if (res.status === 401 && !AUTH_PATHS.has(path) && token) {
-    const currentToken = localStorage.getItem("token");
-    let retryToken: string | undefined;
-
-    if (currentToken && currentToken !== token) {
-      // Another request already refreshed — retry with the new token directly.
-      retryToken = currentToken;
-    } else if (currentToken === token) {
-      // Token unchanged — perform a refresh-and-retry.
-      let isInitiator = false;
-      try {
-        if (!refreshInFlight) {
-          refreshInFlight = attemptTokenRefresh();
-          isInitiator = true;
-        }
-        retryToken = await refreshInFlight;
-      } catch (refreshErr) {
-        console.warn("Token refresh failed during 401 recovery:", refreshErr);
-        localStorage.removeItem("token");
-      } finally {
-        if (isInitiator) refreshInFlight = null;
-      }
-    }
-    // If !currentToken (logged out), skip refresh entirely.
+  if (res.status === 401 && token) {
+    const retryToken = await tryRefreshToken(path, token);
 
     if (retryToken) {
       const retryHeaders: Record<string, string> = {
@@ -112,54 +168,17 @@ async function request<T>(
         retryHeaders["Content-Type"] = "application/json";
       }
 
-      try {
-        res = await fetch(`${BASE_URL}${path}`, {
-          method,
-          headers: retryHeaders,
-          body: body !== undefined ? JSON.stringify(body) : undefined,
-          signal: options?.signal
-            ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
-            : AbortSignal.timeout(30_000),
-        });
-      } catch (err) {
-        throw new ApiError(
-          NETWORK_ERROR_STATUS,
-          err instanceof Error ? err.message : "Network error",
-          undefined,
-          { cause: err },
-        );
-      }
+      res = await safeFetch(`${BASE_URL}${path}`, {
+        method,
+        headers: retryHeaders,
+        body: serializedBody,
+        signal: buildSignal(options?.signal, 30_000),
+      });
     }
   }
 
   if (!res.ok) {
-    let message = res.statusText || `Request failed (${res.status})`;
-    let fields: Record<string, string> | undefined;
-
-    try {
-      const data = await res.json();
-      if (data.error) {
-        if (typeof data.error === "string") {
-          message = data.error;
-        } else {
-          message =
-            data.error.message ??
-            (res.statusText || `Request failed (${res.status})`);
-          fields = data.error.fields;
-        }
-      }
-    } catch (e) {
-      if (!(e instanceof SyntaxError))
-        throw new ApiError(
-          res.status,
-          res.statusText || `Request failed (${res.status})`,
-          undefined,
-          { cause: e },
-        );
-      // body wasn't JSON, use statusText
-    }
-
-    throw new ApiError(res.status, message, fields);
+    await parseErrorResponse(res);
   }
 
   if (res.status === 204) {
@@ -181,6 +200,50 @@ async function request<T>(
   }
 }
 
+async function uploadFile(
+  path: string,
+  file: File,
+  options?: RequestOptions,
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem("token");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const timeoutMs = 120_000;
+
+  function buildFormData(): FormData {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fd;
+  }
+
+  let res = await safeFetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: buildFormData(),
+    signal: buildSignal(options?.signal, timeoutMs),
+  });
+
+  if (res.status === 401 && token) {
+    const retryToken = await tryRefreshToken(path, token);
+
+    if (retryToken) {
+      res = await safeFetch(`${BASE_URL}${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${retryToken}` },
+        body: buildFormData(),
+        signal: buildSignal(options?.signal, timeoutMs),
+      });
+    }
+  }
+
+  if (!res.ok) {
+    await parseErrorResponse(res);
+  }
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>("GET", path, undefined, options),
@@ -195,4 +258,5 @@ export const api = {
   ): Promise<void> => request<void>("DELETE", path, body, options),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PUT", path, body, options),
+  uploadFile,
 };

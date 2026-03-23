@@ -195,24 +195,32 @@ describe("FileTree", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows New File and New Folder buttons for admin/editor", () => {
+  it("shows New button for admin/editor", () => {
     renderTree({ myRole: "editor" });
-    expect(
-      screen.getByRole("button", { name: "New File" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "New Folder" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New" })).toBeInTheDocument();
   });
 
-  it("hides New File and New Folder buttons for reader", () => {
+  it("hides New button for reader", () => {
     renderTree({ myRole: "reader" });
     expect(
-      screen.queryByRole("button", { name: "New File" }),
+      screen.queryByRole("button", { name: "New" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows menu items when New button is clicked", async () => {
+    const user = userEvent.setup();
+    renderTree();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
     expect(
-      screen.queryByRole("button", { name: "New Folder" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("menuitem", { name: "New File" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "New Folder" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Upload File" }),
+    ).toBeInTheDocument();
   });
 
   it("shows empty state when no nodes", () => {
@@ -220,24 +228,38 @@ describe("FileTree", () => {
     expect(screen.getByText("No files yet")).toBeInTheDocument();
   });
 
-  it("calls onAction with create when New File clicked", async () => {
+  it("calls onAction with create when New File clicked in toolbar menu", async () => {
     const user = userEvent.setup();
     const { props } = renderTree();
 
-    await user.click(screen.getByRole("button", { name: "New File" }));
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New File" }));
     expect(props.onAction).toHaveBeenCalledWith({
       type: "create",
       parentPath: "/",
     });
   });
 
-  it("calls onAction with create-folder when New Folder clicked", async () => {
+  it("calls onAction with create-folder when New Folder clicked in toolbar menu", async () => {
     const user = userEvent.setup();
     const { props } = renderTree();
 
-    await user.click(screen.getByRole("button", { name: "New Folder" }));
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "New Folder" }));
     expect(props.onAction).toHaveBeenCalledWith({
       type: "create-folder",
+      parentPath: "/",
+    });
+  });
+
+  it("calls onAction with upload when Upload File clicked in toolbar menu", async () => {
+    const user = userEvent.setup();
+    const { props } = renderTree();
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    await user.click(screen.getByRole("menuitem", { name: "Upload File" }));
+    expect(props.onAction).toHaveBeenCalledWith({
+      type: "upload",
       parentPath: "/",
     });
   });
@@ -268,6 +290,19 @@ describe("FileTree", () => {
     });
     expect(
       screen.getByRole("menuitem", { name: "New Folder" }),
+    ).toBeInTheDocument();
+  });
+
+  it("context menu on folder shows Upload File option", async () => {
+    const user = userEvent.setup();
+    renderTree();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByText("chapters"),
+    });
+    expect(
+      screen.getByRole("menuitem", { name: "Upload File" }),
     ).toBeInTheDocument();
   });
 

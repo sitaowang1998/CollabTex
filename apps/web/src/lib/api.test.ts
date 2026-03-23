@@ -480,3 +480,117 @@ describe("401 refresh interceptor", () => {
     expect((error as ApiError).message).toBe("Failed to fetch");
   });
 });
+
+describe("uploadFile", () => {
+  const testFile = new File(["content"], "photo.png", { type: "image/png" });
+
+  it("sends FormData with Authorization header and no Content-Type", async () => {
+    localStorage.setItem("token", "my-token");
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+
+    await api.uploadFile("/projects/p1/files/f1/content", testFile);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/projects/p1/files/f1/content");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get("file")).toBe(testFile);
+    expect(init.headers.Authorization).toBe("Bearer my-token");
+    expect(init.headers["Content-Type"]).toBeUndefined();
+  });
+
+  it("resolves on 204 response", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+    await expect(
+      api.uploadFile("/projects/p1/files/f1/content", testFile),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throws ApiError on non-ok response", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "file exceeds maximum size of 50 MB" }, 413),
+    );
+
+    const error = await api
+      .uploadFile("/projects/p1/files/f1/content", testFile)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(413);
+    expect((error as ApiError).message).toBe(
+      "file exceeds maximum size of 50 MB",
+    );
+  });
+
+  it("throws ApiError on network failure", async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    const error = await api
+      .uploadFile("/projects/p1/files/f1/content", testFile)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(NETWORK_ERROR_STATUS);
+  });
+
+  it("retries after 401 token refresh", async () => {
+    localStorage.setItem("token", "old-token");
+
+    // Original: 401
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ error: "invalid token" }, 401),
+    );
+    // Refresh: success
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        token: "new-token",
+        user: { id: "u1", email: "a@b.com", name: "A" },
+      }),
+    );
+    // Retry: success
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+
+    await api.uploadFile("/projects/p1/files/f1/content", testFile);
+
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    const retryHeaders = mockFetch.mock.calls[2][1].headers;
+    expect(retryHeaders.Authorization).toBe("Bearer new-token");
+  });
+
+  it("falls back to statusText for non-JSON error body", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: () => Promise.reject(new SyntaxError("Unexpected token")),
+    });
+
+    const error = await api
+      .uploadFile("/projects/p1/files/f1/content", testFile)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(502);
+    expect((error as ApiError).message).toBe("Bad Gateway");
+  });
+
+  it("re-throws non-SyntaxError from error response JSON parsing", async () => {
+    const cause = new TypeError("Cannot read properties");
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: () => Promise.reject(cause),
+    });
+
+    const error = await api
+      .uploadFile("/projects/p1/files/f1/content", testFile)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(500);
+    expect((error as ApiError).message).toBe("Internal Server Error");
+    expect((error as ApiError).cause).toBe(cause);
+  });
+});
