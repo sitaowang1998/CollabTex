@@ -14,8 +14,15 @@ import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
+import Editor from "@/components/Editor";
+import BinaryPreview from "@/components/BinaryPreview";
 
-type SelectedFile = { documentId: string; path: string };
+type SelectedFile = {
+  documentId: string;
+  path: string;
+  documentKind: "text" | "binary";
+  mime: string | null;
+};
 
 function removeNodeFromTree(
   nodes: FileTreeNode[],
@@ -460,15 +467,29 @@ export default function ProjectEditorPage() {
         )}
 
         {/* Editor panel */}
-        <main className="flex flex-1 items-center justify-center overflow-hidden rounded-lg border bg-background">
+        <main className="flex flex-1 overflow-hidden rounded-lg border bg-background">
           {selectedFile ? (
-            <p className="text-sm text-muted-foreground">
-              Editor placeholder: {selectedFile.path}
-            </p>
+            selectedFile.documentKind === "text" ? (
+              <Editor
+                key={selectedFile.path}
+                projectId={projectId!}
+                path={selectedFile.path}
+              />
+            ) : (
+              <BinaryPreview
+                key={selectedFile.documentId}
+                projectId={projectId!}
+                documentId={selectedFile.documentId}
+                path={selectedFile.path}
+                mime={selectedFile.mime}
+              />
+            )
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Select a file to edit
-            </p>
+            <div className="flex flex-1 items-center justify-center">
+              <p className="text-sm text-muted-foreground">
+                Select a file to edit
+              </p>
+            </div>
           )}
         </main>
 

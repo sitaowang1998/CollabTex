@@ -37,7 +37,14 @@ type FileTreeProps = {
   selectedPath: string | null;
   mainDocumentId: string | null;
   myRole: ProjectRole;
-  onSelectFile: (file: { documentId: string; path: string } | null) => void;
+  onSelectFile: (
+    file: {
+      documentId: string;
+      path: string;
+      documentKind: "text" | "binary";
+      mime: string | null;
+    } | null,
+  ) => void;
   onAction: (action: FileTreeAction) => void;
 };
 
@@ -173,6 +180,8 @@ export default function FileTree({
       onSelectFile({
         documentId: fileNode.documentId,
         path: fileNode.path,
+        documentKind: fileNode.documentKind,
+        mime: fileNode.mime,
       });
     }
   }

@@ -16,6 +16,8 @@ vi.mock("../lib/api", async (importOriginal) => {
       patch: vi.fn(),
       delete: vi.fn(),
       put: vi.fn(),
+      getBlob: vi.fn(),
+      uploadFile: vi.fn(),
     },
   };
 });
@@ -62,6 +64,19 @@ function setupApiMocks(overrides?: {
     }
     if (path.endsWith("/main-document")) {
       return Promise.resolve({ mainDocument: null });
+    }
+    if (path.includes("/files/content")) {
+      return Promise.resolve({
+        document: {
+          id: "doc-main",
+          path: "/main.tex",
+          kind: "text",
+          mime: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+        content: "\\documentclass{article}",
+      });
     }
     if (path.match(/\/projects\/[^/]+$/)) {
       if (overrides?.projectError) {
@@ -203,9 +218,9 @@ describe("ProjectEditorPage", () => {
 
     await user.click(screen.getByText("main.tex"));
 
-    expect(
-      screen.getByText("Editor placeholder: /main.tex"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".cm-editor")).toBeInTheDocument();
+    });
   });
 
   it("shows select-a-file message when nothing selected", async () => {
@@ -277,9 +292,9 @@ describe("ProjectEditorPage", () => {
 
     // Select a file
     await user.click(screen.getByText("main.tex"));
-    expect(
-      screen.getByText("Editor placeholder: /main.tex"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".cm-editor")).toBeInTheDocument();
+    });
 
     // Right-click and delete the file
     await user.pointer({
@@ -300,5 +315,34 @@ describe("ProjectEditorPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Select a file to edit")).toBeInTheDocument();
     });
+  });
+
+  it("renders binary preview for binary files instead of editor", async () => {
+    const user = userEvent.setup();
+    const nodesWithBinary: FileTreeNode[] = [
+      ...sampleNodes,
+      {
+        type: "file",
+        name: "diagram.pdf",
+        path: "/diagram.pdf",
+        documentId: "doc-pdf",
+        documentKind: "binary",
+        mime: "application/pdf",
+      },
+    ];
+    setupApiMocks({ treeNodes: nodesWithBinary });
+    renderEditor();
+
+    await waitFor(() => {
+      expect(screen.getByText("diagram.pdf")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("diagram.pdf"));
+
+    // Should show binary preview, not CodeMirror editor
+    await waitFor(() => {
+      expect(screen.getByText("application/pdf")).toBeInTheDocument();
+    });
+    expect(document.querySelector(".cm-editor")).not.toBeInTheDocument();
   });
 });
