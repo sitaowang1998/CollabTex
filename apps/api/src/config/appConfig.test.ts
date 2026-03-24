@@ -18,9 +18,12 @@ describe("loadConfig", () => {
       jwtSecret: "test-secret",
       clientOrigin: "http://localhost:5173",
       databaseUrl: INVALID_TEST_DATABASE_URL,
-      snapshotStorageRoot: "var/snapshots",
-      compileStorageRoot: "var/compiles",
-      binaryContentStorageRoot: "var/binary-content",
+      storage: {
+        storageBackend: "local",
+        snapshotStorageRoot: "var/snapshots",
+        compileStorageRoot: "var/compiles",
+        binaryContentStorageRoot: "var/binary-content",
+      },
       compileTimeoutMs: 60000,
       compileDockerImage: "texlive/texlive:latest-small",
       shutdownDrainTimeoutMs: 5000,
@@ -48,9 +51,12 @@ describe("loadConfig", () => {
       jwtSecret: "test-secret",
       clientOrigin: "http://localhost:4000",
       databaseUrl: INVALID_TEST_DATABASE_URL,
-      snapshotStorageRoot: "tmp/snapshots",
-      compileStorageRoot: "tmp/compiles",
-      binaryContentStorageRoot: "tmp/binary-content",
+      storage: {
+        storageBackend: "local",
+        snapshotStorageRoot: "tmp/snapshots",
+        compileStorageRoot: "tmp/compiles",
+        binaryContentStorageRoot: "tmp/binary-content",
+      },
       compileTimeoutMs: 120000,
       compileDockerImage: "texlive/texlive:2024",
       shutdownDrainTimeoutMs: 10000,
@@ -134,5 +140,71 @@ describe("loadConfig", () => {
         DATABASE_URL: INVALID_TEST_DATABASE_URL,
       }),
     ).toThrow("PORT must be a positive integer");
+  });
+
+  it("parses S3 storage config when STORAGE_BACKEND is s3", () => {
+    const config = loadConfig({
+      JWT_SECRET: "test-secret",
+      CLIENT_ORIGIN: "http://localhost:5173",
+      DATABASE_URL: INVALID_TEST_DATABASE_URL,
+      STORAGE_BACKEND: "s3",
+      S3_REGION: "us-west-2",
+      S3_ENDPOINT: "http://localhost:4566",
+      S3_BINARY_CONTENT_BUCKET: "my-binary",
+      S3_SNAPSHOT_BUCKET: "my-snapshots",
+      S3_COMPILE_BUCKET: "my-compiles",
+    });
+
+    expect(config.storage).toEqual({
+      storageBackend: "s3",
+      s3Region: "us-west-2",
+      s3Endpoint: "http://localhost:4566",
+      s3BinaryContentBucket: "my-binary",
+      s3SnapshotBucket: "my-snapshots",
+      s3CompileBucket: "my-compiles",
+    });
+  });
+
+  it("sets s3Endpoint to null when S3_ENDPOINT is not provided", () => {
+    const config = loadConfig({
+      JWT_SECRET: "test-secret",
+      CLIENT_ORIGIN: "http://localhost:5173",
+      DATABASE_URL: INVALID_TEST_DATABASE_URL,
+      STORAGE_BACKEND: "s3",
+      S3_REGION: "us-east-1",
+      S3_BINARY_CONTENT_BUCKET: "b",
+      S3_SNAPSHOT_BUCKET: "s",
+      S3_COMPILE_BUCKET: "c",
+    });
+
+    expect(config.storage).toMatchObject({
+      storageBackend: "s3",
+      s3Endpoint: null,
+    });
+  });
+
+  it("throws when STORAGE_BACKEND is s3 but S3_REGION is missing", () => {
+    expect(() =>
+      loadConfig({
+        JWT_SECRET: "test-secret",
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: INVALID_TEST_DATABASE_URL,
+        STORAGE_BACKEND: "s3",
+        S3_BINARY_CONTENT_BUCKET: "b",
+        S3_SNAPSHOT_BUCKET: "s",
+        S3_COMPILE_BUCKET: "c",
+      }),
+    ).toThrow("S3_REGION is required");
+  });
+
+  it("throws for an invalid STORAGE_BACKEND value", () => {
+    expect(() =>
+      loadConfig({
+        JWT_SECRET: "test-secret",
+        CLIENT_ORIGIN: "http://localhost:5173",
+        DATABASE_URL: INVALID_TEST_DATABASE_URL,
+        STORAGE_BACKEND: "gcs",
+      }),
+    ).toThrow('STORAGE_BACKEND must be "local" or "s3"');
   });
 });
