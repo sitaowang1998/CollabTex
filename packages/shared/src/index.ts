@@ -166,6 +166,7 @@ export type ProjectMemberListResponse = {
 export type WorkspaceJoinRequest = {
   projectId: string;
   documentId: string;
+  awarenessClientID?: number;
 };
 
 export type WorkspaceOpenedEvent = {

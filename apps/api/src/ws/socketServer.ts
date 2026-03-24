@@ -1,5 +1,7 @@
 import type { Server as HttpServer } from "http";
 import { Server, type Socket } from "socket.io";
+import * as encoding from "lib0/encoding";
+import * as decoding from "lib0/decoding";
 import type {
   ClientToServerEvents,
   CompileDoneEvent,
@@ -82,6 +84,8 @@ export function createSocketServer(
     let activeProjectId: string | null = null;
     let activeDocumentId: string | null = null;
     let activeTextSession: ActiveTextSessionState | null = null;
+    let activeAwarenessClientID: number | null = null;
+    let activeAwarenessClock = 0;
 
     if (!userId) {
       socket.disconnect(true);
@@ -95,6 +99,32 @@ export function createSocketServer(
         socket.emit("realtime:error", request);
         return;
       }
+
+      // Broadcast awareness removal for the previous document before switching
+      const previousRoomName = activeWorkspaceRoomName;
+      const previousDocumentId = activeDocumentId;
+      const previousClientID = activeAwarenessClientID;
+      const previousClock = activeAwarenessClock;
+      if (
+        previousRoomName &&
+        previousDocumentId &&
+        previousClientID !== null &&
+        previousDocumentId !== request.documentId
+      ) {
+        broadcastAwarenessRemoval(
+          socket,
+          previousRoomName,
+          previousDocumentId,
+          previousClientID,
+          previousClock,
+        );
+      }
+
+      activeAwarenessClientID =
+        typeof request.awarenessClientID === "number"
+          ? request.awarenessClientID
+          : null;
+      activeAwarenessClock = 0;
 
       latestJoinSequence += 1;
       const joinSequence = latestJoinSequence;
@@ -228,6 +258,11 @@ export function createSocketServer(
           documentId: request.documentId,
           awarenessB64: request.awarenessB64,
         });
+        // Track the awareness clock for removal broadcasts on disconnect
+        const clock = extractAwarenessClock(request.awarenessB64);
+        if (clock !== null && clock > activeAwarenessClock) {
+          activeAwarenessClock = clock;
+        }
       } catch (error) {
         console.error(
           "Failed to broadcast presence update",
@@ -240,9 +275,30 @@ export function createSocketServer(
     socket.on("disconnect", (reason) => {
       const sessionState = activeTextSession;
       const disconnectedProjectId = activeProjectId;
+      const disconnectedRoomName = activeWorkspaceRoomName;
+      const disconnectedDocumentId = activeDocumentId;
+      const disconnectedClientID = activeAwarenessClientID;
+      const disconnectedClock = activeAwarenessClock;
       activeTextSession = null;
       activeDocumentId = null;
       activeProjectId = null;
+      activeAwarenessClientID = null;
+      activeAwarenessClock = 0;
+
+      // Broadcast awareness removal to remaining peers
+      if (
+        disconnectedRoomName &&
+        disconnectedDocumentId &&
+        disconnectedClientID !== null
+      ) {
+        broadcastAwarenessRemoval(
+          socket,
+          disconnectedRoomName,
+          disconnectedDocumentId,
+          disconnectedClientID,
+          disconnectedClock,
+        );
+      }
 
       if (sessionState) {
         void leaveActiveTextSession(socket, sessionState);
@@ -778,7 +834,12 @@ function parseWorkspaceJoinRequest(
     };
   }
 
-  return { projectId, documentId };
+  const awarenessClientID =
+    typeof value.awarenessClientID === "number"
+      ? value.awarenessClientID
+      : undefined;
+
+  return { projectId, documentId, awarenessClientID };
 }
 
 type ParsedDocumentUpdateRequest = ClientDocumentUpdateEvent & {
@@ -1189,6 +1250,60 @@ async function leaveActiveTextSession(
         projectId: sessionState.projectId,
         documentId: sessionState.documentId,
       },
+      error,
+    );
+  }
+}
+
+/**
+ * Extract the first awareness clock value from a base64-encoded y-protocols
+ * awareness update. Returns null if the payload cannot be decoded.
+ */
+function extractAwarenessClock(awarenessB64: string): number | null {
+  try {
+    const bytes = Buffer.from(awarenessB64, "base64");
+    const decoder = decoding.createDecoder(bytes);
+    const count = decoding.readVarUint(decoder);
+    if (count === 0) return null;
+    decoding.readVarUint(decoder); // skip clientID
+    return decoding.readVarUint(decoder); // clock
+  } catch (error) {
+    console.warn("Failed to extract awareness clock from update", error);
+    return null;
+  }
+}
+
+/**
+ * Broadcast an awareness removal message to peers in a workspace room.
+ * Uses lib0 encoding to produce a valid y-protocols awareness update that
+ * marks the given clientID as removed (state = "null") with a clock value
+ * one higher than the last seen clock, ensuring peers accept the removal.
+ */
+function broadcastAwarenessRemoval(
+  socket: WorkspaceSocket,
+  workspaceRoomName: string,
+  documentId: string,
+  clientID: number,
+  lastSeenClock: number,
+) {
+  try {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 1); // 1 client in this update
+    encoding.writeVarUint(encoder, clientID);
+    encoding.writeVarUint(encoder, lastSeenClock + 1); // must be > currClock
+    encoding.writeVarString(encoder, "null"); // null state signals removal
+    const awarenessB64 = Buffer.from(encoding.toUint8Array(encoder)).toString(
+      "base64",
+    );
+
+    socket.to(workspaceRoomName).emit("presence.update", {
+      documentId,
+      awarenessB64,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to broadcast awareness removal",
+      { socketId: socket.id, documentId, clientID },
       error,
     );
   }

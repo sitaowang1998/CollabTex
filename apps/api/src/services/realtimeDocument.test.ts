@@ -20,7 +20,6 @@ import {
 import {
   createRealtimeDocumentService,
   RealtimeDocumentNotFoundError,
-  RealtimeDocumentSessionMismatchError,
 } from "./realtimeDocument.js";
 import { createDeferred } from "../test/helpers/deferred.js";
 
@@ -230,18 +229,28 @@ describe("realtime document service", () => {
     ).toBe(persistedState.textContent);
   });
 
-  it("honors socket currency after queue wait", async () => {
-    const sessionHandle = await createSessionHandle(
-      createStoredDocumentTextState("Hello", 1),
-    );
+  it("persists update even when socket is no longer current after queue wait", async () => {
+    const initialState = createStoredDocumentTextState("Hello", 1);
     const releaseFirstTask = createDeferred<void>();
-    const currentTextStateService = createCurrentTextStateService();
+    const storedDocument = createStoredDocument();
+    const persistedState = createStoredDocumentTextStateFromUpdate(
+      applyMutationToState(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
+      }),
+      2,
+    );
+    const currentTextStateService = createCurrentTextStateService({
+      persist: vi.fn().mockResolvedValue(persistedState),
+    });
     const service = createRealtimeDocumentService({
       collaborationService: createCollaborationService(),
       projectAccessService: createProjectAccessService(),
-      documentRepository: createDocumentRepository(),
+      documentRepository: createDocumentRepository({
+        findById: vi.fn().mockResolvedValue(storedDocument),
+      }),
       currentTextStateService,
     });
+    const sessionHandle = await createSessionHandle(initialState);
 
     const firstTask = sessionHandle.runExclusive(async () => {
       await releaseFirstTask.promise;
@@ -252,12 +261,9 @@ describe("realtime document service", () => {
       documentId: "document-1",
       userId: "user-1",
       sessionHandle,
-      update: createIncrementalUpdate(
-        createStoredDocumentTextState("Hello", 1).yjsState,
-        (document) => {
-          document.getText("content").insert(5, " world");
-        },
-      ),
+      update: createIncrementalUpdate(initialState.yjsState, (document) => {
+        document.getText("content").insert(5, " world");
+      }),
       isCurrentSession: () => isCurrentSession,
     });
 
@@ -265,10 +271,10 @@ describe("realtime document service", () => {
     releaseFirstTask.resolve();
     await firstTask;
 
-    await expect(pendingUpdate).rejects.toBeInstanceOf(
-      RealtimeDocumentSessionMismatchError,
-    );
-    expect(currentTextStateService.persist).not.toHaveBeenCalled();
+    // Update should still persist even though isCurrentSession is now false
+    const result = await pendingUpdate;
+    expect(result.serverVersion).toBe(2);
+    expect(currentTextStateService.persist).toHaveBeenCalled();
   });
 
   it("rejects updates from an invalidated active session", async () => {

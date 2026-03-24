@@ -86,10 +86,6 @@ export function createRealtimeDocumentService({
             throw new ActiveDocumentSessionInvalidatedError();
           }
 
-          if (!isCurrentSession()) {
-            throw new RealtimeDocumentSessionMismatchError();
-          }
-
           await projectAccessService.requireProjectRole(
             projectId,
             userId,
