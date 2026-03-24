@@ -59,8 +59,9 @@ export function createStores(storageConfig: StorageConfig): Stores {
     }
     default: {
       const _exhaustive: never = storageConfig;
+      void _exhaustive;
       throw new Error(
-        `Unknown storage backend: ${(_exhaustive as StorageConfig).storageBackend}`,
+        `Unknown storage backend: ${(storageConfig as Record<string, unknown>).storageBackend}`,
       );
     }
   }
