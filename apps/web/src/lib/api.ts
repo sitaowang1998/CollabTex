@@ -200,6 +200,39 @@ async function request<T>(
   }
 }
 
+async function getBlob(path: string, options?: RequestOptions): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem("token");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const signal = buildSignal(options?.signal, 30_000);
+
+  let res = await safeFetch(`${BASE_URL}${path}`, {
+    method: "GET",
+    headers,
+    signal,
+  });
+
+  if (res.status === 401 && token) {
+    const retryToken = await tryRefreshToken(path, token);
+    if (retryToken) {
+      res = await safeFetch(`${BASE_URL}${path}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${retryToken}` },
+        signal: buildSignal(options?.signal, 30_000),
+      });
+    }
+  }
+
+  if (!res.ok) {
+    await parseErrorResponse(res);
+  }
+
+  return res.blob();
+}
+
 async function uploadFile(
   path: string,
   file: File,
@@ -258,5 +291,6 @@ export const api = {
   ): Promise<void> => request<void>("DELETE", path, body, options),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PUT", path, body, options),
+  getBlob,
   uploadFile,
 };

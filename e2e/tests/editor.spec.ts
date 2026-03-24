@@ -67,18 +67,17 @@ test.describe("Editor Page", () => {
       .click();
 
     await expect(tree.getByText("chapter1.tex")).toBeVisible();
-    // Auto-selected: editor shows the new file
-    await expect(
-      page.getByText("Editor placeholder: /chapter1.tex"),
-    ).toBeVisible();
+    // Auto-selected: editor shows the new file in CodeMirror
+    await expect(page.locator(".cm-editor")).toBeVisible();
   });
 
-  test("select a file shows editor placeholder", async ({ page }) => {
+  test("select a file loads content in CodeMirror editor", async ({ page }) => {
     await registerAndCreateProject(page, "Select File Project");
 
     // main.tex is auto-created, click it
     await page.getByText("main.tex").click();
-    await expect(page.getByText("Editor placeholder: /main.tex")).toBeVisible();
+    await expect(page.locator(".cm-editor")).toBeVisible();
+    await expect(page.locator(".cm-lineNumbers")).toBeVisible();
   });
 
   test("create a folder via New Folder button", async ({ page }) => {

@@ -92,6 +92,8 @@ describe("FileTree", () => {
     expect(props.onSelectFile).toHaveBeenCalledWith({
       documentId: "doc-main",
       path: "/main.tex",
+      documentKind: "text",
+      mime: "text/x-tex",
     });
   });
 
