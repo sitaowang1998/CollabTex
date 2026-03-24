@@ -594,3 +594,84 @@ describe("uploadFile", () => {
     expect((error as ApiError).cause).toBe(cause);
   });
 });
+
+describe("api.getBlob", () => {
+  function blobResponse(content = "binary-data", status = 200) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: status === 200 ? "OK" : "Error",
+      blob: () => Promise.resolve(new Blob([content])),
+      json: () => Promise.resolve({ error: "Error" }),
+    };
+  }
+
+  it("sends GET with Authorization header and returns blob", async () => {
+    localStorage.setItem("token", "test-tok");
+    mockFetch.mockResolvedValue(blobResponse("img-data"));
+
+    const blob = await api.getBlob("/files/1/content");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/files/1/content",
+      expect.objectContaining({
+        method: "GET",
+        headers: { Authorization: "Bearer test-tok" },
+      }),
+    );
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await blob.text()).toBe("img-data");
+  });
+
+  it("sends GET without Authorization when no token", async () => {
+    mockFetch.mockResolvedValue(blobResponse());
+
+    await api.getBlob("/files/1/content");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/files/1/content",
+      expect.objectContaining({
+        headers: {},
+      }),
+    );
+  });
+
+  it("throws ApiError on non-ok response", async () => {
+    mockFetch.mockResolvedValue(blobResponse("", 500));
+
+    const error = await api
+      .getBlob("/files/1/content")
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(500);
+  });
+
+  it("retries after 401 with refreshed token", async () => {
+    localStorage.setItem("token", "old-tok");
+
+    // First call: 401
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: () => Promise.resolve({ error: "Unauthorized" }),
+    });
+    // Refresh call: returns new token
+    mockFetch.mockResolvedValueOnce(jsonResponse({ token: "new-tok" }));
+    // Retry call: success
+    mockFetch.mockResolvedValueOnce(blobResponse("retried"));
+
+    const blob = await api.getBlob("/files/1/content");
+
+    expect(await blob.text()).toBe("retried");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    // Retry used the new token
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "/api/files/1/content",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer new-tok" },
+      }),
+    );
+  });
+});

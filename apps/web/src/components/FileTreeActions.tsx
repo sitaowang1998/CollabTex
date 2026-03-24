@@ -39,7 +39,12 @@ type FileTreeActionsProps = {
   action: FileTreeAction | null;
   localFolderPaths: ReadonlySet<string>;
   onClose: () => void;
-  onComplete: (created?: { documentId: string; path: string }) => void;
+  onComplete: (created?: {
+    documentId: string;
+    path: string;
+    documentKind: "text" | "binary";
+    mime: string | null;
+  }) => void;
   onMainDocumentChange: (documentId: string) => void;
   onCreateFolder: (parentPath: string, name: string) => void;
 };
@@ -196,7 +201,12 @@ function CreateAction({
   projectId: string;
   action: Extract<FileTreeAction, { type: "create" }>;
   onClose: () => void;
-  onComplete: (created?: { documentId: string; path: string }) => void;
+  onComplete: (created?: {
+    documentId: string;
+    path: string;
+    documentKind: "text" | "binary";
+    mime: string | null;
+  }) => void;
 }) {
   const displayPrefix =
     action.parentPath === "/" ? "" : `${action.parentPath.slice(1)}/`;
@@ -233,7 +243,12 @@ function CreateAction({
         `/projects/${projectId}/files`,
         { path: apiPath, kind: "text" },
       );
-      onComplete({ documentId: document.id, path: document.path });
+      onComplete({
+        documentId: document.id,
+        path: document.path,
+        documentKind: document.kind,
+        mime: document.mime,
+      });
       onClose();
     } catch (err) {
       if (err instanceof ApiError) {
