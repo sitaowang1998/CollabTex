@@ -1149,4 +1149,21 @@ test.describe("Editor Page", () => {
 
     await expect(tree.getByText("logo.png")).toBeVisible();
   });
+
+  test("LaTeX syntax highlighting applies to .tex files", async ({ page }) => {
+    await registerAndCreateProject(page, "Highlighting Project");
+
+    // main.tex is auto-created, click it to open in editor
+    await page.getByText("main.tex").click();
+    await expect(page.locator(".cm-editor")).toBeVisible();
+
+    // Type some LaTeX content
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.keyboard.type("\\section{Hello}");
+
+    // Verify that syntax highlighting spans are present (CodeMirror adds spans for highlighted tokens)
+    const highlightedSpans = page.locator(".cm-line span");
+    await expect(highlightedSpans.first()).toBeVisible();
+  });
 });

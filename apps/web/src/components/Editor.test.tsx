@@ -119,6 +119,20 @@ describe("Editor", () => {
     expect(mockDestroy).toHaveBeenCalled();
   });
 
+  it("renders editor container for non-LaTeX file (plain text fallback)", async () => {
+    render(
+      <Editor projectId="p1" documentId="d1" path="/readme.md" role="editor" />,
+    );
+
+    act(() => {
+      capturedOnSynced?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
+    });
+  });
+
   it("shows fallback error message when errorMessage is null", async () => {
     render(
       <Editor projectId="p1" documentId="d1" path="/main.tex" role="editor" />,
