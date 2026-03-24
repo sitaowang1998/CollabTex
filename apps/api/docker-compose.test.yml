@@ -14,7 +14,7 @@ services:
       retries: 30
 
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:4.4
     environment:
       SERVICES: s3
       LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT: 1
