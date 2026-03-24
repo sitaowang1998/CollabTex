@@ -2,15 +2,31 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_NODE_ENV = "development";
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
+export type StorageConfigLocal = {
+  storageBackend: "local";
+  snapshotStorageRoot: string;
+  compileStorageRoot: string;
+  binaryContentStorageRoot: string;
+};
+
+export type StorageConfigS3 = {
+  storageBackend: "s3";
+  s3Region: string;
+  s3Endpoint: string | null;
+  s3BinaryContentBucket: string;
+  s3SnapshotBucket: string;
+  s3CompileBucket: string;
+};
+
+export type StorageConfig = StorageConfigLocal | StorageConfigS3;
+
 export type AppConfig = {
   nodeEnv: string;
   port: number;
   jwtSecret: string;
   clientOrigin: string;
   databaseUrl: string;
-  snapshotStorageRoot: string;
-  compileStorageRoot: string;
-  binaryContentStorageRoot: string;
+  storage: StorageConfig;
   compileTimeoutMs: number;
   compileDockerImage: string;
   shutdownDrainTimeoutMs: number;
@@ -104,6 +120,45 @@ function parseCompileDockerImage(rawValue: string | undefined): string {
   return value ? value : DEFAULT_COMPILE_DOCKER_IMAGE;
 }
 
+function parseStorageConfig(env: NodeJS.ProcessEnv): StorageConfig {
+  const backend = env.STORAGE_BACKEND?.trim() || "local";
+
+  if (backend === "s3") {
+    return {
+      storageBackend: "s3",
+      s3Region: parseRequiredEnv("S3_REGION", env.S3_REGION),
+      s3Endpoint: env.S3_ENDPOINT?.trim() || null,
+      s3BinaryContentBucket: parseRequiredEnv(
+        "S3_BINARY_CONTENT_BUCKET",
+        env.S3_BINARY_CONTENT_BUCKET,
+      ),
+      s3SnapshotBucket: parseRequiredEnv(
+        "S3_SNAPSHOT_BUCKET",
+        env.S3_SNAPSHOT_BUCKET,
+      ),
+      s3CompileBucket: parseRequiredEnv(
+        "S3_COMPILE_BUCKET",
+        env.S3_COMPILE_BUCKET,
+      ),
+    };
+  }
+
+  if (backend !== "local") {
+    throw new Error(
+      `STORAGE_BACKEND must be "local" or "s3", got "${backend}"`,
+    );
+  }
+
+  return {
+    storageBackend: "local",
+    snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
+    compileStorageRoot: parseCompileStorageRoot(env.COMPILE_STORAGE_ROOT),
+    binaryContentStorageRoot: parseBinaryContentStorageRoot(
+      env.BINARY_CONTENT_STORAGE_ROOT,
+    ),
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnv(env.NODE_ENV);
 
@@ -113,11 +168,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     jwtSecret: parseRequiredEnv("JWT_SECRET", env.JWT_SECRET),
     clientOrigin: parseRequiredEnv("CLIENT_ORIGIN", env.CLIENT_ORIGIN),
     databaseUrl: parseRequiredEnv("DATABASE_URL", env.DATABASE_URL),
-    snapshotStorageRoot: parseSnapshotStorageRoot(env.SNAPSHOT_STORAGE_ROOT),
-    compileStorageRoot: parseCompileStorageRoot(env.COMPILE_STORAGE_ROOT),
-    binaryContentStorageRoot: parseBinaryContentStorageRoot(
-      env.BINARY_CONTENT_STORAGE_ROOT,
-    ),
+    storage: parseStorageConfig(env),
     compileTimeoutMs: parseCompileTimeoutMs(env.COMPILE_TIMEOUT_MS),
     compileDockerImage: parseCompileDockerImage(env.COMPILE_DOCKER_IMAGE),
     shutdownDrainTimeoutMs: parseShutdownDrainTimeoutMs(

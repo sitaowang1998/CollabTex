@@ -7,18 +7,25 @@ import process from "node:process";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const apiRoot = resolve(scriptDir, "..");
 const composeFilePath = resolve(apiRoot, "docker-compose.test.yml");
-const localDatabaseHost = "127.0.0.1";
+const localHost = "127.0.0.1";
 const localDatabaseName = "collabtex_api_test";
 const localDatabaseUser = "postgres";
 const localDatabasePassword = "postgres";
-const readinessTimeoutMs = 30_000;
+const readinessTimeoutMs = 60_000;
 const maxComposeStartupAttempts = 3;
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
-type IntegrationDatabaseConfig = {
+const testS3Buckets = [
+  "collabtex-test-binary-content",
+  "collabtex-test-snapshots",
+  "collabtex-test-compiles",
+];
+
+type IntegrationConfig = {
   databaseUrl: string;
-  host: string;
-  port: number;
+  postgresPort: number;
+  localstackPort: number;
+  s3Endpoint: string;
 };
 
 type RunCommandOptions = {
@@ -30,11 +37,17 @@ function composeArgs(...args: string[]) {
   return ["compose", "-f", composeFilePath, ...args];
 }
 
-function createIntegrationEnv(databaseConfig: IntegrationDatabaseConfig) {
+function createIntegrationEnv(config: IntegrationConfig) {
   return {
     ...process.env,
-    DATABASE_URL: databaseConfig.databaseUrl,
-    TEST_POSTGRES_PORT: String(databaseConfig.port),
+    DATABASE_URL: config.databaseUrl,
+    TEST_POSTGRES_PORT: String(config.postgresPort),
+    TEST_LOCALSTACK_PORT: String(config.localstackPort),
+    TEST_S3_ENDPOINT: config.s3Endpoint,
+    TEST_S3_REGION: "us-east-1",
+    TEST_S3_BINARY_CONTENT_BUCKET: testS3Buckets[0],
+    TEST_S3_SNAPSHOT_BUCKET: testS3Buckets[1],
+    TEST_S3_COMPILE_BUCKET: testS3Buckets[2],
   };
 }
 
@@ -79,13 +92,15 @@ async function findFreeLocalPort(host: string): Promise<number> {
   });
 }
 
-async function resolveLocalIntegrationDatabaseConfig(): Promise<IntegrationDatabaseConfig> {
-  const port = await findFreeLocalPort(localDatabaseHost);
+async function resolveIntegrationConfig(): Promise<IntegrationConfig> {
+  const postgresPort = await findFreeLocalPort(localHost);
+  const localstackPort = await findFreeLocalPort(localHost);
 
   return {
-    databaseUrl: buildDatabaseUrl(localDatabaseHost, port),
-    host: localDatabaseHost,
-    port,
+    databaseUrl: buildDatabaseUrl(localHost, postgresPort),
+    postgresPort,
+    localstackPort,
+    s3Endpoint: `http://${localHost}:${localstackPort}`,
   };
 }
 
@@ -143,12 +158,42 @@ async function teardownCompose(env?: NodeJS.ProcessEnv) {
   });
 }
 
+async function createS3Buckets(s3Endpoint: string) {
+  const { S3Client, CreateBucketCommand } = await import("@aws-sdk/client-s3");
+  const client = new S3Client({
+    region: "us-east-1",
+    endpoint: s3Endpoint,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: "test",
+      secretAccessKey: "test",
+    },
+  });
+
+  for (const bucket of testS3Buckets) {
+    try {
+      await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "BucketAlreadyOwnedByYou" ||
+          error.name === "BucketAlreadyExists")
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  client.destroy();
+}
+
 async function startComposeWithRetries(waitTimeoutSeconds: number) {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxComposeStartupAttempts; attempt += 1) {
-    const databaseConfig = await resolveLocalIntegrationDatabaseConfig();
-    const integrationEnv = createIntegrationEnv(databaseConfig);
+    const config = await resolveIntegrationConfig();
+    const integrationEnv = createIntegrationEnv(config);
 
     try {
       await runCommand(
@@ -162,7 +207,9 @@ async function startComposeWithRetries(waitTimeoutSeconds: number) {
         },
       );
 
-      return { databaseConfig, integrationEnv };
+      await createS3Buckets(config.s3Endpoint);
+
+      return { config, integrationEnv };
     } catch (error) {
       lastError = error;
 
@@ -200,6 +247,10 @@ async function main() {
       env: integrationEnv,
     });
     await runCommand(npmCommand, ["run", "test:integration:db:vitest"], {
+      cwd: apiRoot,
+      env: integrationEnv,
+    });
+    await runCommand(npmCommand, ["run", "test:integration:s3:vitest"], {
       cwd: apiRoot,
       env: integrationEnv,
     });

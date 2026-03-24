@@ -6,9 +6,7 @@ import { createHttpApp } from "./http/app.js";
 import { createArgon2PasswordHasher } from "./infrastructure/auth/argon2PasswordHasher.js";
 import { createDatabaseClient } from "./infrastructure/db/client.js";
 import { createDockerCompileAdapter } from "./infrastructure/compile/dockerCompileAdapter.js";
-import { createLocalFilesystemBinaryContentStore } from "./infrastructure/storage/localFilesystemBinaryContentStore.js";
-import { createLocalFilesystemCompileStore } from "./infrastructure/storage/localFilesystemCompileStore.js";
-import { createLocalFilesystemSnapshotStore } from "./infrastructure/storage/localFilesystemSnapshotStore.js";
+import { createStores } from "./infrastructure/storage/createStores.js";
 import { createCompileBuildRepository } from "./repositories/compileBuildRepository.js";
 import { createDocumentRepository } from "./repositories/documentRepository.js";
 import { createDocumentTextStateRepository } from "./repositories/documentTextStateRepository.js";
@@ -62,9 +60,8 @@ async function main() {
   const config = loadConfig();
   const databaseClient = createDatabaseClient(config.databaseUrl);
   const passwordHasher = createArgon2PasswordHasher();
-  const snapshotStore = createLocalFilesystemSnapshotStore(
-    config.snapshotStorageRoot,
-  );
+  const stores = createStores(config.storage);
+  const { snapshotStore, binaryContentStore, compileArtifactStore } = stores;
 
   try {
     await databaseClient.$connect();
@@ -83,9 +80,6 @@ async function main() {
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
-    const binaryContentStore = createLocalFilesystemBinaryContentStore(
-      config.binaryContentStorageRoot,
-    );
     let resetPublisher: SnapshotResetPublisher = {
       emitDocumentReset: async () => {},
     };
@@ -161,9 +155,6 @@ async function main() {
       snapshotService,
     });
     const compileBuildRepository = createCompileBuildRepository(databaseClient);
-    const compileArtifactStore = createLocalFilesystemCompileStore(
-      config.compileStorageRoot,
-    );
     const compileAdapter = createDockerCompileAdapter({
       dockerImage: config.compileDockerImage,
     });
@@ -238,6 +229,7 @@ async function main() {
       databaseClient,
       snapshotRefreshTrigger,
       activeDocumentRegistry,
+      destroyStores: stores.destroy,
       shutdownDrainTimeoutMs: config.shutdownDrainTimeoutMs,
     });
     snapshotRefreshTrigger.kick();
@@ -245,6 +237,7 @@ async function main() {
 
     console.log(`API+Socket.io listening on http://localhost:${config.port}`);
   } catch (error) {
+    stores.destroy?.();
     await databaseClient.$disconnect().catch(() => {});
     console.error("Failed to start API", error);
     process.exitCode = 1;
@@ -257,6 +250,7 @@ function installShutdownHandlers({
   databaseClient,
   snapshotRefreshTrigger,
   activeDocumentRegistry,
+  destroyStores,
   shutdownDrainTimeoutMs,
 }: {
   server: http.Server;
@@ -264,6 +258,7 @@ function installShutdownHandlers({
   databaseClient: ReturnType<typeof createDatabaseClient>;
   snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
   activeDocumentRegistry: ReturnType<typeof createActiveDocumentRegistry>;
+  destroyStores?: () => void;
   shutdownDrainTimeoutMs: number;
 }) {
   let isShuttingDown = false;
@@ -315,6 +310,13 @@ function installShutdownHandlers({
     } catch (error) {
       hadError = true;
       console.error("Shutdown: database disconnect failed", error);
+    }
+
+    try {
+      destroyStores?.();
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: store cleanup failed", error);
     }
 
     process.exit(hadError ? 1 : 0);

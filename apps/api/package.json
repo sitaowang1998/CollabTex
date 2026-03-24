@@ -14,10 +14,10 @@
     "start": "node dist/index.js",
     "test": "vitest run --exclude \"src/**/*.db.test.ts\" --exclude \"src/**/*.integration.test.ts\"",
     "test:unit": "vitest run --exclude \"src/**/*.db.test.ts\" --exclude \"src/**/*.integration.test.ts\"",
-    "test:integration": "tsx ./scripts/runIntegrationDbTests.ts",
-    "test:integration:db": "tsx ./scripts/runIntegrationDbTests.ts",
+    "test:integration": "tsx ./scripts/runIntegrationTests.ts",
     "test:integration:db:prepare": "npm run prisma:generate && npm run prisma:migrate:deploy",
     "test:integration:db:vitest": "vitest run src/integration",
+    "test:integration:s3:vitest": "vitest run src/infrastructure/storage",
     "test:watch": "vitest --exclude \"src/**/*.db.test.ts\" --exclude \"src/**/*.integration.test.ts\"",
     "test:http": "vitest run src/http",
     "test:ws": "vitest run src/ws",
@@ -29,6 +29,7 @@
     "prisma:validate": "prisma validate --config prisma.config.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1015.0",
     "@collab-tex/shared": "^1.0.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
