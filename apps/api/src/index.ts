@@ -237,6 +237,7 @@ async function main() {
 
     console.log(`API+Socket.io listening on http://localhost:${config.port}`);
   } catch (error) {
+    stores.destroy?.();
     await databaseClient.$disconnect().catch(() => {});
     console.error("Failed to start API", error);
     process.exitCode = 1;
