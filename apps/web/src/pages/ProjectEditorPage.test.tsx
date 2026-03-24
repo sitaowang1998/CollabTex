@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 import type { AuthUser, FileTreeNode } from "@collab-tex/shared";
 import { AuthProvider } from "../contexts/AuthContext";
 import { api, ApiError } from "../lib/api";
@@ -19,6 +21,35 @@ vi.mock("../lib/api", async (importOriginal) => {
       getBlob: vi.fn(),
       uploadFile: vi.fn(),
     },
+  };
+});
+
+vi.mock("../lib/socket", () => ({
+  getSocket: vi.fn(() => ({})),
+}));
+
+const yjsSyncDocs: Y.Doc[] = [];
+
+vi.mock("../lib/yjs-sync", () => {
+  return {
+    YjsDocumentSync: vi.fn().mockImplementation(function (
+      this: Record<string, unknown>,
+      options: { onSynced: () => void },
+    ) {
+      const doc = new Y.Doc();
+      const awareness = new Awareness(doc);
+      yjsSyncDocs.push(doc);
+      Promise.resolve().then(() => options.onSynced());
+      Object.assign(this, {
+        doc,
+        awareness,
+        isSynced: true,
+        serverVersion: 1,
+        destroy: vi.fn(() => {
+          awareness.destroy();
+        }),
+      });
+    }),
   };
 });
 
@@ -113,8 +144,13 @@ function renderEditor() {
 }
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.clearAllMocks();
   localStorage.clear();
+});
+
+afterEach(() => {
+  yjsSyncDocs.forEach((doc) => doc.destroy());
+  yjsSyncDocs.length = 0;
 });
 
 describe("ProjectEditorPage", () => {
@@ -219,7 +255,7 @@ describe("ProjectEditorPage", () => {
     await user.click(screen.getByText("main.tex"));
 
     await waitFor(() => {
-      expect(document.querySelector(".cm-editor")).toBeInTheDocument();
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
     });
   });
 
@@ -293,7 +329,7 @@ describe("ProjectEditorPage", () => {
     // Select a file
     await user.click(screen.getByText("main.tex"));
     await waitFor(() => {
-      expect(document.querySelector(".cm-editor")).toBeInTheDocument();
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
     });
 
     // Right-click and delete the file

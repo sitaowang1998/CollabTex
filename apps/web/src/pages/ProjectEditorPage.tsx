@@ -483,9 +483,12 @@ export default function ProjectEditorPage() {
           {selectedFile ? (
             selectedFile.documentKind === "text" ? (
               <Editor
-                key={selectedFile.path}
+                key={selectedFile.documentId}
                 projectId={projectId!}
+                documentId={selectedFile.documentId}
                 path={selectedFile.path}
+                role={myRole}
+                userName={userName}
               />
             ) : (
               <BinaryPreview

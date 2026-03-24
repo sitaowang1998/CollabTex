@@ -3319,6 +3319,127 @@ describe("socket server", () => {
       consoleErrorSpy.mockRestore();
     }
   });
+
+  it("broadcasts awareness removal to peers when socket disconnects", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    try {
+      // Both join the same document, sender provides awarenessClientID
+      sender.emit("workspace:join", {
+        projectId: "project-123",
+        documentId: "doc-456",
+        awarenessClientID: 12345,
+      });
+      await new Promise<void>((resolve) => {
+        sender.once("doc.sync.response", () => resolve());
+      });
+      await joinAndWaitForSync(receiver, "doc-456");
+
+      const receiverPromise = new Promise<PresenceUpdateEvent>((resolve) => {
+        receiver.once("presence.update", resolve);
+      });
+
+      // Sender disconnects
+      sender.close();
+
+      // Receiver should get a presence removal broadcast
+      const received = await receiverPromise;
+      expect(received.documentId).toBe("doc-456");
+      expect(received.awarenessB64).toBeTruthy();
+
+      // Decode the awareness update to verify it signals removal for clientID 12345
+      const bytes = Buffer.from(received.awarenessB64, "base64");
+      // First byte: client count (1)
+      expect(bytes[0]).toBe(1);
+      // The state string should be "null" (signals removal in y-protocols)
+      const stateStr = bytes.toString("utf-8");
+      expect(stateStr).toContain("null");
+    } finally {
+      receiver.close();
+    }
+  });
+
+  it("broadcasts awareness removal to old document peers when socket switches documents", async () => {
+    socketServer = await createTestSocketServer();
+    const switcher = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const stayer = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    try {
+      // Both join doc-456, switcher provides awarenessClientID
+      switcher.emit("workspace:join", {
+        projectId: "project-123",
+        documentId: "doc-456",
+        awarenessClientID: 99999,
+      });
+      await new Promise<void>((resolve) => {
+        switcher.once("doc.sync.response", () => resolve());
+      });
+      await joinAndWaitForSync(stayer, "doc-456");
+
+      const stayerPromise = new Promise<PresenceUpdateEvent>((resolve) => {
+        stayer.once("presence.update", resolve);
+      });
+
+      // Switcher moves to a different document
+      switcher.emit("workspace:join", {
+        projectId: "project-123",
+        documentId: "doc-second",
+        awarenessClientID: 99999,
+      });
+
+      // Stayer should get awareness removal for doc-456
+      const received = await stayerPromise;
+      expect(received.documentId).toBe("doc-456");
+      expect(received.awarenessB64).toBeTruthy();
+      // Verify the payload contains "null" state (removal signal)
+      const decoded = Buffer.from(received.awarenessB64, "base64").toString(
+        "utf-8",
+      );
+      expect(decoded).toContain("null");
+    } finally {
+      switcher.close();
+      stayer.close();
+    }
+  });
+
+  it("does not broadcast awareness removal when awarenessClientID is not provided", async () => {
+    socketServer = await createTestSocketServer();
+    const sender = socketServer.connect(
+      signToken("alice", testConfig.jwtSecret),
+    );
+    const receiver = socketServer.connect(
+      signToken("editor", testConfig.jwtSecret),
+    );
+
+    try {
+      // Join WITHOUT awarenessClientID
+      await joinAndWaitForSync(sender, "doc-456");
+      await joinAndWaitForSync(receiver, "doc-456");
+
+      let receiverGotPresence = false;
+      receiver.on("presence.update", () => {
+        receiverGotPresence = true;
+      });
+
+      sender.close();
+      await waitForSocketFlush();
+
+      // No awareness removal should be broadcast
+      expect(receiverGotPresence).toBe(false);
+    } finally {
+      receiver.close();
+    }
+  });
 });
 
 function createSequencedWorkspaceService(
