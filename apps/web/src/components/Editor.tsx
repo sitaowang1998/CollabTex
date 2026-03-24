@@ -7,6 +7,8 @@ import { yCollab } from "y-codemirror.next";
 import type { ProjectRole } from "@collab-tex/shared";
 import { getSocket } from "@/lib/socket";
 import { YjsDocumentSync } from "@/lib/yjs-sync";
+import { getLanguageExtension } from "@/lib/latex-language";
+import { syntaxHighlightTheme } from "@/lib/editor-theme";
 import { Button } from "@/components/ui/button";
 
 interface EditorProps {
@@ -42,7 +44,7 @@ const editorTheme = EditorView.theme({
 type EditorStatus = "connecting" | "synced" | "error";
 
 export default function Editor(props: EditorProps) {
-  const { projectId, documentId, role, userName } = props;
+  const { projectId, documentId, path, role, userName } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const syncRef = useRef<YjsDocumentSync | null>(null);
@@ -110,6 +112,8 @@ export default function Editor(props: EditorProps) {
 
     const isEditable = role === "admin" || role === "editor";
 
+    const languageExtensions = getLanguageExtension(path);
+
     const state = EditorState.create({
       doc: ytext.toString(),
       extensions: [
@@ -117,6 +121,8 @@ export default function Editor(props: EditorProps) {
         drawSelection(),
         lineNumbers(),
         bracketMatching(),
+        ...languageExtensions,
+        ...(languageExtensions.length > 0 ? [syntaxHighlightTheme] : []),
         EditorView.editable.of(isEditable),
         EditorState.readOnly.of(!isEditable),
         editorTheme,
@@ -139,8 +145,9 @@ export default function Editor(props: EditorProps) {
       }
     };
     // syncGeneration changes on every sync (including post-reset),
-    // ensuring the EditorView re-mounts when the Y.Doc is replaced.
-  }, [status, role, syncGeneration]);
+    // and path triggers re-mount on file change, ensuring the
+    // EditorView uses the correct Y.Doc and language extension.
+  }, [status, role, syncGeneration, path]);
 
   const handleRetry = useCallback(() => {
     setStatus("connecting");
