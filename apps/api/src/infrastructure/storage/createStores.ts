@@ -14,43 +14,54 @@ export type Stores = {
   snapshotStore: SnapshotStore;
   binaryContentStore: BinaryContentStore;
   compileArtifactStore: CompileArtifactStore;
+  destroy?: () => void;
 };
 
 export function createStores(storageConfig: StorageConfig): Stores {
-  if (storageConfig.storageBackend === "s3") {
-    const s3Client = new S3Client({
-      region: storageConfig.s3Region,
-      ...(storageConfig.s3Endpoint && {
-        endpoint: storageConfig.s3Endpoint,
-        forcePathStyle: true,
-      }),
-    });
+  switch (storageConfig.storageBackend) {
+    case "s3": {
+      const s3Client = new S3Client({
+        region: storageConfig.s3Region,
+        ...(storageConfig.s3Endpoint && {
+          endpoint: storageConfig.s3Endpoint,
+          forcePathStyle: true,
+        }),
+      });
 
-    return {
-      snapshotStore: createS3SnapshotStore(
-        s3Client,
-        storageConfig.s3SnapshotBucket,
-      ),
-      binaryContentStore: createS3BinaryContentStore(
-        s3Client,
-        storageConfig.s3BinaryContentBucket,
-      ),
-      compileArtifactStore: createS3CompileStore(
-        s3Client,
-        storageConfig.s3CompileBucket,
-      ),
-    };
+      return {
+        snapshotStore: createS3SnapshotStore(
+          s3Client,
+          storageConfig.s3SnapshotBucket,
+        ),
+        binaryContentStore: createS3BinaryContentStore(
+          s3Client,
+          storageConfig.s3BinaryContentBucket,
+        ),
+        compileArtifactStore: createS3CompileStore(
+          s3Client,
+          storageConfig.s3CompileBucket,
+        ),
+        destroy: () => s3Client.destroy(),
+      };
+    }
+    case "local": {
+      return {
+        snapshotStore: createLocalFilesystemSnapshotStore(
+          storageConfig.snapshotStorageRoot,
+        ),
+        binaryContentStore: createLocalFilesystemBinaryContentStore(
+          storageConfig.binaryContentStorageRoot,
+        ),
+        compileArtifactStore: createLocalFilesystemCompileStore(
+          storageConfig.compileStorageRoot,
+        ),
+      };
+    }
+    default: {
+      const _exhaustive: never = storageConfig;
+      throw new Error(
+        `Unknown storage backend: ${(_exhaustive as StorageConfig).storageBackend}`,
+      );
+    }
   }
-
-  return {
-    snapshotStore: createLocalFilesystemSnapshotStore(
-      storageConfig.snapshotStorageRoot,
-    ),
-    binaryContentStore: createLocalFilesystemBinaryContentStore(
-      storageConfig.binaryContentStorageRoot,
-    ),
-    compileArtifactStore: createLocalFilesystemCompileStore(
-      storageConfig.compileStorageRoot,
-    ),
-  };
 }

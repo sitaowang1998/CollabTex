@@ -5,7 +5,7 @@ export async function streamToBuffer(
   body: Readable | ReadableStream | Blob | undefined,
 ): Promise<Buffer> {
   if (!body) {
-    return Buffer.alloc(0);
+    throw new Error("S3 response body is unexpectedly empty");
   }
 
   if (body instanceof Blob) {
@@ -21,5 +21,6 @@ export async function streamToBuffer(
 }
 
 export function isNoSuchKeyError(error: unknown): boolean {
-  return error instanceof NoSuchKey;
+  if (error instanceof NoSuchKey) return true;
+  return error instanceof Error && error.name === "NoSuchKey";
 }

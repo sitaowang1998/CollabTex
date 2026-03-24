@@ -171,7 +171,18 @@ async function createS3Buckets(s3Endpoint: string) {
   });
 
   for (const bucket of testS3Buckets) {
-    await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    try {
+      await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.name === "BucketAlreadyOwnedByYou" ||
+          error.name === "BucketAlreadyExists")
+      ) {
+        continue;
+      }
+      throw error;
+    }
   }
 
   client.destroy();

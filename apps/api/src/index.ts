@@ -60,8 +60,8 @@ async function main() {
   const config = loadConfig();
   const databaseClient = createDatabaseClient(config.databaseUrl);
   const passwordHasher = createArgon2PasswordHasher();
-  const { snapshotStore, binaryContentStore, compileArtifactStore } =
-    createStores(config.storage);
+  const stores = createStores(config.storage);
+  const { snapshotStore, binaryContentStore, compileArtifactStore } = stores;
 
   try {
     await databaseClient.$connect();
@@ -229,6 +229,7 @@ async function main() {
       databaseClient,
       snapshotRefreshTrigger,
       activeDocumentRegistry,
+      destroyStores: stores.destroy,
       shutdownDrainTimeoutMs: config.shutdownDrainTimeoutMs,
     });
     snapshotRefreshTrigger.kick();
@@ -248,6 +249,7 @@ function installShutdownHandlers({
   databaseClient,
   snapshotRefreshTrigger,
   activeDocumentRegistry,
+  destroyStores,
   shutdownDrainTimeoutMs,
 }: {
   server: http.Server;
@@ -255,6 +257,7 @@ function installShutdownHandlers({
   databaseClient: ReturnType<typeof createDatabaseClient>;
   snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
   activeDocumentRegistry: ReturnType<typeof createActiveDocumentRegistry>;
+  destroyStores?: () => void;
   shutdownDrainTimeoutMs: number;
 }) {
   let isShuttingDown = false;
@@ -306,6 +309,13 @@ function installShutdownHandlers({
     } catch (error) {
       hadError = true;
       console.error("Shutdown: database disconnect failed", error);
+    }
+
+    try {
+      destroyStores?.();
+    } catch (error) {
+      hadError = true;
+      console.error("Shutdown: store cleanup failed", error);
     }
 
     process.exit(hadError ? 1 : 0);
