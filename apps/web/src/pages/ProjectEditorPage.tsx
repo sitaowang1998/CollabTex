@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import type {
   Project,
   ProjectRole,
@@ -16,6 +16,7 @@ import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
 import BinaryPreview from "@/components/BinaryPreview";
+import MembersPanel from "@/components/MembersPanel";
 
 type SelectedFile = {
   documentId: string;
@@ -160,8 +161,10 @@ function ResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
 export default function ProjectEditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { state, logout } = useAuth();
+  const navigate = useNavigate();
   const userName =
     state.status === "authenticated" ? state.user.name : undefined;
+  const currentUserId = state.status === "authenticated" ? state.user.id : "";
   const [project, setProject] = useState<Project | null>(null);
   const [myRole, setMyRole] = useState<ProjectRole | null>(null);
   const [nodes, setNodes] = useState<FileTreeNode[]>([]);
@@ -187,6 +190,7 @@ export default function ProjectEditorPage() {
   const [previewWidth, setPreviewWidth] = useState(320);
   const [fileTreeCollapsed, setFileTreeCollapsed] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -400,6 +404,14 @@ export default function ProjectEditorPage() {
         <span className="text-muted-foreground">/</span>
         <h1 className="truncate text-sm font-semibold">{project.name}</h1>
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowMembers((v) => !v)}
+            aria-pressed={showMembers}
+          >
+            Members
+          </Button>
           {userName && (
             <span className="text-sm text-muted-foreground">{userName}</span>
           )}
@@ -551,6 +563,16 @@ export default function ProjectEditorPage() {
         }}
         onCreateFolder={handleCreateFolder}
       />
+
+      {showMembers && projectId && myRole && currentUserId && (
+        <MembersPanel
+          projectId={projectId}
+          myRole={myRole}
+          currentUserId={currentUserId}
+          onClose={() => setShowMembers(false)}
+          onProjectDeleted={() => navigate("/")}
+        />
+      )}
     </div>
   );
 }
