@@ -25,7 +25,7 @@ vi.mock("../lib/api", async (importOriginal) => {
 });
 
 vi.mock("../lib/socket", () => ({
-  getSocket: vi.fn(() => ({})),
+  getSocket: vi.fn(() => ({ on: vi.fn(), off: vi.fn() })),
 }));
 
 const yjsSyncDocs: Y.Doc[] = [];
@@ -125,6 +125,8 @@ function setupApiMocks(overrides?: {
     }
     return Promise.reject(new Error(`Unexpected GET ${path}`));
   });
+  // PdfPreview fetches the latest compiled PDF on mount; default to 404 (no build yet)
+  mockedApi.getBlob.mockRejectedValue(new ApiError(404, "Not found"));
 }
 
 function renderEditor() {
