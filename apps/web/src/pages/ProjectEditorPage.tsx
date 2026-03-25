@@ -16,6 +16,7 @@ import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
 import BinaryPreview from "@/components/BinaryPreview";
+import PdfPreview from "@/components/PdfPreview";
 import MembersPanel from "@/components/MembersPanel";
 
 type SelectedFile = {
@@ -544,11 +545,7 @@ export default function ProjectEditorPage() {
                   ▶
                 </button>
               </div>
-              <div className="flex h-full items-center justify-center">
-                <p className="text-sm text-muted-foreground">
-                  Preview placeholder
-                </p>
-              </div>
+              <PdfPreview projectId={projectId!} role={myRole!} />
             </aside>
           </>
         )}
