@@ -4,6 +4,9 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import type {
   ClientToServerEvents,
+  CommentAddedEvent,
+  CommentThreadCreatedEvent,
+  CommentThreadStatusChangedEvent,
   CompileDoneEvent,
   ServerToClientEvents,
   ClientDocumentUpdateEvent,
@@ -405,6 +408,57 @@ export function createCompileDonePublisher(
       } catch (error) {
         console.error(
           "Failed to broadcast compile:done",
+          { projectId: event.projectId },
+          error,
+        );
+      }
+    },
+  };
+}
+
+export type CommentPublisher = ReturnType<typeof createCommentPublisher>;
+
+export function createCommentPublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitThreadCreated: (event: CommentThreadCreatedEvent) => {
+      try {
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "comment:thread_created",
+          event,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to broadcast comment:thread_created",
+          { projectId: event.projectId },
+          error,
+        );
+      }
+    },
+    emitCommentAdded: (event: CommentAddedEvent) => {
+      try {
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "comment:added",
+          event,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to broadcast comment:added",
+          { projectId: event.projectId },
+          error,
+        );
+      }
+    },
+    emitThreadStatusChanged: (event: CommentThreadStatusChangedEvent) => {
+      try {
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "comment:thread_status_changed",
+          event,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to broadcast comment:thread_status_changed",
           { projectId: event.projectId },
           error,
         );

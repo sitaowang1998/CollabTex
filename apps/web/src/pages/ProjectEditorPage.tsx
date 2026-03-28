@@ -8,8 +8,14 @@ import type {
   ProjectDetailsResponse,
   ProjectFileTreeResponse,
   MainDocumentResponse,
+  CommentThread,
+  CommentThreadListResponse,
+  CommentThreadCreatedEvent,
+  CommentAddedEvent,
+  CommentThreadStatusChangedEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
@@ -17,6 +23,8 @@ import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
 import BinaryPreview from "@/components/BinaryPreview";
 import PdfPreview from "@/components/PdfPreview";
+import CommentPanel from "@/components/CommentPanel";
+import type { CommentSelection } from "@/components/CreateCommentForm";
 import MembersPanel from "@/components/MembersPanel";
 
 type SelectedFile = {
@@ -98,14 +106,29 @@ function insertFolderIntoTree(
 }
 
 const MIN_PANEL_WIDTH = 150;
+const MIN_COMMENT_HEIGHT = 100;
+const MAX_COMMENT_HEIGHT = 600;
+const DEFAULT_COMMENT_HEIGHT = 250;
 
-function ResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
+function ResizeHandle({
+  onCommit,
+  targetRef,
+  min,
+  max,
+  invert,
+}: {
+  onCommit: (totalDelta: number) => void;
+  targetRef: React.RefObject<HTMLElement | null>;
+  min: number;
+  max: number;
+  invert?: boolean;
+}) {
   const dragging = useRef(false);
   const lastX = useRef(0);
-  const onDragRef = useRef(onDrag);
+  const onCommitRef = useRef(onCommit);
   const cleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => {
-    onDragRef.current = onDrag;
+    onCommitRef.current = onCommit;
   });
 
   useEffect(() => {
@@ -118,12 +141,23 @@ function ResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
     e.preventDefault();
     dragging.current = true;
     lastX.current = e.clientX;
+    const startWidth = targetRef.current?.offsetWidth ?? 0;
+    let accumulated = 0;
 
     function onMouseMove(ev: MouseEvent) {
       if (!dragging.current) return;
       const delta = ev.clientX - lastX.current;
       lastX.current = ev.clientX;
-      onDragRef.current(delta);
+      accumulated += delta;
+
+      if (targetRef.current) {
+        const effectiveDelta = invert ? -accumulated : accumulated;
+        const newWidth = Math.max(
+          min,
+          Math.min(startWidth + effectiveDelta, max),
+        );
+        targetRef.current.style.width = `${newWidth}px`;
+      }
     }
 
     function onMouseUp() {
@@ -133,6 +167,7 @@ function ResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
       document.removeEventListener("mouseup", onMouseUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      onCommitRef.current(accumulated);
     }
 
     cleanupRef.current = () => {
@@ -155,6 +190,85 @@ function ResizeHandle({ onDrag }: { onDrag: (delta: number) => void }) {
       onMouseDown={handleMouseDown}
       role="separator"
       aria-orientation="vertical"
+    />
+  );
+}
+
+function ResizeHandleVertical({
+  onCommit,
+  targetRef,
+}: {
+  onCommit: (totalDelta: number) => void;
+  targetRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const dragging = useRef(false);
+  const lastY = useRef(0);
+  const onCommitRef = useRef(onCommit);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  });
+
+  useEffect(() => {
+    return () => {
+      cleanupRef.current?.();
+    };
+  }, []);
+
+  function handleMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    dragging.current = true;
+    lastY.current = e.clientY;
+    const startHeight = targetRef.current?.offsetHeight ?? 0;
+    let accumulated = 0;
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!dragging.current) return;
+      const delta = ev.clientY - lastY.current;
+      lastY.current = ev.clientY;
+      accumulated += delta;
+
+      // Direct DOM manipulation — no React re-render during drag
+      if (targetRef.current) {
+        const newHeight = Math.max(
+          MIN_COMMENT_HEIGHT,
+          Math.min(startHeight - accumulated, MAX_COMMENT_HEIGHT),
+        );
+        targetRef.current.style.height = `${newHeight}px`;
+      }
+    }
+
+    function onMouseUp() {
+      dragging.current = false;
+      cleanupRef.current = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      // Commit final delta to React state
+      onCommitRef.current(accumulated);
+    }
+
+    cleanupRef.current = () => {
+      dragging.current = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  return (
+    <div
+      className="flex h-1.5 shrink-0 cursor-row-resize items-center justify-center hover:bg-accent/50 active:bg-accent"
+      onMouseDown={handleMouseDown}
+      role="separator"
+      aria-orientation="horizontal"
     />
   );
 }
@@ -192,6 +306,123 @@ export default function ProjectEditorPage() {
   const [fileTreeCollapsed, setFileTreeCollapsed] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [pendingCommentSelection, setPendingCommentSelection] =
+    useState<CommentSelection | null>(null);
+
+  // Right panel vertical split state
+  const [previewSectionCollapsed, setPreviewSectionCollapsed] = useState(false);
+  const [commentPanelCollapsed, setCommentPanelCollapsed] = useState(false);
+  const [commentPanelHeight, setCommentPanelHeight] = useState(
+    DEFAULT_COMMENT_HEIGHT,
+  );
+  const [threads, setThreads] = useState<CommentThread[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(false);
+  const [threadsError, setThreadsError] = useState("");
+  const [threadPositions, setThreadPositions] = useState<Map<string, number>>(
+    () => new Map(),
+  );
+  const threadsControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      threadsControllerRef.current?.abort();
+    };
+  }, []);
+
+  const selectedDocId = selectedFile?.documentId;
+  const selectedDocKind = selectedFile?.documentKind;
+
+  const fetchThreads = useCallback(async () => {
+    if (!projectId || !selectedDocId || selectedDocKind !== "text") return;
+
+    threadsControllerRef.current?.abort();
+    const controller = new AbortController();
+    threadsControllerRef.current = controller;
+
+    setThreadsError("");
+    setThreadsLoading(true);
+    try {
+      const data = await api.get<CommentThreadListResponse>(
+        `/projects/${projectId}/docs/${selectedDocId}/comments`,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted || !mountedRef.current) return;
+      setThreads(data.threads);
+    } catch (err) {
+      if (controller.signal.aborted || !mountedRef.current) return;
+      setThreadsError(
+        err instanceof ApiError ? err.message : "Failed to load comments",
+      );
+    } finally {
+      if (!controller.signal.aborted && mountedRef.current) {
+        setThreadsLoading(false);
+      }
+    }
+  }, [projectId, selectedDocId, selectedDocKind]);
+
+  // Fetch threads when selected file changes
+  useEffect(() => {
+    if (selectedDocKind === "text") {
+      setThreads([]);
+      setThreadPositions(new Map());
+      fetchThreads();
+    } else {
+      setThreads([]);
+      setThreadPositions(new Map());
+      setThreadsLoading(false);
+      setThreadsError("");
+    }
+  }, [selectedDocId, selectedDocKind, fetchThreads]);
+
+  // Socket listeners for realtime comment updates
+  useEffect(() => {
+    if (!projectId || !selectedDocId) return;
+    const socket = getSocket();
+
+    function handleThreadCreated(data: CommentThreadCreatedEvent) {
+      if (data.projectId !== projectId || data.documentId !== selectedDocId)
+        return;
+      setThreads((prev) => {
+        if (prev.some((t) => t.id === data.thread.id)) return prev;
+        return [...prev, data.thread];
+      });
+    }
+
+    function handleCommentAdded(data: CommentAddedEvent) {
+      if (data.projectId !== projectId || data.documentId !== selectedDocId)
+        return;
+      setThreads((prev) =>
+        prev.map((t) => {
+          if (t.id !== data.threadId) return t;
+          if (t.comments.some((c) => c.id === data.comment.id)) return t;
+          return { ...t, comments: [...t.comments, data.comment] };
+        }),
+      );
+    }
+
+    function handleStatusChanged(data: CommentThreadStatusChangedEvent) {
+      if (data.projectId !== projectId || data.documentId !== selectedDocId)
+        return;
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === data.threadId ? { ...t, status: data.status } : t,
+        ),
+      );
+    }
+
+    socket.on("comment:thread_created", handleThreadCreated);
+    socket.on("comment:added", handleCommentAdded);
+    socket.on("comment:thread_status_changed", handleStatusChanged);
+
+    return () => {
+      socket.off("comment:thread_created", handleThreadCreated);
+      socket.off("comment:added", handleCommentAdded);
+      socket.off("comment:thread_status_changed", handleStatusChanged);
+    };
+  }, [projectId, selectedDocId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -279,13 +510,44 @@ export default function ProjectEditorPage() {
     }
   }
 
+  const handleCommentSelection = useCallback((selection: CommentSelection) => {
+    setPendingCommentSelection(selection);
+    setCommentPanelCollapsed(false);
+    setPreviewCollapsed(false);
+  }, []);
+
+  const fileTreeRef = useRef<HTMLElement>(null);
+  const previewPanelRef = useRef<HTMLElement>(null);
+
+  const handleFileTreeResizeCommit = useCallback((totalDelta: number) => {
+    setFileTreeWidth((w) =>
+      Math.max(MIN_PANEL_WIDTH, Math.min(w + totalDelta, 600)),
+    );
+  }, []);
+
+  const handlePreviewWidthResizeCommit = useCallback((totalDelta: number) => {
+    setPreviewWidth((w) =>
+      Math.max(MIN_PANEL_WIDTH, Math.min(w - totalDelta, 600)),
+    );
+  }, []);
+
+  const commentSectionRef = useRef<HTMLDivElement>(null);
+
+  const handleCommentResizeCommit = useCallback((totalDelta: number) => {
+    setCommentPanelHeight((h) =>
+      Math.max(
+        MIN_COMMENT_HEIGHT,
+        Math.min(h - totalDelta, MAX_COMMENT_HEIGHT),
+      ),
+    );
+  }, []);
+
   function handleAction(action: FileTreeAction) {
     setPendingAction(action);
   }
 
   function handleComplete(created?: SelectedFile) {
     if (pendingAction) {
-      // Clean up local folders on delete
       if (pendingAction.type === "delete") {
         localFolderPathsRef.current.delete(pendingAction.path);
       } else if (pendingAction.type === "delete-multiple") {
@@ -294,7 +556,6 @@ export default function ProjectEditorPage() {
         }
       }
 
-      // After move, preserve source parent folders as local empty folders
       if (pendingAction.type === "move") {
         const lastSlash = pendingAction.path.lastIndexOf("/");
         const parent =
@@ -308,7 +569,6 @@ export default function ProjectEditorPage() {
         }
       }
 
-      // Remove local-only folders from nodes
       if (pendingAction.type === "delete") {
         setNodes((prev) => removeNodeFromTree(prev, pendingAction.path));
       } else if (pendingAction.type === "delete-multiple") {
@@ -340,7 +600,6 @@ export default function ProjectEditorPage() {
       }
     }
 
-    // Auto-select newly created file
     if (created) {
       setSelectedFile(created);
     }
@@ -437,6 +696,7 @@ export default function ProjectEditorPage() {
         ) : (
           <>
             <aside
+              ref={fileTreeRef}
               className="shrink-0 overflow-hidden rounded-lg border bg-background"
               style={{ width: fileTreeWidth }}
             >
@@ -465,16 +725,18 @@ export default function ProjectEditorPage() {
                 selectedPath={selectedFile?.path ?? null}
                 mainDocumentId={mainDocumentId}
                 myRole={myRole}
-                onSelectFile={setSelectedFile}
+                onSelectFile={(file) => {
+                  setSelectedFile(file);
+                  setPendingCommentSelection(null);
+                }}
                 onAction={handleAction}
               />
             </aside>
             <ResizeHandle
-              onDrag={(delta) =>
-                setFileTreeWidth((w) =>
-                  Math.max(MIN_PANEL_WIDTH, Math.min(w + delta, 600)),
-                )
-              }
+              onCommit={handleFileTreeResizeCommit}
+              targetRef={fileTreeRef}
+              min={MIN_PANEL_WIDTH}
+              max={600}
             />
           </>
         )}
@@ -490,6 +752,9 @@ export default function ProjectEditorPage() {
                 path={selectedFile.path}
                 role={myRole}
                 userName={userName}
+                onCommentSelection={handleCommentSelection}
+                commentThreads={threads}
+                onThreadPositionsChange={setThreadPositions}
               />
             ) : (
               <BinaryPreview
@@ -509,7 +774,7 @@ export default function ProjectEditorPage() {
           )}
         </main>
 
-        {/* Preview panel */}
+        {/* Right panel: Preview (top) + Comments (bottom) */}
         {previewCollapsed ? (
           <div className="flex shrink-0 items-start rounded-lg border bg-background">
             <button
@@ -523,29 +788,112 @@ export default function ProjectEditorPage() {
         ) : (
           <>
             <ResizeHandle
-              onDrag={(delta) =>
-                setPreviewWidth((w) =>
-                  Math.max(MIN_PANEL_WIDTH, Math.min(w - delta, 600)),
-                )
-              }
+              onCommit={handlePreviewWidthResizeCommit}
+              targetRef={previewPanelRef}
+              min={MIN_PANEL_WIDTH}
+              max={600}
+              invert
             />
             <aside
-              className="shrink-0 overflow-hidden rounded-lg border bg-background"
+              ref={previewPanelRef}
+              className="flex shrink-0 flex-col overflow-hidden rounded-lg border bg-background"
               style={{ width: previewWidth }}
             >
-              <div className="flex items-center justify-between border-b px-2 py-1">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Preview
-                </span>
-                <button
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setPreviewCollapsed(true)}
-                  aria-label="Collapse preview"
-                >
-                  ▶
-                </button>
+              {/* Preview section (top) */}
+              <div
+                className={`flex flex-col overflow-hidden ${previewSectionCollapsed ? "shrink-0" : "min-h-0 flex-1"}`}
+              >
+                <div className="flex items-center justify-between border-b px-2 py-1">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Preview
+                    </span>
+                    <button
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setPreviewSectionCollapsed((v) => !v)}
+                      aria-label={
+                        previewSectionCollapsed
+                          ? "Expand preview section"
+                          : "Collapse preview section"
+                      }
+                    >
+                      {previewSectionCollapsed ? "▶" : "▼"}
+                    </button>
+                  </div>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setPreviewCollapsed(true)}
+                    aria-label="Collapse preview"
+                  >
+                    ▶
+                  </button>
+                </div>
+                {!previewSectionCollapsed && (
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <PdfPreview projectId={projectId!} role={myRole!} />
+                  </div>
+                )}
               </div>
-              <PdfPreview projectId={projectId!} role={myRole!} />
+
+              {/* Vertical resize handle — only when both sections expanded */}
+              {!commentPanelCollapsed && !previewSectionCollapsed && (
+                <ResizeHandleVertical
+                  onCommit={handleCommentResizeCommit}
+                  targetRef={commentSectionRef}
+                />
+              )}
+
+              {/* Comments section (bottom) */}
+              <div
+                ref={commentSectionRef}
+                className={`flex flex-col overflow-hidden ${commentPanelCollapsed ? "shrink-0" : previewSectionCollapsed ? "min-h-0 flex-1" : "shrink-0"}`}
+                style={
+                  commentPanelCollapsed || previewSectionCollapsed
+                    ? undefined
+                    : { height: commentPanelHeight }
+                }
+                data-testid="comment-section"
+              >
+                <div className="flex items-center justify-between border-t px-2 py-1">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Comments
+                  </span>
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setCommentPanelCollapsed((v) => !v)}
+                    aria-label={
+                      commentPanelCollapsed
+                        ? "Expand comments"
+                        : "Collapse comments"
+                    }
+                  >
+                    {commentPanelCollapsed ? "▲" : "▼"}
+                  </button>
+                </div>
+                {!commentPanelCollapsed &&
+                  (selectedFile?.documentKind === "text" ? (
+                    <CommentPanel
+                      key={selectedFile.documentId}
+                      projectId={projectId!}
+                      documentId={selectedFile.documentId}
+                      role={myRole!}
+                      threads={threads}
+                      isLoading={threadsLoading}
+                      error={threadsError}
+                      onRetry={fetchThreads}
+                      onMutated={fetchThreads}
+                      pendingSelection={pendingCommentSelection}
+                      onClearSelection={() => setPendingCommentSelection(null)}
+                      threadPositions={threadPositions}
+                    />
+                  ) : (
+                    <div className="flex flex-1 items-center justify-center p-4">
+                      <p className="text-sm text-muted-foreground">
+                        Select a text file to view comments
+                      </p>
+                    </div>
+                  ))}
+              </div>
             </aside>
           </>
         )}

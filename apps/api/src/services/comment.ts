@@ -14,6 +14,7 @@ export type StoredComment = {
   id: string;
   threadId: string;
   authorId: string | null;
+  authorName: string | null;
   body: string;
   createdAt: Date;
 };

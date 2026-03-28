@@ -12,6 +12,7 @@ import type { SnapshotManagementService } from "../services/snapshotManagement.j
 import { errorHandler } from "./middleware/errorHandler.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createCommentRouter } from "./routes/commentRoutes.js";
+import type { CommentPublisher } from "../ws/socketServer.js";
 import { createCompileRouter } from "./routes/compileRoutes.js";
 import { createBinaryContentRouter } from "./routes/binaryContentRoutes.js";
 import { createDocumentRouter } from "./routes/documentRoutes.js";
@@ -30,6 +31,7 @@ export type HttpAppDependencies = {
   membershipService: MembershipService;
   projectService: ProjectService;
   snapshotManagementService: SnapshotManagementService;
+  commentPublisherRef: { current: CommentPublisher | undefined };
 };
 
 export function createHttpApp(
@@ -55,7 +57,13 @@ export function createHttpApp(
   app.use(
     createProjectMembershipRouter(config, dependencies.membershipService),
   );
-  app.use(createCommentRouter(config, dependencies.commentService));
+  app.use(
+    createCommentRouter(
+      config,
+      dependencies.commentService,
+      dependencies.commentPublisherRef,
+    ),
+  );
   app.use(errorHandler);
 
   return app;

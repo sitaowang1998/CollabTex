@@ -10,6 +10,7 @@ import {
   CommentThreadNotFoundError,
 } from "../../services/comment.js";
 import type { CommentService } from "../../services/commentService.js";
+import type { CommentPublisher } from "../../ws/socketServer.js";
 import {
   ProjectAdminRequiredError,
   ProjectNotFoundError,
@@ -31,6 +32,7 @@ const MAX_QUOTED_TEXT_LENGTH = 10000;
 export function createCommentRouter(
   config: AppConfig,
   commentService: CommentService,
+  commentPublisherRef?: { current: CommentPublisher | undefined },
 ) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
@@ -105,7 +107,14 @@ export function createCommentRouter(
           body: body.body,
         });
 
-        res.status(201).json({ thread: serializeThread(thread) });
+        const serialized = serializeThread(thread);
+        res.status(201).json({ thread: serialized });
+
+        commentPublisherRef?.current?.emitThreadCreated({
+          projectId,
+          documentId: docId,
+          thread: serialized,
+        });
       } catch (error) {
         next(mapCommentError(error));
       }
@@ -145,7 +154,24 @@ export function createCommentRouter(
           body: body.body,
         });
 
-        res.status(201).json({ comment: serializeComment(comment) });
+        const serializedComment = serializeComment(comment);
+        res.status(201).json({ comment: serializedComment });
+
+        try {
+          if (commentPublisherRef?.current) {
+            const parentThread = await commentService.findThreadById(threadId);
+            if (parentThread) {
+              commentPublisherRef.current.emitCommentAdded({
+                projectId,
+                documentId: parentThread.documentId,
+                threadId,
+                comment: serializedComment,
+              });
+            }
+          }
+        } catch (publishErr) {
+          console.error("Failed to broadcast comment:added", publishErr);
+        }
       } catch (error) {
         next(mapCommentError(error));
       }
@@ -186,6 +212,13 @@ export function createCommentRouter(
         });
 
         res.json({ thread: serializeThread(thread) });
+
+        commentPublisherRef?.current?.emitThreadStatusChanged({
+          projectId,
+          documentId: thread.documentId,
+          threadId,
+          status: body.status,
+        });
       } catch (error) {
         next(mapCommentError(error));
       }
@@ -357,6 +390,7 @@ function serializeComment(comment: StoredComment) {
     id: comment.id,
     threadId: comment.threadId,
     authorId: comment.authorId,
+    authorName: comment.authorName,
     body: comment.body,
     createdAt: comment.createdAt.toISOString(),
   };

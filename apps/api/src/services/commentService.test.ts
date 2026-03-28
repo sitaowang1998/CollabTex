@@ -462,6 +462,8 @@ function createDependencies() {
   return {
     commentRepository: {
       createThread: vi.fn<CommentRepository["createThread"]>(),
+      listThreadsForProject:
+        vi.fn<CommentRepository["listThreadsForProject"]>(),
       listThreadsForDocument:
         vi.fn<CommentRepository["listThreadsForDocument"]>(),
       addComment: vi.fn<CommentRepository["addComment"]>(),
@@ -513,6 +515,7 @@ function createComment(overrides: Partial<StoredComment> = {}): StoredComment {
     id: "comment-1",
     threadId: "thread-1",
     authorId: "user-1",
+    authorName: "Test User",
     body: "comment body",
     createdAt: new Date("2026-03-01T12:00:00.000Z"),
     ...overrides,

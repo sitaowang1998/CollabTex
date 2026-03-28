@@ -233,6 +233,26 @@ export type PresenceUpdateEvent = {
   awarenessB64: string;
 };
 
+export type CommentThreadCreatedEvent = {
+  projectId: string;
+  documentId: string;
+  thread: CommentThread;
+};
+
+export type CommentAddedEvent = {
+  projectId: string;
+  documentId: string;
+  threadId: string;
+  comment: Comment;
+};
+
+export type CommentThreadStatusChangedEvent = {
+  projectId: string;
+  documentId: string;
+  threadId: string;
+  status: CommentThreadStatus;
+};
+
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
@@ -242,6 +262,11 @@ export type ServerToClientEvents = {
   "doc.reset": (data: DocumentResetEvent) => void;
   "compile:done": (data: CompileDoneEvent) => void;
   "presence.update": (data: PresenceUpdateEvent) => void;
+  "comment:thread_created": (data: CommentThreadCreatedEvent) => void;
+  "comment:added": (data: CommentAddedEvent) => void;
+  "comment:thread_status_changed": (
+    data: CommentThreadStatusChangedEvent,
+  ) => void;
 };
 
 export type ClientToServerEvents = {
@@ -250,3 +275,43 @@ export type ClientToServerEvents = {
   "doc.update": (data: ClientDocumentUpdateEvent) => void;
   "presence.update": (data: PresenceUpdateEvent) => void;
 };
+
+// Comment threads
+
+export type CommentThreadStatus = "open" | "resolved";
+
+export type Comment = {
+  id: string;
+  threadId: string;
+  authorId: string | null;
+  authorName: string | null;
+  body: string;
+  createdAt: string;
+};
+
+export type CommentThread = {
+  id: string;
+  documentId: string;
+  projectId: string;
+  status: CommentThreadStatus;
+  startAnchor: string;
+  endAnchor: string;
+  quotedText: string;
+  createdAt: string;
+  updatedAt: string;
+  comments: Comment[];
+};
+
+export type CommentThreadListResponse = { threads: CommentThread[] };
+export type CommentThreadResponse = { thread: CommentThread };
+export type CommentResponse = { comment: Comment };
+
+export type CreateCommentThreadRequest = {
+  startAnchorB64: string;
+  endAnchorB64: string;
+  quotedText: string;
+  body: string;
+};
+
+export type UpdateCommentThreadRequest = { status: CommentThreadStatus };
+export type ReplyToThreadRequest = { body: string };
