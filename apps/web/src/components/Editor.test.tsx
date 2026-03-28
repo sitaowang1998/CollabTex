@@ -146,4 +146,69 @@ describe("Editor", () => {
       expect(screen.getByText("Connection failed")).toBeInTheDocument();
     });
   });
+
+  it("renders with onCommentSelection prop without error", async () => {
+    const onCommentSelection = vi.fn();
+    render(
+      <Editor
+        projectId="p1"
+        documentId="d1"
+        path="/main.tex"
+        role="editor"
+        onCommentSelection={onCommentSelection}
+      />,
+    );
+
+    act(() => {
+      capturedOnSynced?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
+    });
+  });
+
+  it("accepts commentThreads prop without error", async () => {
+    render(
+      <Editor
+        projectId="p1"
+        documentId="d1"
+        path="/main.tex"
+        role="editor"
+        onCommentSelection={vi.fn()}
+        commentThreads={[]}
+        onThreadPositionsChange={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      capturedOnSynced?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Add Comment button for reader role", async () => {
+    render(
+      <Editor
+        projectId="p1"
+        documentId="d1"
+        path="/main.tex"
+        role="reader"
+        onCommentSelection={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      capturedOnSynced?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("editor-container")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("add-comment-btn")).not.toBeInTheDocument();
+  });
 });

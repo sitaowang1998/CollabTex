@@ -33,7 +33,7 @@ test.describe("PDF Preview Panel", () => {
     await registerAndCreateProject(page, "PDF Preview Project");
 
     // Preview panel should be visible with Compile button
-    await expect(page.getByText("Preview")).toBeVisible();
+    await expect(page.getByText("Preview", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Compile" })).toBeVisible();
   });
 
@@ -62,9 +62,11 @@ test.describe("PDF Preview Panel", () => {
       page.getByRole("button", { name: "Compiling…" }),
     ).toBeVisible();
 
-    // Wait for compile to finish — either success (iframe) or failure (logs)
+    // Wait for compile to finish — either success (canvas) or failure (logs)
     await expect(
-      page.getByTitle("PDF preview").or(page.getByText("Compile logs:")),
+      page
+        .getByTestId("pdf-canvas-container")
+        .or(page.getByText("Compile logs:")),
     ).toBeVisible({ timeout: 30000 });
   });
 
@@ -72,7 +74,9 @@ test.describe("PDF Preview Panel", () => {
     await registerAndCreateProject(page, "PDF Collapse Project");
 
     // Collapse the preview panel
-    await page.getByRole("button", { name: "Collapse preview" }).click();
+    await page
+      .getByRole("button", { name: "Collapse preview", exact: true })
+      .click();
 
     // Compile button should not be visible when collapsed
     await expect(

@@ -1,6 +1,7 @@
 import type {
   CommentRepository,
   StoredComment,
+  StoredCommentThread,
   StoredCommentThreadWithComments,
 } from "./comment.js";
 import { CommentThreadNotFoundError } from "./comment.js";
@@ -45,6 +46,7 @@ export type CommentService = {
   updateThreadStatus: (
     input: UpdateThreadStatusInput,
   ) => Promise<StoredCommentThreadWithComments>;
+  findThreadById: (threadId: string) => Promise<StoredCommentThread | null>;
 };
 
 export function createCommentService({
@@ -98,6 +100,10 @@ export function createCommentService({
         authorId: input.actorUserId,
         body: input.body,
       });
+    },
+
+    findThreadById: async (threadId) => {
+      return commentRepository.findThreadById(threadId);
     },
 
     updateThreadStatus: async (input) => {

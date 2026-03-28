@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import * as pdfjsLib from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { ProjectRole, CompileDoneEvent } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 
 type CompileStatus = "idle" | "compiling" | "success" | "failure";
 
@@ -11,34 +18,68 @@ type Props = {
   role: ProjectRole;
 };
 
+async function renderPages(
+  pdf: PDFDocumentProxy,
+  container: HTMLElement,
+  isStale?: () => boolean,
+): Promise<void> {
+  // Remove existing canvases safely
+  while (container.firstChild) container.removeChild(container.firstChild);
+
+  const containerWidth = container.clientWidth;
+  if (containerWidth <= 0) return;
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    if (isStale?.()) return;
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1 });
+    const scale = containerWidth / viewport.width;
+    const scaledViewport = page.getViewport({ scale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = scaledViewport.width * window.devicePixelRatio;
+    canvas.height = scaledViewport.height * window.devicePixelRatio;
+    canvas.style.width = `${scaledViewport.width}px`;
+    canvas.style.height = `${scaledViewport.height}px`;
+    canvas.style.maxWidth = "100%";
+    canvas.style.display = "block";
+    container.appendChild(canvas);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      console.warn(`[PdfPreview] Failed to get 2d context for page ${i}`);
+      continue;
+    }
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    await page.render({
+      canvasContext: ctx,
+      viewport: scaledViewport,
+      canvas,
+    }).promise;
+  }
+}
+
 export default function PdfPreview({ projectId, role }: Props) {
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [logs, setLogs] = useState("");
   const [error, setError] = useState("");
   const [initialLoading, setInitialLoading] = useState(true);
-  const pdfUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const fetchControllerRef = useRef<AbortController | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+  const renderedWidthRef = useRef(0);
+  const renderGenRef = useRef(0);
 
   const canCompile = role === "admin" || role === "editor";
 
-  const revokePdfUrl = useCallback(() => {
-    if (pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current);
-      pdfUrlRef.current = null;
-    }
-  }, []);
-
-  // Returns true if a PDF was loaded, false if 404 (no PDF available)
   const fetchPdf = useCallback(
     async (signal?: AbortSignal): Promise<boolean> => {
-      // Abort any previous non-initial fetch
       fetchControllerRef.current?.abort();
       const controller = new AbortController();
       fetchControllerRef.current = controller;
 
-      // Combine with the provided signal (from initial load)
       const combinedSignal = signal
         ? AbortSignal.any([signal, controller.signal])
         : controller.signal;
@@ -48,10 +89,9 @@ export default function PdfPreview({ projectId, role }: Props) {
           signal: combinedSignal,
         });
         if (combinedSignal.aborted || !mountedRef.current) return false;
-        revokePdfUrl();
-        const url = URL.createObjectURL(blob);
-        pdfUrlRef.current = url;
-        setPdfUrl(url);
+        const buffer = await blob.arrayBuffer();
+        if (combinedSignal.aborted || !mountedRef.current) return false;
+        setPdfData(buffer);
         setCompileStatus("success");
         setLogs("");
         setError("");
@@ -64,7 +104,7 @@ export default function PdfPreview({ projectId, role }: Props) {
         throw err;
       }
     },
-    [projectId, revokePdfUrl],
+    [projectId],
   );
 
   // Load existing PDF on mount
@@ -92,9 +132,88 @@ export default function PdfPreview({ projectId, role }: Props) {
       mountedRef.current = false;
       controller.abort();
       fetchControllerRef.current?.abort();
-      revokePdfUrl();
+      pdfDocRef.current?.destroy();
+      pdfDocRef.current = null;
     };
-  }, [projectId, fetchPdf, revokePdfUrl]);
+  }, [projectId, fetchPdf]);
+
+  // Render PDF with pdf.js when pdfData changes + re-render on resize
+  useEffect(() => {
+    if (!pdfData || !canvasContainerRef.current) return;
+
+    let cancelled = false;
+    let observer: ResizeObserver | null = null;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function load() {
+      const loadingTask = pdfjsLib.getDocument({ data: pdfData!.slice(0) });
+      const doc = await loadingTask.promise;
+      if (cancelled) {
+        doc.destroy();
+        return;
+      }
+      pdfDocRef.current?.destroy();
+      pdfDocRef.current = doc;
+
+      const container = canvasContainerRef.current;
+      if (!container) return;
+
+      await renderPages(doc, container);
+      renderedWidthRef.current = container.clientWidth;
+
+      // Set up resize observer after initial render
+      observer = new ResizeObserver(() => {
+        const currentWidth = container.clientWidth;
+        const rw = renderedWidthRef.current;
+
+        // When enlarging, use CSS transform to fill the gap instantly
+        // When shrinking, max-width:100% on canvases handles it via CSS
+        if (rw > 0 && currentWidth > rw) {
+          const scaleX = currentWidth / rw;
+          container.style.transformOrigin = "top left";
+          container.style.transform = `scaleX(${scaleX})`;
+        } else {
+          container.style.transform = "";
+        }
+
+        // Debounced full re-render at correct resolution
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (!cancelled && pdfDocRef.current && canvasContainerRef.current) {
+            const gen = ++renderGenRef.current;
+            canvasContainerRef.current.style.transform = "";
+            renderPages(
+              pdfDocRef.current,
+              canvasContainerRef.current,
+              () => renderGenRef.current !== gen,
+            )
+              .then(() => {
+                if (renderGenRef.current === gen) {
+                  renderedWidthRef.current =
+                    canvasContainerRef.current?.clientWidth ?? 0;
+                }
+              })
+              .catch((err) => {
+                if (!cancelled) {
+                  console.error("Failed to re-render PDF on resize:", err);
+                }
+              });
+          }
+        }, 300);
+      });
+      observer.observe(container);
+    }
+
+    load().catch((err) => {
+      if (!cancelled) console.error("Failed to render PDF:", err);
+    });
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      clearTimeout(timer);
+    };
+  }, [pdfData]);
 
   // Listen for compile:done socket events
   useEffect(() => {
@@ -209,11 +328,11 @@ export default function PdfPreview({ projectId, role }: Props) {
 
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {pdfUrl ? (
-          <iframe
-            title="PDF preview"
-            src={pdfUrl}
-            className="h-full w-full flex-1 border-0"
+        {pdfData ? (
+          <div
+            ref={canvasContainerRef}
+            className="flex-1 overflow-auto bg-muted/30"
+            data-testid="pdf-canvas-container"
           />
         ) : (
           <div className="flex flex-1 items-center justify-center p-4">

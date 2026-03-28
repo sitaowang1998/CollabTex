@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ProjectRole } from "@collab-tex/shared";
 import { createHttpApp } from "../app.js";
 import {
@@ -70,6 +70,7 @@ describe("comment routes", () => {
       expect(response.body.threads[0].comments).toHaveLength(1);
       expect(response.body.threads[0].comments[0]).toMatchObject({
         authorId: alice.user.id,
+        authorName: "Alice",
         body: "first comment",
       });
       expect(response.body.threads[0].createdAt).toMatch(
@@ -116,7 +117,8 @@ describe("comment routes", () => {
 
   describe("POST /api/projects/:projectId/docs/:docId/comments", () => {
     it("creates a thread with quotedText (201)", async () => {
-      const { app, alice, projectId, docId } = await setupCommentTestApp();
+      const { app, alice, projectId, docId, commentPublisherRef } =
+        await setupCommentTestApp();
 
       const response = await request(app)
         .post(`/api/projects/${projectId}/docs/${docId}/comments`)
@@ -140,8 +142,17 @@ describe("comment routes", () => {
       expect(response.body.thread.comments).toHaveLength(1);
       expect(response.body.thread.comments[0]).toMatchObject({
         authorId: alice.user.id,
+        authorName: "Alice",
         body: "my comment",
       });
+      expect(
+        commentPublisherRef.current.emitThreadCreated,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          documentId: docId,
+        }),
+      );
     });
 
     it("returns 400 for missing fields", async () => {
@@ -239,7 +250,8 @@ describe("comment routes", () => {
 
   describe("POST /api/projects/:projectId/threads/:threadId/reply", () => {
     it("replies to a thread (201)", async () => {
-      const { app, alice, projectId, docId } = await setupCommentTestApp();
+      const { app, alice, projectId, docId, commentPublisherRef } =
+        await setupCommentTestApp();
 
       const createResponse = await request(app)
         .post(`/api/projects/${projectId}/docs/${docId}/comments`)
@@ -263,8 +275,16 @@ describe("comment routes", () => {
       expect(replyResponse.body.comment).toMatchObject({
         threadId,
         authorId: alice.user.id,
+        authorName: "Alice",
         body: "reply text",
       });
+      expect(commentPublisherRef.current.emitCommentAdded).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          documentId: docId,
+          threadId,
+        }),
+      );
     });
 
     it("reply appears in subsequent GET listing", async () => {
@@ -365,7 +385,8 @@ describe("comment routes", () => {
 
   describe("PATCH /api/projects/:projectId/threads/:threadId", () => {
     it("resolves an open thread (200)", async () => {
-      const { app, alice, projectId, docId } = await setupCommentTestApp();
+      const { app, alice, projectId, docId, commentPublisherRef } =
+        await setupCommentTestApp();
 
       const createResponse = await request(app)
         .post(`/api/projects/${projectId}/docs/${docId}/comments`)
@@ -391,6 +412,16 @@ describe("comment routes", () => {
         status: "resolved",
       });
       expect(patchResponse.body.thread.comments).toHaveLength(1);
+      expect(
+        commentPublisherRef.current.emitThreadStatusChanged,
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          documentId: docId,
+          threadId,
+          status: "resolved",
+        }),
+      );
     });
 
     it("re-opens a resolved thread (200)", async () => {
@@ -659,10 +690,19 @@ async function setupCommentTestApp() {
     projectAccessService,
   });
 
+  const commentPublisherRef = {
+    current: {
+      emitThreadCreated: vi.fn(),
+      emitCommentAdded: vi.fn(),
+      emitThreadStatusChanged: vi.fn(),
+    },
+  };
+
   const app = createHttpApp(testConfig, {
     authService,
     binaryContentService: createStubBinaryContentService(),
     commentService,
+    commentPublisherRef,
     compileDispatchService: {
       compile: async () => {
         throw new Error("stub");
@@ -708,6 +748,7 @@ async function setupCommentTestApp() {
     alice,
     projectId,
     docId,
+    commentPublisherRef,
     addMembership: (
       forProjectId: string,
       userId: string,
@@ -752,12 +793,25 @@ function createInMemoryCommentRepository(
         id: randomUUID(),
         threadId,
         authorId: input.authorId,
+        authorName: "Alice",
         body: input.body,
         createdAt: now,
       };
       commentsByThreadId.set(threadId, [comment]);
 
       return { ...thread, comments: [comment] };
+    },
+    listThreadsForProject: async (projectId) => {
+      const result: StoredCommentThreadWithComments[] = [];
+      for (const thread of threadsById.values()) {
+        if (thread.projectId === projectId) {
+          result.push({
+            ...thread,
+            comments: commentsByThreadId.get(thread.id) ?? [],
+          });
+        }
+      }
+      return result;
     },
     listThreadsForDocument: async ({ projectId, documentId }) => {
       const result: StoredCommentThreadWithComments[] = [];
@@ -779,6 +833,7 @@ function createInMemoryCommentRepository(
         id: randomUUID(),
         threadId: input.threadId,
         authorId: input.authorId,
+        authorName: "Alice",
         body: input.body,
         createdAt: new Date(),
       };

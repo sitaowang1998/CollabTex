@@ -458,7 +458,9 @@ test.describe("Editor Page", () => {
     await expect(page.getByText("Preview", { exact: true })).toBeVisible();
 
     // Collapse preview
-    await page.getByLabel("Collapse preview").click();
+    await page
+      .getByRole("button", { name: "Collapse preview", exact: true })
+      .click();
     await expect(page.getByText("Preview", { exact: true })).not.toBeVisible();
 
     // Expand preview

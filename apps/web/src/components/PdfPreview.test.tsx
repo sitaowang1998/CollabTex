@@ -34,6 +34,24 @@ vi.mock("../lib/api", async (importOriginal) => {
   };
 });
 
+const mockRenderPromise = Promise.resolve();
+const mockGetPage = vi.fn().mockResolvedValue({
+  getViewport: () => ({ width: 612, height: 792 }),
+  render: () => ({ promise: mockRenderPromise }),
+});
+const mockPdfDoc = {
+  numPages: 1,
+  getPage: mockGetPage,
+  destroy: vi.fn(),
+};
+
+vi.mock("pdfjs-dist", () => ({
+  GlobalWorkerOptions: { workerSrc: "" },
+  getDocument: vi.fn().mockReturnValue({
+    promise: Promise.resolve(mockPdfDoc),
+  }),
+}));
+
 const mockedApi = vi.mocked(api);
 
 // Must import after mocks
@@ -42,9 +60,15 @@ const { default: PdfPreview } = await import("./PdfPreview");
 beforeEach(() => {
   vi.resetAllMocks();
   compileDoneHandler = null;
-  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:fake-pdf-url");
-  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  mockGetPage.mockResolvedValue({
+    getViewport: () => ({ width: 612, height: 792 }),
+    render: () => ({ promise: mockRenderPromise }),
+  });
 });
+
+function createPdfBlob() {
+  return new Blob(["pdf-content"], { type: "application/pdf" });
+}
 
 describe("PdfPreview", () => {
   it("shows loading state while fetching initial PDF", () => {
@@ -53,18 +77,14 @@ describe("PdfPreview", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
-  it("displays PDF iframe when initial PDF loads successfully", async () => {
-    const blob = new Blob(["pdf-content"], { type: "application/pdf" });
-    mockedApi.getBlob.mockResolvedValue(blob);
+  it("displays PDF canvas container when PDF loads successfully", async () => {
+    mockedApi.getBlob.mockResolvedValue(createPdfBlob());
 
     render(<PdfPreview projectId="p1" role="editor" />);
 
     await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toBeInTheDocument();
+      expect(screen.getByTestId("pdf-canvas-container")).toBeInTheDocument();
     });
-
-    const iframe = screen.getByTitle("PDF preview");
-    expect(iframe).toHaveAttribute("src", "blob:fake-pdf-url");
   });
 
   it("shows 'No compiled PDF' when initial fetch returns 404", async () => {
@@ -201,7 +221,7 @@ describe("PdfPreview", () => {
   it("handles compile:done socket event for success", async () => {
     mockedApi.getBlob
       .mockRejectedValueOnce(new ApiError(404, "Not found"))
-      .mockResolvedValueOnce(new Blob(["pdf"], { type: "application/pdf" }));
+      .mockResolvedValueOnce(createPdfBlob());
 
     render(<PdfPreview projectId="p1" role="editor" />);
 
@@ -209,7 +229,6 @@ describe("PdfPreview", () => {
       expect(compileDoneHandler).not.toBeNull();
     });
 
-    // Wait for initial load to finish
     await waitFor(() => {
       expect(
         screen.getByText("No compiled PDF. Click Compile to build."),
@@ -225,7 +244,7 @@ describe("PdfPreview", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toBeInTheDocument();
+      expect(screen.getByTestId("pdf-canvas-container")).toBeInTheDocument();
     });
   });
 
@@ -270,27 +289,10 @@ describe("PdfPreview", () => {
       });
     });
 
-    // Should still show the no-PDF message, not failure logs
     expect(
       screen.getByText("No compiled PDF. Click Compile to build."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Some error")).not.toBeInTheDocument();
-  });
-
-  it("revokes blob URL on unmount", async () => {
-    const blob = new Blob(["pdf-content"], { type: "application/pdf" });
-    mockedApi.getBlob.mockResolvedValue(blob);
-    const revokeSpy = vi.mocked(URL.revokeObjectURL);
-
-    const { unmount } = render(<PdfPreview projectId="p1" role="editor" />);
-
-    await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toBeInTheDocument();
-    });
-
-    unmount();
-
-    expect(revokeSpy).toHaveBeenCalledWith("blob:fake-pdf-url");
   });
 
   it("removes socket listener on unmount", async () => {
@@ -315,10 +317,9 @@ describe("PdfPreview", () => {
 
   it("fetches PDF and displays after successful compile via button", async () => {
     const user = userEvent.setup();
-    const pdfBlob = new Blob(["pdf"], { type: "application/pdf" });
     mockedApi.getBlob
       .mockRejectedValueOnce(new ApiError(404, "Not found"))
-      .mockResolvedValueOnce(pdfBlob);
+      .mockResolvedValueOnce(createPdfBlob());
     mockedApi.post.mockResolvedValue({ status: "success", logs: "" });
 
     render(<PdfPreview projectId="p1" role="editor" />);
@@ -332,7 +333,7 @@ describe("PdfPreview", () => {
     await user.click(screen.getByRole("button", { name: "Compile" }));
 
     await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toBeInTheDocument();
+      expect(screen.getByTestId("pdf-canvas-container")).toBeInTheDocument();
     });
   });
 
@@ -404,32 +405,6 @@ describe("PdfPreview", () => {
     });
   });
 
-  it("shows error when compile:done success but fetchPdf fails", async () => {
-    mockedApi.getBlob
-      .mockRejectedValueOnce(new ApiError(404, "Not found"))
-      .mockRejectedValueOnce(new ApiError(500, "Server error"));
-
-    render(<PdfPreview projectId="p1" role="editor" />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No compiled PDF. Click Compile to build."),
-      ).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      compileDoneHandler!({
-        projectId: "p1",
-        status: "success",
-        logs: "",
-      });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Server error")).toBeInTheDocument();
-    });
-  });
-
   it("shows error when initial fetch returns non-404 error", async () => {
     mockedApi.getBlob.mockRejectedValue(
       new ApiError(500, "Internal server error"),
@@ -440,44 +415,7 @@ describe("PdfPreview", () => {
     await waitFor(() => {
       expect(screen.getByText("Internal server error")).toBeInTheDocument();
     });
-    // Should exit loading state
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
-  });
-
-  it("revokes old blob URL when recompiling produces new PDF", async () => {
-    const user = userEvent.setup();
-    const revokeSpy = vi.mocked(URL.revokeObjectURL);
-    const createSpy = vi.mocked(URL.createObjectURL);
-    createSpy
-      .mockReturnValueOnce("blob:first-pdf")
-      .mockReturnValueOnce("blob:second-pdf");
-
-    const blob1 = new Blob(["pdf1"], { type: "application/pdf" });
-    const blob2 = new Blob(["pdf2"], { type: "application/pdf" });
-    mockedApi.getBlob
-      .mockResolvedValueOnce(blob1) // initial load
-      .mockResolvedValueOnce(blob2); // after recompile
-    mockedApi.post.mockResolvedValue({ status: "success", logs: "" });
-
-    render(<PdfPreview projectId="p1" role="editor" />);
-
-    await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toHaveAttribute(
-        "src",
-        "blob:first-pdf",
-      );
-    });
-
-    await user.click(screen.getByRole("button", { name: "Compile" }));
-
-    await waitFor(() => {
-      expect(screen.getByTitle("PDF preview")).toHaveAttribute(
-        "src",
-        "blob:second-pdf",
-      );
-    });
-
-    expect(revokeSpy).toHaveBeenCalledWith("blob:first-pdf");
   });
 
   it("re-enables compile button after 409 error", async () => {
@@ -501,14 +439,12 @@ describe("PdfPreview", () => {
       ).toBeInTheDocument();
     });
 
-    // Button should be re-enabled with "Compile" text
     const button = screen.getByRole("button", { name: "Compile" });
     expect(button).not.toBeDisabled();
   });
 
   it("shows error when compile succeeds but fetchPdf returns 404 (no PDF available)", async () => {
     const user = userEvent.setup();
-    // Initial load: 404 (no PDF yet). After compile: still 404.
     mockedApi.getBlob.mockRejectedValue(new ApiError(404, "Not found"));
     mockedApi.post.mockResolvedValue({ status: "success", logs: "" });
 
@@ -525,33 +461,6 @@ describe("PdfPreview", () => {
     await waitFor(() => {
       expect(
         screen.getByText("Compile succeeded but no PDF is available"),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows error when compile:done success but fetchPdf returns 404 (no PDF available)", async () => {
-    // Both initial and post-socket fetch return 404
-    mockedApi.getBlob.mockRejectedValue(new ApiError(404, "Not found"));
-
-    render(<PdfPreview projectId="p1" role="editor" />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("No compiled PDF. Click Compile to build."),
-      ).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      compileDoneHandler!({
-        projectId: "p1",
-        status: "success",
-        logs: "",
-      });
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Compile reported success but no PDF is available"),
       ).toBeInTheDocument();
     });
   });

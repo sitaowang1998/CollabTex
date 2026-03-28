@@ -578,7 +578,7 @@ describe("comment repository integration", () => {
     expect(reply.id).toEqual(expect.any(String));
     expect(reply.createdAt).toBeInstanceOf(Date);
     expect(Object.keys(reply).sort()).toEqual(
-      ["id", "threadId", "authorId", "body", "createdAt"].sort(),
+      ["id", "threadId", "authorId", "authorName", "body", "createdAt"].sort(),
     );
   });
 

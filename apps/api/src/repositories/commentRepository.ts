@@ -14,6 +14,18 @@ import {
   type StoredCommentThreadWithComments,
 } from "../services/comment.js";
 
+const COMMENT_ORDER_BY: Prisma.CommentOrderByWithRelationInput[] = [
+  { createdAt: "asc" },
+  { id: "asc" },
+];
+
+const COMMENTS_WITH_AUTHOR = {
+  comments: {
+    include: { author: { select: { name: true } } },
+    orderBy: COMMENT_ORDER_BY,
+  },
+};
+
 export function createCommentRepository(
   databaseClient: DatabaseClient,
 ): CommentRepository {
@@ -54,11 +66,7 @@ export function createCommentRepository(
                 },
               },
             },
-            include: {
-              comments: {
-                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-              },
-            },
+            include: COMMENTS_WITH_AUTHOR,
           });
 
           return mapThreadWithComments(thread);
@@ -79,11 +87,7 @@ export function createCommentRepository(
           projectId,
           project: { tombstoneAt: null },
         },
-        include: {
-          comments: {
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-          },
-        },
+        include: COMMENTS_WITH_AUTHOR,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
@@ -97,11 +101,7 @@ export function createCommentRepository(
           documentId,
           project: { tombstoneAt: null },
         },
-        include: {
-          comments: {
-            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-          },
-        },
+        include: COMMENTS_WITH_AUTHOR,
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
 
@@ -131,6 +131,7 @@ export function createCommentRepository(
               authorId,
               body,
             },
+            include: { author: { select: { name: true } } },
           });
 
           return mapComment(comment);
@@ -176,11 +177,7 @@ export function createCommentRepository(
           const updated = await tx.commentThread.update({
             where: { id: threadId },
             data: { status },
-            include: {
-              comments: {
-                orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-              },
-            },
+            include: COMMENTS_WITH_AUTHOR,
           });
 
           return mapThreadWithComments(updated);
@@ -211,20 +208,31 @@ function mapThread(
   };
 }
 
-function mapComment(
-  row: Prisma.CommentGetPayload<Record<string, never>>,
-): StoredComment {
+type CommentWithAuthor = Prisma.CommentGetPayload<{
+  include: { author: { select: { name: true } } };
+}>;
+
+function mapComment(row: CommentWithAuthor): StoredComment {
   return {
     id: row.id,
     threadId: row.threadId,
     authorId: row.authorId,
+    authorName: row.author?.name ?? null,
     body: row.body,
     createdAt: row.createdAt,
   };
 }
 
+type ThreadWithCommentsAndAuthor = Prisma.CommentThreadGetPayload<{
+  include: {
+    comments: {
+      include: { author: { select: { name: true } } };
+    };
+  };
+}>;
+
 function mapThreadWithComments(
-  row: Prisma.CommentThreadGetPayload<{ include: { comments: true } }>,
+  row: ThreadWithCommentsAndAuthor,
 ): StoredCommentThreadWithComments {
   return {
     ...mapThread(row),
@@ -236,9 +244,6 @@ function isAuthorFkViolation(error: Error & { code: string }): boolean {
   const meta = (error as unknown as Record<string, unknown>).meta as
     | Record<string, unknown>
     | undefined;
-  // Prisma exposes FK constraint name in different locations depending on
-  // the adapter.  Check both the legacy `field_name` path and the driver-
-  // adapter path used with @prisma/adapter-pg.
   const fieldName = meta?.field_name as string | undefined;
   if (fieldName) return fieldName.includes("authorId");
 

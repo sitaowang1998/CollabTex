@@ -43,6 +43,7 @@ import {
 } from "./services/snapshotRefresh.js";
 import { createWorkspaceService } from "./services/workspace.js";
 import {
+  createCommentPublisher,
   createCompileDonePublisher,
   createSocketDocumentResetPublisher,
   createSocketServer,
@@ -187,6 +188,9 @@ async function main() {
       documentRepository,
       binaryContentStore,
     });
+    const commentPublisherRef: {
+      current: ReturnType<typeof createCommentPublisher> | undefined;
+    } = { current: undefined };
     const app = createHttpApp(config, {
       authService,
       binaryContentService,
@@ -197,6 +201,7 @@ async function main() {
       membershipService,
       projectService,
       snapshotManagementService,
+      commentPublisherRef,
     });
     const server = http.createServer(app);
     const io = createSocketServer(server, config, {
@@ -222,6 +227,7 @@ async function main() {
     );
     const compileDonePublisher = createCompileDonePublisher(io);
     compileDoneNotifier = compileDonePublisher.emitCompileDone;
+    commentPublisherRef.current = createCommentPublisher(io);
 
     installShutdownHandlers({
       server,

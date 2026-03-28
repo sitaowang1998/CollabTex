@@ -1634,6 +1634,11 @@ components:
             - string
             - "null"
           format: uuid
+        authorName:
+          type:
+            - string
+            - "null"
+          description: Display name of the comment author
         body:
           type: string
         createdAt:
