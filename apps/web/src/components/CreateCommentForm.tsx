@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import type { CommentThreadResponse } from "@collab-tex/shared";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 
 export type CommentSelection = {
@@ -25,47 +26,30 @@ export default function CreateCommentForm({
   onCancel,
 }: Props) {
   const [body, setBody] = useState("");
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = body.trim();
-    if (!trimmed) return;
-
-    setSubmitting(true);
-    setError("");
-
-    try {
-      await api.post<CommentThreadResponse>(
+  const {
+    execute,
+    isSubmitting: submitting,
+    error,
+  } = useApiMutation({
+    mutationFn: (trimmedBody: string) =>
+      api.post<CommentThreadResponse>(
         `/projects/${projectId}/docs/${documentId}/comments`,
         {
           startAnchorB64: selection.startAnchorB64,
           endAnchorB64: selection.endAnchorB64,
           quotedText: selection.quotedText,
-          body: trimmed,
+          body: trimmedBody,
         },
-      );
-      if (!mountedRef.current) return;
-      onCreated();
-    } catch (err) {
-      if (!mountedRef.current) return;
-      setError(
-        err instanceof ApiError ? err.message : "Failed to create comment",
-      );
-    } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-    }
+      ),
+    onSuccess: () => onCreated(),
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    await execute(trimmed);
   }
 
   return (

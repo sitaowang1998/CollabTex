@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
+import { useApiQuery } from "@/lib/useApiQuery";
 import { Button } from "@/components/ui/button";
 
 interface BinaryPreviewProps {
@@ -15,64 +16,36 @@ export default function BinaryPreview({
   path,
   mime,
 }: BinaryPreviewProps) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-
   const isImage = mime?.startsWith("image/") ?? false;
   const filename = path.split("/").pop() ?? path;
 
+  const {
+    data: blob,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useApiQuery<Blob | null>({
+    queryFn: (signal) =>
+      api.getBlob(`/projects/${projectId}/files/${documentId}/content`, {
+        signal,
+      }),
+    deps: [projectId, documentId, mime],
+    initialData: null,
+    enabled: isImage,
+  });
+
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  // Sync object URL with blob — this is external resource management, not derived state
   useEffect(() => {
-    if (!isImage) {
-      setLoading(false);
+    if (!blob) {
+      setObjectUrl(null); // eslint-disable-line react-hooks/set-state-in-effect -- syncing external URL resource with React state
       return;
     }
-
-    const controller = new AbortController();
-
-    async function fetchBinary() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const blob = await api.getBlob(
-          `/projects/${projectId}/files/${documentId}/content`,
-          { signal: controller.signal },
-        );
-        if (controller.signal.aborted) return;
-        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-        const url = URL.createObjectURL(blob);
-        objectUrlRef.current = url;
-        setObjectUrl(url);
-      } catch (err: unknown) {
-        if (controller.signal.aborted) return;
-        console.error("BinaryPreview fetch failed:", err);
-        const message =
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
-              ? err.message
-              : "Failed to load file";
-        setError(message);
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    fetchBinary();
-
-    return () => {
-      controller.abort();
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
-  }, [projectId, documentId, mime, isImage, retryCount]);
+    const url = URL.createObjectURL(blob);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [blob]);
 
   if (loading) {
     return (
@@ -86,11 +59,7 @@ export default function BinaryPreview({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
         <p className="text-sm text-destructive">{error}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setRetryCount((c) => c + 1)}
-        >
+        <Button variant="outline" size="sm" onClick={refetch}>
           Retry
         </Button>
       </div>

@@ -4,7 +4,8 @@ import type {
   CommentThread,
   CommentResponse,
 } from "@collab-tex/shared";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 import CreateCommentForm, {
   type CommentSelection,
@@ -129,57 +130,46 @@ function ThreadCard({
   onMutated: () => void;
 }) {
   const [replyBody, setReplyBody] = useState("");
-  const [replyError, setReplyError] = useState("");
-  const [replySubmitting, setReplySubmitting] = useState(false);
-  const [statusUpdating, setStatusUpdating] = useState(false);
-  const [statusError, setStatusError] = useState("");
   const [expanded, setExpanded] = useState(thread.status === "open");
 
   useEffect(() => {
-    setExpanded(thread.status === "open");
+    setExpanded(thread.status === "open"); // eslint-disable-line react-hooks/set-state-in-effect -- sync expanded state with prop
   }, [thread.status]);
+
+  const replyMutation = useApiMutation<[string], CommentResponse>({
+    mutationFn: (body: string) =>
+      api.post<CommentResponse>(
+        `/projects/${projectId}/threads/${thread.id}/reply`,
+        { body },
+      ),
+    onSuccess: () => {
+      setReplyBody("");
+      onMutated();
+    },
+  });
+
+  const statusMutation = useApiMutation({
+    mutationFn: () => {
+      const newStatus = thread.status === "open" ? "resolved" : "open";
+      return api.patch(`/projects/${projectId}/threads/${thread.id}`, {
+        status: newStatus,
+      });
+    },
+    onSuccess: () => onMutated(),
+    onError: () => onMutated(),
+  });
 
   async function handleReply(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = replyBody.trim();
     if (!trimmed) return;
-
-    setReplySubmitting(true);
-    setReplyError("");
-    try {
-      await api.post<CommentResponse>(
-        `/projects/${projectId}/threads/${thread.id}/reply`,
-        { body: trimmed },
-      );
-      setReplyBody("");
-      onMutated();
-    } catch (err) {
-      setReplyError(
-        err instanceof ApiError ? err.message : "Failed to post reply",
-      );
-    } finally {
-      setReplySubmitting(false);
-    }
+    await replyMutation.execute(trimmed);
   }
 
-  async function handleToggleStatus() {
-    const newStatus = thread.status === "open" ? "resolved" : "open";
-    setStatusUpdating(true);
-    setStatusError("");
-    try {
-      await api.patch(`/projects/${projectId}/threads/${thread.id}`, {
-        status: newStatus,
-      });
-      onMutated();
-    } catch (err) {
-      setStatusError(
-        err instanceof ApiError ? err.message : "Failed to update status",
-      );
-      onMutated();
-    } finally {
-      setStatusUpdating(false);
-    }
-  }
+  const replySubmitting = replyMutation.isSubmitting;
+  const replyError = replyMutation.error;
+  const statusUpdating = statusMutation.isSubmitting;
+  const statusError = statusMutation.error;
 
   const isResolved = thread.status === "resolved";
 
@@ -222,7 +212,7 @@ function ThreadCard({
             variant="ghost"
             size="sm"
             className="ml-auto h-auto shrink-0 px-1.5 py-0.5 text-xs"
-            onClick={handleToggleStatus}
+            onClick={() => statusMutation.execute()}
             disabled={statusUpdating}
           >
             {isResolved ? "Reopen" : "Resolve"}

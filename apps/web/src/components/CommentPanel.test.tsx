@@ -170,7 +170,7 @@ describe("CommentPanel", () => {
     await user.click(screen.getByRole("button", { name: "Reply" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to post reply")).toBeInTheDocument();
+      expect(screen.getByText("Network error")).toBeInTheDocument();
     });
   });
 
