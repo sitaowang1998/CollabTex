@@ -43,6 +43,7 @@ export function createCompileDispatchService({
   compileBuildRepository,
   compileTimeoutMs,
   notifyCompileDone,
+  queueProjectSnapshot,
 }: {
   projectAccessService: Pick<ProjectAccessService, "requireProjectRole">;
   projectService: Pick<ProjectService, "getMainDocument">;
@@ -52,6 +53,10 @@ export function createCompileDispatchService({
   compileBuildRepository: Pick<CompileBuildRepository, "saveLatestBuildPath">;
   compileTimeoutMs: number;
   notifyCompileDone: (event: CompileDoneEvent) => void;
+  queueProjectSnapshot: (
+    projectId: string,
+    userId: string | null,
+  ) => Promise<void>;
 }): CompileDispatchService {
   const compilesInProgress = new Set<string>();
 
@@ -121,6 +126,14 @@ export function createCompileDispatchService({
               persistError,
             );
           }
+
+          void queueProjectSnapshot(projectId, userId).catch((error) => {
+            console.error(
+              "Failed to queue snapshot after successful compile",
+              { projectId },
+              error,
+            );
+          });
         } else {
           status = "failure";
 

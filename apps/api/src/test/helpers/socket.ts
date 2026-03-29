@@ -70,6 +70,10 @@ export async function createTestSocketServer(options?: {
     "requireProjectMember" | "requireProjectRole"
   >;
   touchProjectUpdatedAt?: (projectId: string) => Promise<void>;
+  queueProjectSnapshot?: (
+    projectId: string,
+    userId: string | null,
+  ) => Promise<void>;
 }): Promise<TestSocketServer> {
   const projectRepository = createSocketTestProjectRepository();
   const documentRepository = createSocketTestDocumentRepository();
@@ -173,6 +177,7 @@ export async function createTestSocketServer(options?: {
         currentTextStateService,
       }),
     touchProjectUpdatedAt: options?.touchProjectUpdatedAt ?? (async () => {}),
+    queueProjectSnapshot: options?.queueProjectSnapshot ?? (async () => {}),
   });
 
   await new Promise<void>((resolve) => {

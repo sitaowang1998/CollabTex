@@ -27,6 +27,7 @@ import PdfPreview from "@/components/PdfPreview";
 import CommentPanel from "@/components/CommentPanel";
 import type { CommentSelection } from "@/components/CreateCommentForm";
 import MembersPanel from "@/components/MembersPanel";
+import SnapshotPanel from "@/components/SnapshotPanel";
 
 type SelectedFile = {
   documentId: string;
@@ -372,6 +373,7 @@ export default function ProjectEditorPage() {
   const [fileTreeCollapsed, setFileTreeCollapsed] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showSnapshots, setShowSnapshots] = useState(false);
   const [pendingCommentSelection, setPendingCommentSelection] =
     useState<CommentSelection | null>(null);
 
@@ -655,6 +657,14 @@ export default function ProjectEditorPage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setShowSnapshots((v) => !v)}
+            aria-pressed={showSnapshots}
+          >
+            Snapshots
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowMembers((v) => !v)}
             aria-pressed={showMembers}
           >
@@ -903,6 +913,14 @@ export default function ProjectEditorPage() {
         }}
         onCreateFolder={handleCreateFolder}
       />
+
+      {showSnapshots && projectId && myRole && (
+        <SnapshotPanel
+          projectId={projectId}
+          myRole={myRole}
+          onClose={() => setShowSnapshots(false)}
+        />
+      )}
 
       {showMembers && projectId && myRole && currentUserId && (
         <MembersPanel

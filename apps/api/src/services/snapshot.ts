@@ -87,6 +87,7 @@ export type SnapshotRepository = {
     projectId: string,
     snapshotId: string,
   ) => Promise<StoredSnapshot | null>;
+  getLatestSnapshotTime: (projectId: string) => Promise<Date | null>;
   createSnapshot: (input: {
     projectId: string;
     storagePath: string;
@@ -175,7 +176,7 @@ export function createSnapshotService({
   commentThreadLookup: Pick<CommentRepository, "listThreadsForProject">;
   getResetPublisher?: () => SnapshotResetPublisher;
 }): SnapshotService {
-  return {
+  const service: SnapshotService = {
     loadDocumentContent: async (document) => {
       if (document.kind === "binary") {
         return null;
@@ -278,6 +279,22 @@ export function createSnapshotService({
         snapshotStore.readProjectSnapshot(targetSnapshot.storagePath),
         documentLookup.listForProject(projectId),
       ]);
+
+      try {
+        await service.captureProjectSnapshot({
+          projectId,
+          authorId: actorUserId,
+          documents: currentDocuments,
+          message: "Auto-save before restore",
+        });
+      } catch (captureError) {
+        console.error(
+          "Failed to create pre-restore snapshot, continuing with restore",
+          { projectId },
+          captureError,
+        );
+      }
+
       const restoredDocuments = buildRestoredProjectDocumentStates({
         snapshotState: targetState,
         collaborationService,
@@ -299,7 +316,7 @@ export function createSnapshotService({
         restoredCommentThreads,
         checkpointSnapshot: {
           storagePath: checkpointStoragePath,
-          message: `Restored from snapshot ${targetSnapshot.id}`,
+          message: `Restored to ${formatSnapshotDate(targetSnapshot.createdAt)}`,
           authorId: actorUserId,
         },
       });
@@ -334,6 +351,17 @@ export function createSnapshotService({
       return restoreResult.snapshot;
     },
   };
+
+  return service;
+}
+
+function formatSnapshotDate(date: Date): string {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(date);
+  return `${formatted} UTC`;
 }
 
 export async function loadLatestProjectSnapshotState(
@@ -348,6 +376,9 @@ export async function loadLatestProjectSnapshotState(
       return await snapshotStore.readProjectSnapshot(snapshot.storagePath);
     } catch (error) {
       if (isRecoverableSnapshotReadError(error)) {
+        console.warn(
+          `Skipping unreadable snapshot ${snapshot.id} for project ${projectId}: ${(error as Error).message}`,
+        );
         continue;
       }
 
@@ -392,7 +423,11 @@ export async function buildProjectSnapshotState({
     }),
   ]);
 
-  const binaryContentMap = new Map(binaryContentEntries);
+  const binaryContentMap = new Map(
+    binaryContentEntries.filter(
+      (entry): entry is [string, string] => entry[1] !== null,
+    ),
+  );
   const nextDocuments: Record<string, SnapshotDocumentState> = {};
 
   for (const document of textDocuments) {
@@ -409,11 +444,13 @@ export async function buildProjectSnapshotState({
   }
 
   for (const document of binaryDocuments) {
+    const content = binaryContentMap.get(document.id);
+    if (content === undefined) continue;
     nextDocuments[document.id] = {
       path: document.path,
       kind: "binary",
       mime: document.mime,
-      binaryContentBase64: binaryContentMap.get(document.id) ?? "",
+      binaryContentBase64: content,
     } satisfies SnapshotBinaryDocumentState;
   }
 
@@ -577,22 +614,19 @@ async function syncBinaryContentStore({
       doc: doc as SnapshotBinaryDocumentState,
     }));
 
-  const writableBinaryDocuments: typeof restoredBinaryDocuments = [];
-  const emptyContentDocumentIds: string[] = [];
+  const emptyContentDocuments = restoredBinaryDocuments.filter(
+    (entry) => !entry.doc.binaryContentBase64,
+  );
 
-  for (const entry of restoredBinaryDocuments) {
-    if (!entry.doc.binaryContentBase64) {
-      console.warn(
-        `Snapshot restore: skipping empty binary content for document ${entry.id} in project ${projectId}`,
-      );
-      emptyContentDocumentIds.push(entry.id);
-    } else {
-      writableBinaryDocuments.push(entry);
-    }
+  if (emptyContentDocuments.length > 0) {
+    const ids = emptyContentDocuments.map((e) => e.id).join(", ");
+    throw new Error(
+      `Snapshot restore failed: binary document(s) ${ids} in project ${projectId} have empty content in the snapshot`,
+    );
   }
 
   const putResults = await allSettledInBatches(
-    writableBinaryDocuments,
+    restoredBinaryDocuments,
     BINARY_IO_BATCH_SIZE,
     ({ id, doc }) =>
       binaryContentStore.put(
@@ -619,10 +653,9 @@ async function syncBinaryContentStore({
       document.kind === "binary" && !restoredDocumentIds.has(document.id),
   );
 
-  const documentsToDelete = [
-    ...removedBinaryDocuments.map((document) => document.id),
-    ...emptyContentDocumentIds,
-  ];
+  const documentsToDelete = removedBinaryDocuments.map(
+    (document) => document.id,
+  );
 
   const deleteResults = await allSettledInBatches(
     documentsToDelete,
@@ -700,7 +733,7 @@ async function loadBinaryDocumentContent(
   projectId: string,
   documentId: string,
   previousState: ProjectSnapshotState,
-): Promise<string> {
+): Promise<string | null> {
   const storagePath = `${projectId}/${documentId}`;
 
   try {
@@ -715,9 +748,9 @@ async function loadBinaryDocumentContent(
       }
 
       console.warn(
-        `Snapshot capture: binary document ${documentId} in project ${projectId} has no content in store or previous snapshot`,
+        `Snapshot capture: skipping binary document ${documentId} in project ${projectId} — content not yet uploaded`,
       );
-      return "";
+      return null;
     }
 
     throw error;

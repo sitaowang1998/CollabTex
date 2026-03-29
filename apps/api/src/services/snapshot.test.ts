@@ -277,6 +277,68 @@ describe("snapshot service", () => {
     );
   });
 
+  it("excludes binary document from snapshot when content not yet uploaded", async () => {
+    const repository = createSnapshotRepository();
+    const store = createSnapshotStore();
+    const documentTextStateRepository = createDocumentTextStateRepository();
+    const binaryContentStore = createBinaryContentStore();
+    binaryContentStore.get.mockRejectedValue(new BinaryContentNotFoundError());
+    const service = createSnapshotService({
+      snapshotRepository: repository,
+      snapshotStore: store,
+      documentTextStateRepository,
+      collaborationService: createCollaborationService(),
+      projectStateRepository: createProjectStateRepository(),
+      binaryContentStore,
+      documentLookup: createDocumentLookup(),
+      commentThreadLookup: createCommentThreadLookup(),
+    });
+
+    repository.listForProject.mockResolvedValue([]);
+    repository.createSnapshot.mockImplementation(async (input) => ({
+      id: "snapshot-2",
+      projectId: input.projectId,
+      storagePath: input.storagePath,
+      message: input.message,
+      authorId: input.authorId,
+      createdAt: new Date("2026-03-02T00:00:00.000Z"),
+    }));
+    store.readProjectSnapshot.mockResolvedValue({
+      commentThreads: [],
+      documents: {},
+    });
+    documentTextStateRepository.findByDocumentIds.mockResolvedValue([]);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await service.captureProjectSnapshot({
+        projectId: "project-1",
+        authorId: "user-1",
+        documents: [
+          createStoredDocument({
+            id: "document-2",
+            path: "/figure.png",
+            kind: "binary",
+            mime: "image/png",
+          }),
+        ],
+      });
+
+      expect(store.writeProjectSnapshot).toHaveBeenCalledWith(
+        expect.stringMatching(/^project-1\/.+\.json$/),
+        {
+          commentThreads: [],
+          documents: {},
+        },
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("content not yet uploaded"),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("captures from the newest readable snapshot when the latest blob is unreadable", async () => {
     const repository = createSnapshotRepository();
     const store = createSnapshotStore();
@@ -396,6 +458,11 @@ describe("snapshot service", () => {
     const targetSnapshot = createStoredSnapshot();
 
     repository.findById.mockResolvedValue(targetSnapshot);
+    repository.listForProject.mockResolvedValue([targetSnapshot]);
+    repository.createSnapshot.mockResolvedValue(
+      createStoredSnapshot({ id: "pre-restore-snapshot" }),
+    );
+    binaryContentStore.get.mockResolvedValue(Buffer.from("current-content"));
     store.readProjectSnapshot.mockResolvedValue({
       commentThreads: [],
       documents: {
@@ -559,6 +626,10 @@ describe("snapshot service", () => {
     });
 
     repository.findById.mockResolvedValue(createStoredSnapshot());
+    repository.listForProject.mockResolvedValue([createStoredSnapshot()]);
+    repository.createSnapshot.mockResolvedValue(
+      createStoredSnapshot({ id: "pre-restore-snapshot" }),
+    );
     store.readProjectSnapshot.mockResolvedValue({
       commentThreads: [],
       documents: {
