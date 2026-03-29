@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   ProjectMember,
@@ -7,6 +7,8 @@ import type {
   ProjectMemberResponse,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
+import { useApiQuery } from "@/lib/useApiQuery";
+import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -192,15 +194,28 @@ export default function MembersPanel({
   onProjectDeleted: () => void;
 }) {
   const navigate = useNavigate();
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+
+  const {
+    data: members,
+    isLoading,
+    error,
+    refetch: retryFetchMembers,
+    setData: setMembers,
+  } = useApiQuery<ProjectMember[]>({
+    queryFn: (signal) =>
+      api
+        .get<ProjectMemberListResponse>(`/projects/${projectId}/members`, {
+          signal,
+        })
+        .then((d) => d.members),
+    deps: [projectId],
+    initialData: [],
+  });
 
   // Add member form
   const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState<ProjectRole>("editor");
-  const [addError, setAddError] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
+  const [addValidationError, setAddValidationError] = useState("");
 
   // Mutation tracking
   const [pendingMemberIds, setPendingMemberIds] = useState<Set<string>>(
@@ -217,77 +232,47 @@ export default function MembersPanel({
 
   // Confirmation dialogs
   const [showDeleteProject, setShowDeleteProject] = useState(false);
-  const [deleteProjectError, setDeleteProjectError] = useState("");
-  const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [showLeaveProject, setShowLeaveProject] = useState(false);
-  const [leaveProjectError, setLeaveProjectError] = useState("");
-  const [isLeavingProject, setIsLeavingProject] = useState(false);
 
   const isAdmin = myRole === "admin";
-  const fetchControllerRef = useRef<AbortController | null>(null);
-
-  const fetchMembers = useCallback(
-    async (signal?: AbortSignal) => {
-      setIsLoading(true);
-      setError("");
-      try {
-        const data = await api.get<ProjectMemberListResponse>(
-          `/projects/${projectId}/members`,
-          { signal },
-        );
-        if (signal?.aborted) return;
-        setMembers(data.members);
-      } catch (err) {
-        if (signal?.aborted) return;
-        setError(errorMessage(err, "Failed to load members"));
-      } finally {
-        if (!signal?.aborted) {
-          setIsLoading(false);
-        }
-      }
-    },
-    [projectId],
-  );
-
-  useEffect(() => {
-    fetchControllerRef.current?.abort();
-    const controller = new AbortController();
-    fetchControllerRef.current = controller;
-    fetchMembers(controller.signal);
-    return () => controller.abort();
-  }, [fetchMembers]);
 
   const adminCount = members.filter((m) => m.role === "admin").length;
 
-  async function handleAddMember(e: React.FormEvent) {
-    e.preventDefault();
-    setAddError("");
-    const trimmed = addEmail.trim();
-    if (!trimmed) {
-      setAddError("Email is required");
-      return;
-    }
-    if (!EMAIL_RE.test(trimmed)) {
-      setAddError("Enter a valid email address");
-      return;
-    }
-
-    setIsAdding(true);
-    try {
-      const { member } = await api.post<ProjectMemberResponse>(
-        `/projects/${projectId}/members`,
-        { email: trimmed, role: addRole },
-      );
-      setMembers((prev) => [...prev, member]);
+  const addMemberMutation = useApiMutation<
+    [string, ProjectRole],
+    ProjectMemberResponse
+  >({
+    mutationFn: (email: string, role: ProjectRole) =>
+      api.post<ProjectMemberResponse>(`/projects/${projectId}/members`, {
+        email,
+        role,
+      }),
+    onSuccess: (result) => {
+      setMembers((prev) => [...prev, result.member]);
       setAddEmail("");
       setAddRole("editor");
       setMutationError("");
-    } catch (err) {
-      setAddError(errorMessage(err, "Failed to add member"));
-    } finally {
-      setIsAdding(false);
+    },
+  });
+
+  async function handleAddMember(e: React.FormEvent) {
+    e.preventDefault();
+    setAddValidationError("");
+    addMemberMutation.reset();
+    const trimmed = addEmail.trim();
+    if (!trimmed) {
+      setAddValidationError("Email is required");
+      return;
     }
+    if (!EMAIL_RE.test(trimmed)) {
+      setAddValidationError("Enter a valid email address");
+      return;
+    }
+    await addMemberMutation.execute(trimmed, addRole);
   }
+
+  const addError = addValidationError || addMemberMutation.error;
+  const isAdding = addMemberMutation.isSubmitting;
 
   function requestRoleChange(userId: string, newRole: ProjectRole) {
     const member = members.find((m) => m.userId === userId);
@@ -375,35 +360,24 @@ export default function MembersPanel({
     }
   }
 
-  async function handleLeaveProject() {
-    if (isLeavingProject) return;
-    if (!currentUserId) {
-      setLeaveProjectError("Session expired. Please log in again.");
-      return;
-    }
-    setIsLeavingProject(true);
-    setLeaveProjectError("");
-    try {
-      await api.delete(`/projects/${projectId}/members/${currentUserId}`);
-      navigate("/");
-    } catch (err) {
-      setLeaveProjectError(errorMessage(err, "Failed to leave project"));
-      setIsLeavingProject(false);
-    }
-  }
+  const leaveMutation = useApiMutation({
+    mutationFn: () => {
+      if (!currentUserId)
+        throw new Error("Session expired. Please log in again.");
+      return api.delete(`/projects/${projectId}/members/${currentUserId}`);
+    },
+    onSuccess: () => navigate("/"),
+  });
 
-  async function handleDeleteProject() {
-    if (isDeletingProject) return;
-    setIsDeletingProject(true);
-    setDeleteProjectError("");
-    try {
-      await api.delete(`/projects/${projectId}`);
-      onProjectDeleted();
-    } catch (err) {
-      setDeleteProjectError(errorMessage(err, "Failed to delete project"));
-      setIsDeletingProject(false);
-    }
-  }
+  const deleteMutation = useApiMutation({
+    mutationFn: () => api.delete(`/projects/${projectId}`),
+    onSuccess: () => onProjectDeleted(),
+  });
+
+  const isLeavingProject = leaveMutation.isSubmitting;
+  const leaveProjectError = leaveMutation.error;
+  const isDeletingProject = deleteMutation.isSubmitting;
+  const deleteProjectError = deleteMutation.error;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -502,12 +476,7 @@ export default function MembersPanel({
               </p>
               <button
                 className="mt-1 text-xs underline"
-                onClick={() => {
-                  fetchControllerRef.current?.abort();
-                  const controller = new AbortController();
-                  fetchControllerRef.current = controller;
-                  fetchMembers(controller.signal);
-                }}
+                onClick={retryFetchMembers}
               >
                 Retry
               </button>
@@ -658,10 +627,10 @@ export default function MembersPanel({
           confirmLabel="Leave"
           isSubmitting={isLeavingProject}
           error={leaveProjectError}
-          onConfirm={handleLeaveProject}
+          onConfirm={() => leaveMutation.execute()}
           onCancel={() => {
             setShowLeaveProject(false);
-            setLeaveProjectError("");
+            leaveMutation.reset();
           }}
         />
         <ConfirmDialog
@@ -672,10 +641,10 @@ export default function MembersPanel({
           confirmLabel="Delete"
           isSubmitting={isDeletingProject}
           error={deleteProjectError}
-          onConfirm={handleDeleteProject}
+          onConfirm={() => deleteMutation.execute()}
           onCancel={() => {
             setShowDeleteProject(false);
-            setDeleteProjectError("");
+            deleteMutation.reset();
           }}
         />
       </Card>

@@ -15,6 +15,7 @@ import type {
   CommentThreadStatusChangedEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
+import { useApiQuery } from "@/lib/useApiQuery";
 import { getSocket } from "@/lib/socket";
 import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
@@ -280,14 +281,79 @@ export default function ProjectEditorPage() {
   const userName =
     state.status === "authenticated" ? state.user.name : undefined;
   const currentUserId = state.status === "authenticated" ? state.user.id : "";
-  const [project, setProject] = useState<Project | null>(null);
-  const [myRole, setMyRole] = useState<ProjectRole | null>(null);
-  const [nodes, setNodes] = useState<FileTreeNode[]>([]);
-  const [mainDocumentId, setMainDocumentId] = useState<string | null>(null);
+  type ProjectLoadResult = {
+    project: Project;
+    myRole: ProjectRole;
+    nodes: FileTreeNode[];
+    mainDocumentId: string | null;
+  };
+
+  const {
+    data: projectData,
+    isLoading,
+    error,
+    refetch: retryLoad,
+    setData: setProjectData,
+  } = useApiQuery<ProjectLoadResult | null>({
+    queryFn: async (signal) => {
+      const opts = { signal };
+      try {
+        const [details, tree, main] = await Promise.all([
+          api.get<ProjectDetailsResponse>(`/projects/${projectId}`, opts),
+          api.get<ProjectFileTreeResponse>(`/projects/${projectId}/tree`, opts),
+          api.get<MainDocumentResponse>(
+            `/projects/${projectId}/main-document`,
+            opts,
+          ),
+        ]);
+        return {
+          project: details.project,
+          myRole: details.myRole,
+          nodes: tree.nodes,
+          mainDocumentId: main.mainDocument?.id ?? null,
+        };
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.status === 404) throw new ApiError(404, "Project not found");
+          if (err.status === 403)
+            throw new ApiError(403, "You don't have access to this project");
+        }
+        throw err;
+      }
+    },
+    deps: [projectId],
+    initialData: null,
+    enabled: !!projectId,
+  });
+
+  const project = projectData?.project ?? null;
+  const myRole = projectData?.myRole ?? null;
+  const nodes = projectData?.nodes ?? [];
+  const mainDocumentId = projectData?.mainDocumentId ?? null;
+
+  const setNodes = useCallback(
+    (updater: FileTreeNode[] | ((prev: FileTreeNode[]) => FileTreeNode[])) => {
+      setProjectData((prev) =>
+        prev
+          ? {
+              ...prev,
+              nodes:
+                typeof updater === "function" ? updater(prev.nodes) : updater,
+            }
+          : prev,
+      );
+    },
+    [setProjectData],
+  );
+
+  const setMainDocumentId = useCallback(
+    (id: string | null) => {
+      setProjectData((prev) => (prev ? { ...prev, mainDocumentId: id } : prev));
+    },
+    [setProjectData],
+  );
+
   const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [retryKey, setRetryKey] = useState(0);
   const [treeError, setTreeError] = useState("");
   const [pendingAction, setPendingAction] = useState<FileTreeAction | null>(
     null,
@@ -315,67 +381,36 @@ export default function ProjectEditorPage() {
   const [commentPanelHeight, setCommentPanelHeight] = useState(
     DEFAULT_COMMENT_HEIGHT,
   );
-  const [threads, setThreads] = useState<CommentThread[]>([]);
-  const [threadsLoading, setThreadsLoading] = useState(false);
-  const [threadsError, setThreadsError] = useState("");
   const [threadPositions, setThreadPositions] = useState<Map<string, number>>(
     () => new Map(),
   );
-  const threadsControllerRef = useRef<AbortController | null>(null);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      threadsControllerRef.current?.abort();
-    };
-  }, []);
 
   const selectedDocId = selectedFile?.documentId;
   const selectedDocKind = selectedFile?.documentKind;
 
-  const fetchThreads = useCallback(async () => {
-    if (!projectId || !selectedDocId || selectedDocKind !== "text") return;
+  const {
+    data: threads,
+    isLoading: threadsLoading,
+    error: threadsError,
+    refetch: fetchThreads,
+    setData: setThreads,
+  } = useApiQuery<CommentThread[]>({
+    queryFn: (signal) =>
+      api
+        .get<CommentThreadListResponse>(
+          `/projects/${projectId}/docs/${selectedDocId}/comments`,
+          { signal },
+        )
+        .then((d) => d.threads),
+    deps: [projectId, selectedDocId],
+    initialData: [],
+    enabled: !!projectId && !!selectedDocId && selectedDocKind === "text",
+  });
 
-    threadsControllerRef.current?.abort();
-    const controller = new AbortController();
-    threadsControllerRef.current = controller;
-
-    setThreadsError("");
-    setThreadsLoading(true);
-    try {
-      const data = await api.get<CommentThreadListResponse>(
-        `/projects/${projectId}/docs/${selectedDocId}/comments`,
-        { signal: controller.signal },
-      );
-      if (controller.signal.aborted || !mountedRef.current) return;
-      setThreads(data.threads);
-    } catch (err) {
-      if (controller.signal.aborted || !mountedRef.current) return;
-      setThreadsError(
-        err instanceof ApiError ? err.message : "Failed to load comments",
-      );
-    } finally {
-      if (!controller.signal.aborted && mountedRef.current) {
-        setThreadsLoading(false);
-      }
-    }
-  }, [projectId, selectedDocId, selectedDocKind]);
-
-  // Fetch threads when selected file changes
+  // Reset thread positions when selected file changes
   useEffect(() => {
-    if (selectedDocKind === "text") {
-      setThreads([]);
-      setThreadPositions(new Map());
-      fetchThreads();
-    } else {
-      setThreads([]);
-      setThreadPositions(new Map());
-      setThreadsLoading(false);
-      setThreadsError("");
-    }
-  }, [selectedDocId, selectedDocKind, fetchThreads]);
+    setThreadPositions(new Map());
+  }, [selectedDocId]);
 
   // Socket listeners for realtime comment updates
   useEffect(() => {
@@ -422,54 +457,7 @@ export default function ProjectEditorPage() {
       socket.off("comment:added", handleCommentAdded);
       socket.off("comment:thread_status_changed", handleStatusChanged);
     };
-  }, [projectId, selectedDocId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    const controller = new AbortController();
-    const opts = { signal: controller.signal };
-
-    async function load() {
-      setIsLoading(true);
-      setError("");
-      try {
-        const [details, tree, main] = await Promise.all([
-          api.get<ProjectDetailsResponse>(`/projects/${projectId}`, opts),
-          api.get<ProjectFileTreeResponse>(`/projects/${projectId}/tree`, opts),
-          api.get<MainDocumentResponse>(
-            `/projects/${projectId}/main-document`,
-            opts,
-          ),
-        ]);
-        if (controller.signal.aborted) return;
-        setProject(details.project);
-        setMyRole(details.myRole);
-        setNodes(tree.nodes);
-        setMainDocumentId(main.mainDocument?.id ?? null);
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        if (err instanceof ApiError) {
-          if (err.status === 404) {
-            setError("Project not found");
-          } else if (err.status === 403) {
-            setError("You don't have access to this project");
-          } else {
-            setError(err.message);
-          }
-        } else {
-          console.error("Failed to load project:", err);
-          setError("Failed to load project");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    load();
-    return () => controller.abort();
-  }, [projectId, retryKey]);
+  }, [projectId, selectedDocId, setThreads]);
 
   const refreshTree = useCallback(async () => {
     if (!projectId) return;
@@ -491,7 +479,7 @@ export default function ProjectEditorPage() {
       console.error("Failed to refresh tree:", err);
       setTreeError(message);
     }
-  }, [projectId]);
+  }, [projectId, setNodes]);
 
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
@@ -623,7 +611,7 @@ export default function ProjectEditorPage() {
           {error}
         </p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
+          <Button variant="outline" onClick={retryLoad}>
             Retry
           </Button>
           <Link to="/">
@@ -641,7 +629,7 @@ export default function ProjectEditorPage() {
           Something went wrong. Please try again.
         </p>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setRetryKey((k) => k + 1)}>
+          <Button variant="outline" onClick={retryLoad}>
             Retry
           </Button>
           <Link to="/">
@@ -902,7 +890,7 @@ export default function ProjectEditorPage() {
       <FileTreeActions
         projectId={projectId}
         action={pendingAction}
-        localFolderPaths={localFolderPathsRef.current}
+        localFolderPaths={localFolderPathsRef.current} // eslint-disable-line react-hooks/refs -- intentional: stable Set shared with tree actions
         onClose={() => setPendingAction(null)}
         onComplete={handleComplete}
         onMainDocumentChange={(docId) => {
