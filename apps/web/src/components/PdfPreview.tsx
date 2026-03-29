@@ -5,6 +5,7 @@ import type { ProjectRole, CompileDoneEvent } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -15,6 +16,7 @@ type CompileStatus = "idle" | "compiling" | "success" | "failure";
 
 type Props = {
   projectId: string;
+  projectName: string;
   role: ProjectRole;
 };
 
@@ -59,7 +61,7 @@ async function renderPages(
   }
 }
 
-export default function PdfPreview({ projectId, role }: Props) {
+export default function PdfPreview({ projectId, projectName, role }: Props) {
   const [compileStatus, setCompileStatus] = useState<CompileStatus>("idle");
   const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [logs, setLogs] = useState("");
@@ -71,6 +73,11 @@ export default function PdfPreview({ projectId, role }: Props) {
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedWidthRef = useRef(0);
   const renderGenRef = useRef(0);
+  const isCompilingRef = useRef(false);
+  const pendingSocketEventRef = useRef<CompileDoneEvent | null>(null);
+  const compileDoneHandlerRef = useRef<
+    ((data: CompileDoneEvent) => void) | null
+  >(null);
 
   const canCompile = role === "admin" || role === "editor";
 
@@ -221,6 +228,10 @@ export default function PdfPreview({ projectId, role }: Props) {
 
     function handleCompileDone(data: CompileDoneEvent) {
       if (data.projectId !== projectId || !mountedRef.current) return;
+      if (isCompilingRef.current) {
+        pendingSocketEventRef.current = data;
+        return;
+      }
 
       if (data.status === "success") {
         setLogs("");
@@ -248,13 +259,16 @@ export default function PdfPreview({ projectId, role }: Props) {
       }
     }
 
+    compileDoneHandlerRef.current = handleCompileDone;
     socket.on("compile:done", handleCompileDone);
     return () => {
+      compileDoneHandlerRef.current = null;
       socket.off("compile:done", handleCompileDone);
     };
   }, [projectId, fetchPdf]);
 
   async function handleCompile() {
+    isCompilingRef.current = true;
     setCompileStatus("compiling");
     setError("");
     setLogs("");
@@ -296,6 +310,39 @@ export default function PdfPreview({ projectId, role }: Props) {
         setError(err instanceof ApiError ? err.message : "Compile failed");
         setCompileStatus("failure");
       }
+    } finally {
+      isCompilingRef.current = false;
+      const pending = pendingSocketEventRef.current;
+      if (pending) {
+        pendingSocketEventRef.current = null;
+        compileDoneHandlerRef.current?.(pending);
+      }
+    }
+  }
+
+  function handleDownload() {
+    if (!pdfData) return;
+    let url: string | undefined;
+    try {
+      const blob = new Blob([pdfData], { type: "application/pdf" });
+      url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeName =
+        projectName
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\x00-\x1f\x7f]/g, "")
+          .replace(/[/\\:*?"<>|]/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .replace(/^\.+$/, "")
+          .trim()
+          .slice(0, 200) || "output";
+      a.download = `${safeName}.pdf`;
+      a.click();
+    } catch {
+      setError("Failed to download PDF");
+    } finally {
+      if (url) URL.revokeObjectURL(url);
     }
   }
 
@@ -323,6 +370,17 @@ export default function PdfPreview({ projectId, role }: Props) {
         )}
         {error && (
           <span className="truncate text-xs text-destructive">{error}</span>
+        )}
+        {pdfData && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownload}
+            className="ml-auto"
+          >
+            <Download className="size-3.5" />
+            Download
+          </Button>
         )}
       </div>
 
