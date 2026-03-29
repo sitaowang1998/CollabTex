@@ -34,6 +34,14 @@ export function createSnapshotRepository(
         },
       });
     },
+    getLatestSnapshotTime: async (projectId) => {
+      const snapshot = await databaseClient.snapshot.findFirst({
+        where: { projectId },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      return snapshot?.createdAt ?? null;
+    },
     createSnapshot: async ({ projectId, storagePath, message, authorId }) => {
       return databaseClient.snapshot.create({
         data: {

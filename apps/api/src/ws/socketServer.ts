@@ -49,6 +49,10 @@ export function createSocketServer(
     realtimeDocumentService: RealtimeDocumentService;
     projectAccessService: Pick<ProjectAccessService, "requireProjectMember">;
     touchProjectUpdatedAt: (projectId: string) => Promise<void>;
+    queueProjectSnapshot: (
+      projectId: string,
+      userId: string | null,
+    ) => Promise<void>;
   },
 ) {
   const io = new Server<
@@ -307,14 +311,26 @@ export function createSocketServer(
         void leaveActiveTextSession(socket, sessionState);
       }
 
-      // Fire-and-forget — best-effort timestamp update; the user is already
-      // leaving so there is no one to notify of failure.
+      // Fire-and-forget — best-effort timestamp update and snapshot;
+      // the user is already leaving so there is no one to notify of failure.
       if (disconnectedProjectId) {
         void dependencies
           .touchProjectUpdatedAt(disconnectedProjectId)
           .catch((error) => {
             console.error(
               "Failed to touch project timestamp on disconnect",
+              { socketId: socket.id, projectId: disconnectedProjectId },
+              error,
+            );
+          });
+        void dependencies
+          .queueProjectSnapshot(
+            disconnectedProjectId,
+            socket.data.userId ?? null,
+          )
+          .catch((error) => {
+            console.error(
+              "Failed to queue snapshot on disconnect",
               { socketId: socket.id, projectId: disconnectedProjectId },
               error,
             );

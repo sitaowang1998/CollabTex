@@ -271,6 +271,38 @@ describe("compile dispatch service", () => {
     expect(compileInput.files.has("figures/img.png")).toBe(true);
     expect(compileInput.files.get("figures/img.png")).toEqual(binaryContent);
   });
+
+  it("queues snapshot after successful compile", async () => {
+    const { service, compileAdapter, queueProjectSnapshot } =
+      createTestService();
+    compileAdapter.compile.mockResolvedValue({
+      outcome: "completed",
+      exitCode: 0,
+      pdfContent: Buffer.from("pdf"),
+      logs: "Output written",
+    });
+
+    await service.compile("project-1", "user-1");
+    await vi.waitFor(() => {
+      expect(queueProjectSnapshot).toHaveBeenCalledWith("project-1", "user-1");
+    });
+  });
+
+  it("does not queue snapshot after failed compile", async () => {
+    const { service, compileAdapter, queueProjectSnapshot } =
+      createTestService();
+    compileAdapter.compile.mockResolvedValue({
+      outcome: "completed",
+      exitCode: 1,
+      pdfContent: null,
+      logs: "Error",
+    });
+
+    await service.compile("project-1", "user-1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(queueProjectSnapshot).not.toHaveBeenCalled();
+  });
 });
 
 function createTestService() {
@@ -357,6 +389,8 @@ function createTestService() {
     },
   };
 
+  const queueProjectSnapshot = vi.fn().mockResolvedValue(undefined);
+
   const service = createCompileDispatchService({
     projectAccessService,
     projectService,
@@ -366,6 +400,7 @@ function createTestService() {
     compileBuildRepository,
     compileTimeoutMs: 60000,
     notifyCompileDone,
+    queueProjectSnapshot,
   });
 
   return {
@@ -377,6 +412,7 @@ function createTestService() {
     compileBuildRepository,
     notifyCompileDone,
     fileAssemblyDeps,
+    queueProjectSnapshot,
   };
 }
 

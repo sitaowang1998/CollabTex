@@ -3320,6 +3320,44 @@ describe("socket server", () => {
     }
   });
 
+  it("calls queueProjectSnapshot on disconnect when project was joined", async () => {
+    const queueProjectSnapshot = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ queueProjectSnapshot });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    await new Promise<void>((resolve, reject) => {
+      client.once("workspace:opened", () => resolve());
+      client.once("realtime:error", reject);
+      client.emit("workspace:join", {
+        projectId: "project-123",
+        documentId: "doc-456",
+      });
+    });
+
+    client.close();
+    await waitForSocketFlush();
+
+    expect(queueProjectSnapshot).toHaveBeenCalledWith("project-123", "alice");
+  });
+
+  it("does not call queueProjectSnapshot on disconnect without project", async () => {
+    const queueProjectSnapshot = vi.fn().mockResolvedValue(undefined);
+    socketServer = await createTestSocketServer({ queueProjectSnapshot });
+    const token = signToken("alice", testConfig.jwtSecret);
+    const client = socketServer.connect(token);
+
+    await new Promise<void>((resolve, reject) => {
+      client.once("connect", () => resolve());
+      client.once("connect_error", reject);
+    });
+
+    client.close();
+    await waitForSocketFlush();
+
+    expect(queueProjectSnapshot).not.toHaveBeenCalled();
+  });
+
   it("broadcasts awareness removal to peers when socket disconnects", async () => {
     socketServer = await createTestSocketServer();
     const sender = socketServer.connect(

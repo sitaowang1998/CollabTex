@@ -41,6 +41,8 @@ import {
   createSnapshotRefreshProcessor,
   createSnapshotRefreshTrigger,
 } from "./services/snapshotRefresh.js";
+import { createQueueProjectSnapshot } from "./services/snapshotQueue.js";
+import { createSnapshotPeriodicTrigger } from "./services/snapshotPeriodicTrigger.js";
 import { createWorkspaceService } from "./services/workspace.js";
 import {
   createCommentPublisher,
@@ -122,6 +124,11 @@ async function main() {
     const snapshotRefreshTrigger = createSnapshotRefreshTrigger({
       snapshotRefreshProcessor,
     });
+    const queueProjectSnapshot = createQueueProjectSnapshot({
+      databaseClient,
+      snapshotRepository,
+      snapshotRefreshTrigger,
+    });
     const authService = createAuthService({
       userRepository,
       passwordHasher,
@@ -177,6 +184,7 @@ async function main() {
       compileBuildRepository,
       compileTimeoutMs: config.compileTimeoutMs,
       notifyCompileDone: (event) => compileDoneNotifier(event),
+      queueProjectSnapshot,
     });
     const compileRetrievalService = createCompileRetrievalService({
       projectAccessService,
@@ -187,6 +195,7 @@ async function main() {
       projectAccessService,
       documentRepository,
       binaryContentStore,
+      queueProjectSnapshot,
     });
     const commentPublisherRef: {
       current: ReturnType<typeof createCommentPublisher> | undefined;
@@ -220,6 +229,7 @@ async function main() {
       }),
       touchProjectUpdatedAt: (projectId) =>
         projectRepository.touchUpdatedAt(projectId),
+      queueProjectSnapshot,
     });
     resetPublisher = createSocketDocumentResetPublisher(
       io,
@@ -229,11 +239,16 @@ async function main() {
     compileDoneNotifier = compileDonePublisher.emitCompileDone;
     commentPublisherRef.current = createCommentPublisher(io);
 
+    const snapshotPeriodicTrigger = createSnapshotPeriodicTrigger({
+      activeDocumentRegistry,
+      queueProjectSnapshot,
+    });
     installShutdownHandlers({
       server,
       io,
       databaseClient,
       snapshotRefreshTrigger,
+      snapshotPeriodicTrigger,
       activeDocumentRegistry,
       destroyStores: stores.destroy,
       shutdownDrainTimeoutMs: config.shutdownDrainTimeoutMs,
@@ -255,6 +270,7 @@ function installShutdownHandlers({
   io,
   databaseClient,
   snapshotRefreshTrigger,
+  snapshotPeriodicTrigger,
   activeDocumentRegistry,
   destroyStores,
   shutdownDrainTimeoutMs,
@@ -263,6 +279,7 @@ function installShutdownHandlers({
   io: ReturnType<typeof createSocketServer>;
   databaseClient: ReturnType<typeof createDatabaseClient>;
   snapshotRefreshTrigger: ReturnType<typeof createSnapshotRefreshTrigger>;
+  snapshotPeriodicTrigger: ReturnType<typeof createSnapshotPeriodicTrigger>;
   activeDocumentRegistry: ReturnType<typeof createActiveDocumentRegistry>;
   destroyStores?: () => void;
   shutdownDrainTimeoutMs: number;
@@ -280,9 +297,10 @@ function installShutdownHandlers({
 
     try {
       snapshotRefreshTrigger.stop();
+      snapshotPeriodicTrigger.stop();
     } catch (error) {
       hadError = true;
-      console.error("Shutdown: snapshot refresh stop failed", error);
+      console.error("Shutdown: snapshot trigger stop failed", error);
     }
 
     try {

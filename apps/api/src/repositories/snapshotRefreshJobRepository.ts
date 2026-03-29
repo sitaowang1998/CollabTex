@@ -115,11 +115,26 @@ async function findNextClaimableJob(
   });
 }
 
+export async function hasRecentPendingJob(
+  client: DatabaseClient | Prisma.TransactionClient,
+  projectId: string,
+): Promise<boolean> {
+  const count = await client.snapshotRefreshJob.count({
+    where: {
+      projectId,
+      status: {
+        in: ["queued", "processing"],
+      },
+    },
+  });
+  return count > 0;
+}
+
 export async function queueSnapshotRefreshJob(
   tx: Prisma.TransactionClient,
   input: {
     projectId: string;
-    requestedByUserId: string;
+    requestedByUserId: string | null;
   },
 ): Promise<void> {
   await tx.snapshotRefreshJob.create({

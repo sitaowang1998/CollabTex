@@ -253,6 +253,7 @@ describe("binary compile pipeline integration", () => {
         compileBuildRepository,
         compileTimeoutMs: 120000,
         notifyCompileDone: (event) => compileDoneEvents.push(event),
+        queueProjectSnapshot: async () => {},
       });
 
       const fileAssemblyDeps: FileAssemblyDependencies = {

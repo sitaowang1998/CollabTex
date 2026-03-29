@@ -43,10 +43,15 @@ export function createBinaryContentService({
   projectAccessService,
   documentRepository,
   binaryContentStore,
+  queueProjectSnapshot,
 }: {
   projectAccessService: ProjectAccessService;
   documentRepository: DocumentRepository;
   binaryContentStore: BinaryContentStore;
+  queueProjectSnapshot: (
+    projectId: string,
+    userId: string | null,
+  ) => Promise<void>;
 }): BinaryContentService {
   return {
     uploadContent: async ({ projectId, actorUserId, fileId, content }) => {
@@ -70,6 +75,14 @@ export function createBinaryContentService({
 
       const storagePath = `${projectId}/${fileId}`;
       await binaryContentStore.put(storagePath, content);
+
+      void queueProjectSnapshot(projectId, actorUserId).catch((error) => {
+        console.error(
+          "Failed to queue snapshot after binary content upload",
+          { projectId, fileId },
+          error,
+        );
+      });
     },
 
     downloadContent: async ({ projectId, actorUserId, fileId }) => {

@@ -58,6 +58,7 @@ export type ActiveDocumentRegistry = {
   invalidate: (input: { projectId: string; documentId: string }) => {
     invalidatedGeneration: number;
   };
+  getActiveProjectIds: () => string[];
   drain: (
     timeoutMs: number,
   ) => Promise<{ timedOut: boolean; failedCount: number }>;
@@ -144,6 +145,13 @@ export function createActiveDocumentRegistry({
       }
 
       return { invalidatedGeneration };
+    },
+    getActiveProjectIds: () => {
+      const projectIds = new Set<string>();
+      for (const record of activeSessions.values()) {
+        projectIds.add(record.session.projectId);
+      }
+      return Array.from(projectIds);
     },
     drain: async (timeoutMs: number) => {
       const deadline = Date.now() + timeoutMs;
