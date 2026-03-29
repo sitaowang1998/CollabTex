@@ -818,7 +818,11 @@ export default function ProjectEditorPage() {
                 </div>
                 {!previewSectionCollapsed && (
                   <div className="min-h-0 flex-1 overflow-hidden">
-                    <PdfPreview projectId={projectId!} role={myRole!} />
+                    <PdfPreview
+                      projectId={projectId!}
+                      projectName={project?.name ?? ""}
+                      role={myRole!}
+                    />
                   </div>
                 )}
               </div>

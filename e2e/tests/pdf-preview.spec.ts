@@ -70,6 +70,55 @@ test.describe("PDF Preview Panel", () => {
     ).toBeVisible({ timeout: 30000 });
   });
 
+  test("shows download button after compile and triggers download", async ({
+    page,
+  }) => {
+    await registerAndCreateProject(page, "PDF Download Project");
+
+    await page.getByText("main.tex").click();
+    await expect(page.locator(".cm-editor")).toBeVisible();
+
+    // Type valid LaTeX content so compile succeeds
+    const editor = page.locator(".cm-content");
+    await editor.click();
+    await page.keyboard.type("\\documentclass{article}");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("\\begin{document}");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Hello");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("\\end{document}");
+
+    // Wait for content to sync to server via Yjs
+    await expect(editor).toContainText("\\end{document}");
+    await page.waitForTimeout(1000);
+
+    // No download button before compile
+    await expect(
+      page.getByRole("button", { name: /download/i }),
+    ).not.toBeVisible();
+
+    // Compile
+    await page.getByRole("button", { name: "Compile" }).click();
+
+    // Wait for compile to finish with a PDF
+    await expect(page.getByTestId("pdf-canvas-container")).toBeVisible({
+      timeout: 30000,
+    });
+
+    // Download button should now be visible
+    const downloadButton = page.getByRole("button", { name: /download/i });
+    await expect(downloadButton).toBeVisible();
+
+    // Click download and verify a download is triggered
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadButton.click(),
+    ]);
+
+    expect(download.suggestedFilename()).toBe("PDF Download Project.pdf");
+  });
+
   test("preview panel can be collapsed and expanded", async ({ page }) => {
     await registerAndCreateProject(page, "PDF Collapse Project");
 
