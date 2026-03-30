@@ -56,13 +56,20 @@ async function getSnapshotCount(
 /**
  * Polls the snapshot panel until at least `minCount` snapshots appear.
  * Re-opens the panel each poll cycle to refresh the list.
+ * Optionally re-triggers compilation every `recompileIntervalMs` to handle
+ * the server-side dedup window (compiles within 30s of the last snapshot
+ * are silently skipped, so we retry until one succeeds).
  */
 async function waitForSnapshotCount(
   page: import("@playwright/test").Page,
   minCount: number,
-  timeout = 60000,
+  {
+    timeout = 90000,
+    recompileIntervalMs = 15000,
+  }: { timeout?: number; recompileIntervalMs?: number } = {},
 ) {
   const deadline = Date.now() + timeout;
+  let lastCompileTime = 0;
   while (Date.now() < deadline) {
     if (
       await page
@@ -75,6 +82,17 @@ async function waitForSnapshotCount(
     await openSnapshotsPanel(page);
     const count = await getSnapshotCount(page);
     if (count >= minCount) return count;
+
+    // Re-trigger compilation periodically to overcome the dedup window
+    if (Date.now() - lastCompileTime > recompileIntervalMs) {
+      await closeSnapshotsPanel(page);
+      await compileAndWait(page);
+      lastCompileTime = Date.now();
+      await openSnapshotsPanel(page);
+      const countAfterCompile = await getSnapshotCount(page);
+      if (countAfterCompile >= minCount) return countAfterCompile;
+    }
+
     await page.waitForTimeout(2000);
   }
   throw new Error(
@@ -162,8 +180,6 @@ test.describe("Snapshot Panel", () => {
     const initialCount = await getSnapshotCount(page);
     await closeSnapshotsPanel(page);
 
-    // Wait for dedup window to pass since project creation
-    await page.waitForTimeout(35000);
 
     // Type content and compile
     await page.getByText("main.tex").click();
@@ -185,8 +201,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Snap Restore User");
     await createProjectAndOpen(page, "Snap Restore Project");
 
-    // Wait for dedup window to pass since project creation
-    await page.waitForTimeout(35000);
 
     // Type LaTeX content (compilable without the image)
     await page.getByText("main.tex").click();
@@ -209,8 +223,6 @@ test.describe("Snapshot Panel", () => {
     const countAfterFirstCompile = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
 
-    // Wait 35 seconds to ensure dedup window passes before second compile
-    await page.waitForTimeout(35000);
 
     // Edit main.tex to modified content
     await page.getByText("main.tex").click();
@@ -278,8 +290,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Snap Undo User");
     await createProjectAndOpen(page, "Snap Undo Project");
 
-    // Wait for dedup window to pass since project creation
-    await page.waitForTimeout(35000);
 
     // Type Version A
     await page.getByText("main.tex").click();
@@ -295,8 +305,6 @@ test.describe("Snapshot Panel", () => {
     await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
 
-    // Wait for dedup window
-    await page.waitForTimeout(35000);
 
     // Edit to Version B
     await page.getByText("main.tex").click();
@@ -364,8 +372,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Tree Restore User");
     await createProjectAndOpen(page, "Tree Restore Project");
 
-    // Wait for dedup window
-    await page.waitForTimeout(35000);
 
     // Type compilable content and compile → snapshot A (only main.tex)
     await page.getByText("main.tex").click();
@@ -380,8 +386,6 @@ test.describe("Snapshot Panel", () => {
     const countA = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
 
-    // Wait for dedup window
-    await page.waitForTimeout(35000);
 
     // Create a new file chapter1.tex
     const tree = page.getByTestId("file-tree");
@@ -436,8 +440,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Comment Restore User");
     await createProjectAndOpen(page, "Comment Restore Project");
 
-    // Wait for dedup window
-    await page.waitForTimeout(35000);
 
     // Type compilable content and compile → snapshot A (no comments)
     await page.getByText("main.tex").click();
@@ -452,8 +454,6 @@ test.describe("Snapshot Panel", () => {
     const countA = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
 
-    // Wait for dedup window
-    await page.waitForTimeout(35000);
 
     // Create a comment thread on "Hello"
     await page.getByText("main.tex").click();

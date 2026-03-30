@@ -151,9 +151,6 @@ export class SnapshotNotFoundError extends Error {
   }
 }
 
-const noopResetPublisher: SnapshotResetPublisher = {
-  emitDocumentReset: async () => {},
-};
 
 export function createSnapshotService({
   snapshotRepository,
@@ -164,7 +161,7 @@ export function createSnapshotService({
   binaryContentStore,
   documentLookup,
   commentThreadLookup,
-  getResetPublisher: _getResetPublisher = () => noopResetPublisher,
+  invalidateActiveDocuments = () => {},
 }: {
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;
@@ -174,7 +171,9 @@ export function createSnapshotService({
   binaryContentStore: Pick<BinaryContentStore, "get" | "put" | "delete">;
   documentLookup: Pick<DocumentRepository, "listForProject">;
   commentThreadLookup: Pick<CommentRepository, "listThreadsForProject">;
-  getResetPublisher?: () => SnapshotResetPublisher;
+  invalidateActiveDocuments?: (
+    documents: Array<{ projectId: string; documentId: string }>,
+  ) => void;
 }): SnapshotService {
   const service: SnapshotService = {
     loadDocumentContent: async (document) => {
@@ -333,6 +332,13 @@ export function createSnapshotService({
           `Snapshot restore for project ${projectId}: ${syncResult.failedPutCount} binary file(s) failed to write to the content store. The snapshot blob still contains the data; re-restoring may fix this.`,
         );
       }
+
+      invalidateActiveDocuments(
+        restoreResult.affectedTextDocuments.map(({ documentId }) => ({
+          projectId,
+          documentId,
+        })),
+      );
 
       return restoreResult.snapshot;
     },

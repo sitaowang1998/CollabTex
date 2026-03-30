@@ -285,7 +285,7 @@ test.describe("Realtime Sync", () => {
     await page.keyboard.type("some edits");
 
     // Navigate back to dashboard (triggers socket disconnect → touchProjectUpdatedAt)
-    await page.getByText("CollabTex").click();
+    await page.getByRole("link", { name: "Projects" }).click();
     await expect(page).toHaveURL("/");
 
     // Verify the project card shows a recent timestamp
@@ -306,7 +306,7 @@ test.describe("Realtime Sync", () => {
     await addMember(page, userBEmail, "Timestamp Editor");
 
     // Navigate A back to dashboard
-    await page.getByText("CollabTex").click();
+    await page.getByRole("link", { name: "Projects" }).click();
     await expect(page).toHaveURL("/");
 
     // User B: login, open project, edit, leave
@@ -321,7 +321,7 @@ test.describe("Realtime Sync", () => {
     await pageB.keyboard.type("edit by B");
 
     // User B navigates away (triggers disconnect → touchProjectUpdatedAt)
-    await pageB.getByText("CollabTex").click();
+    await pageB.getByRole("link", { name: "Projects" }).click();
     await expect(pageB).toHaveURL("/");
     await ctxB.close();
 
@@ -366,7 +366,7 @@ test.describe("Realtime Sync", () => {
     });
 
     // User B leaves (navigates away → triggers awareness removal)
-    await pageB.getByText("CollabTex").click();
+    await pageB.getByRole("link", { name: "Projects" }).click();
     await expect(pageB).toHaveURL("/");
 
     // User A should see the cursor disappear
@@ -562,7 +562,7 @@ test.describe("Realtime Sync", () => {
     );
 
     // Navigate to dashboard
-    await page.getByText("CollabTex").click();
+    await page.getByRole("link", { name: "Projects" }).click();
     await expect(page).toHaveURL("/");
 
     // Navigate back to project
