@@ -486,7 +486,7 @@ export default function ProjectEditorPage() {
     }
   }, [projectId, setNodes]);
 
-  // Listen for file tree changes from other users (create, delete, move, rename, restore)
+  // Listen for file tree changes from other users (create, delete, move, rename)
   useEffect(() => {
     if (!projectId) return;
     const socket = getSocket();
@@ -510,7 +510,9 @@ export default function ProjectEditorPage() {
     function handleSnapshotRestored(data: SnapshotRestoredEvent) {
       if (data.projectId !== projectId) return;
       refreshTree().catch((err) => console.error("Tree refresh failed:", err));
-      fetchThreads();
+      if (selectedDocId && selectedDocKind === "text") {
+        fetchThreads();
+      }
       setSyncGeneration((g) => g + 1);
     }
 
@@ -518,7 +520,7 @@ export default function ProjectEditorPage() {
     return () => {
       socket.off("snapshot:restored", handleSnapshotRestored);
     };
-  }, [projectId, refreshTree, fetchThreads]);
+  }, [projectId, refreshTree, fetchThreads, selectedDocId, selectedDocKind]);
 
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =

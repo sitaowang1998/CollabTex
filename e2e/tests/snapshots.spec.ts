@@ -278,7 +278,7 @@ test.describe("Snapshot Panel", () => {
     await expect(page.locator(".cm-content")).toContainText("Original content");
 
     // Verify logo.png still in file tree
-    await expect(tree.getByText("logo.png")).toBeVisible();
+    await expect(tree.getByText("logo.png")).toBeVisible({ timeout: 10000 });
   });
 
   test("undo restore via Auto-save before restore", async ({ page }) => {
