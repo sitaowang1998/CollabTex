@@ -13,6 +13,8 @@ import type {
   CommentThreadCreatedEvent,
   CommentAddedEvent,
   CommentThreadStatusChangedEvent,
+  FileTreeChangedEvent,
+  SnapshotRestoredEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { useApiQuery } from "@/lib/useApiQuery";
@@ -374,6 +376,7 @@ export default function ProjectEditorPage() {
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [syncGeneration, setSyncGeneration] = useState(0);
   const [pendingCommentSelection, setPendingCommentSelection] =
     useState<CommentSelection | null>(null);
 
@@ -483,6 +486,41 @@ export default function ProjectEditorPage() {
     }
   }, [projectId, setNodes]);
 
+  // Listen for file tree changes broadcast to the project room
+  useEffect(() => {
+    if (!projectId) return;
+    const socket = getSocket();
+
+    function handleTreeChanged(data: FileTreeChangedEvent) {
+      if (data.projectId !== projectId) return;
+      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
+    }
+
+    socket.on("project:tree_changed", handleTreeChanged);
+    return () => {
+      socket.off("project:tree_changed", handleTreeChanged);
+    };
+  }, [projectId, refreshTree]);
+
+  // Listen for snapshot restore — clear selection, refetch tree, and re-sync editor
+  useEffect(() => {
+    if (!projectId) return;
+    const socket = getSocket();
+
+    function handleSnapshotRestored(data: SnapshotRestoredEvent) {
+      if (data.projectId !== projectId) return;
+      localFolderPathsRef.current.clear();
+      setSelectedFile(null);
+      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
+      setSyncGeneration((g) => g + 1);
+    }
+
+    socket.on("snapshot:restored", handleSnapshotRestored);
+    return () => {
+      socket.off("snapshot:restored", handleSnapshotRestored);
+    };
+  }, [projectId, refreshTree]);
+
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
       parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
@@ -540,9 +578,33 @@ export default function ProjectEditorPage() {
     if (pendingAction) {
       if (pendingAction.type === "delete") {
         localFolderPathsRef.current.delete(pendingAction.path);
+        for (const p of [...localFolderPathsRef.current]) {
+          if (p.startsWith(pendingAction.path + "/")) {
+            localFolderPathsRef.current.delete(p);
+          }
+        }
+        let current = pendingAction.path;
+        while (true) {
+          const lastSlash = current.lastIndexOf("/");
+          if (lastSlash <= 0) break;
+          current = current.slice(0, lastSlash);
+          localFolderPathsRef.current.add(current);
+        }
       } else if (pendingAction.type === "delete-multiple") {
         for (const item of pendingAction.items) {
           localFolderPathsRef.current.delete(item.path);
+          for (const p of [...localFolderPathsRef.current]) {
+            if (p.startsWith(item.path + "/")) {
+              localFolderPathsRef.current.delete(p);
+            }
+          }
+          let current = item.path;
+          while (true) {
+            const lastSlash = current.lastIndexOf("/");
+            if (lastSlash <= 0) break;
+            current = current.slice(0, lastSlash);
+            localFolderPathsRef.current.add(current);
+          }
         }
       }
 
@@ -649,11 +711,14 @@ export default function ProjectEditorPage() {
           to="/"
           className="text-sm font-semibold text-muted-foreground hover:text-foreground"
         >
-          CollabTex
+          Projects
         </Link>
         <span className="text-muted-foreground">/</span>
         <h1 className="truncate text-sm font-semibold">{project.name}</h1>
-        <div className="ml-auto flex items-center gap-2">
+        <span className="mx-auto text-sm font-semibold text-muted-foreground">
+          CollabTex
+        </span>
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -744,7 +809,7 @@ export default function ProjectEditorPage() {
           {selectedFile ? (
             selectedFile.documentKind === "text" ? (
               <Editor
-                key={selectedFile.documentId}
+                key={`${selectedFile.documentId}-${syncGeneration}`}
                 projectId={projectId!}
                 documentId={selectedFile.documentId}
                 path={selectedFile.path}
@@ -756,7 +821,7 @@ export default function ProjectEditorPage() {
               />
             ) : (
               <BinaryPreview
-                key={selectedFile.documentId}
+                key={`${selectedFile.documentId}-${syncGeneration}`}
                 projectId={projectId!}
                 documentId={selectedFile.documentId}
                 path={selectedFile.path}

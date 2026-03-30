@@ -15,6 +15,7 @@ vi.mock("../lib/api", async (importOriginal) => {
       delete: vi.fn(),
       put: vi.fn(),
       uploadFile: vi.fn(),
+      uploadBinaryFile: vi.fn(),
     },
   };
 });
@@ -689,11 +690,10 @@ describe("FileTreeActions", () => {
       expect(input).toHaveClass("hidden");
     });
 
-    it("creates document and uploads content on file selection", async () => {
-      mockedApi.post.mockResolvedValueOnce({
+    it("uploads binary file in single request on file selection", async () => {
+      mockedApi.uploadBinaryFile.mockResolvedValueOnce({
         document: { id: "doc-new", path: "/chapters/photo.png" },
       });
-      mockedApi.uploadFile.mockResolvedValueOnce(undefined);
 
       const { onComplete, onClose, container } = renderActions(uploadAction);
 
@@ -706,21 +706,10 @@ describe("FileTreeActions", () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        expect(mockedApi.post).toHaveBeenCalledWith(
-          `/projects/${PROJECT_ID}/files`,
-          {
-            path: "/chapters/photo.png",
-            kind: "binary",
-            mime: "image/png",
-          },
-          expect.objectContaining({ signal: expect.any(AbortSignal) }),
-        );
-      });
-
-      await waitFor(() => {
-        expect(mockedApi.uploadFile).toHaveBeenCalledWith(
-          `/projects/${PROJECT_ID}/files/doc-new/content`,
+        expect(mockedApi.uploadBinaryFile).toHaveBeenCalledWith(
+          `/projects/${PROJECT_ID}/files/upload`,
           file,
+          "/chapters/photo.png",
           expect.objectContaining({ signal: expect.any(AbortSignal) }),
         );
       });
@@ -729,34 +718,8 @@ describe("FileTreeActions", () => {
       expect(onClose).toHaveBeenCalled();
     });
 
-    it("uses application/octet-stream when file has no type", async () => {
-      mockedApi.post.mockResolvedValueOnce({
-        document: { id: "doc-new", path: "/chapters/data.bin" },
-      });
-      mockedApi.uploadFile.mockResolvedValueOnce(undefined);
-
-      const { container } = renderActions(uploadAction);
-
-      const input = container.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const file = new File(["data"], "data.bin", { type: "" });
-      await userEvent.upload(input, file);
-
-      await waitFor(() => {
-        expect(mockedApi.post).toHaveBeenCalledWith(
-          `/projects/${PROJECT_ID}/files`,
-          expect.objectContaining({ mime: "application/octet-stream" }),
-          expect.anything(),
-        );
-      });
-    });
-
     it("shows 413 error with specific message", async () => {
-      mockedApi.post.mockResolvedValueOnce({
-        document: { id: "doc-new", path: "/chapters/big.bin" },
-      });
-      mockedApi.uploadFile.mockRejectedValueOnce(
+      mockedApi.uploadBinaryFile.mockRejectedValueOnce(
         new ApiError(413, "file exceeds maximum size of 50 MB"),
       );
 
@@ -778,7 +741,7 @@ describe("FileTreeActions", () => {
     });
 
     it("shows generic API error message", async () => {
-      mockedApi.post.mockRejectedValueOnce(
+      mockedApi.uploadBinaryFile.mockRejectedValueOnce(
         new ApiError(409, "File already exists"),
       );
 
@@ -798,7 +761,9 @@ describe("FileTreeActions", () => {
     });
 
     it("shows generic error for non-ApiError rejection", async () => {
-      mockedApi.post.mockRejectedValueOnce(new TypeError("something broke"));
+      mockedApi.uploadBinaryFile.mockRejectedValueOnce(
+        new TypeError("something broke"),
+      );
 
       const { container } = renderActions(uploadAction);
 
@@ -817,14 +782,10 @@ describe("FileTreeActions", () => {
       });
     });
 
-    it("does not call onComplete when upload content fails", async () => {
-      mockedApi.post.mockResolvedValueOnce({
-        document: { id: "doc-new", path: "/chapters/fail.bin" },
-      });
-      mockedApi.uploadFile.mockRejectedValueOnce(
+    it("does not call onComplete when upload fails", async () => {
+      mockedApi.uploadBinaryFile.mockRejectedValueOnce(
         new ApiError(500, "Internal server error"),
       );
-      mockedApi.delete.mockResolvedValueOnce(undefined);
 
       const { onComplete, onClose, container } = renderActions(uploadAction);
 
@@ -845,39 +806,11 @@ describe("FileTreeActions", () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
-    it("cleans up orphaned document when upload content fails", async () => {
-      mockedApi.post.mockResolvedValueOnce({
-        document: { id: "doc-orphan", path: "/chapters/orphan.bin" },
-      });
-      mockedApi.uploadFile.mockRejectedValueOnce(
-        new ApiError(413, "file exceeds maximum size of 50 MB"),
-      );
-      mockedApi.delete.mockResolvedValueOnce(undefined);
-
-      const { container } = renderActions(uploadAction);
-
-      const input = container.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const file = new File(["big"], "orphan.bin", {
-        type: "application/octet-stream",
-      });
-      await userEvent.upload(input, file);
-
-      await waitFor(() => {
-        expect(mockedApi.delete).toHaveBeenCalledWith(
-          `/projects/${PROJECT_ID}/nodes`,
-          { path: "/chapters/orphan.bin" },
-        );
-      });
-    });
-
     it("builds correct path when parentPath is root", async () => {
       const rootUpload: FileTreeAction = { type: "upload", parentPath: "/" };
-      mockedApi.post.mockResolvedValueOnce({
+      mockedApi.uploadBinaryFile.mockResolvedValueOnce({
         document: { id: "doc-new", path: "/logo.png" },
       });
-      mockedApi.uploadFile.mockResolvedValueOnce(undefined);
 
       const { container } = renderActions(rootUpload);
 
@@ -888,9 +821,10 @@ describe("FileTreeActions", () => {
       await userEvent.upload(input, file);
 
       await waitFor(() => {
-        expect(mockedApi.post).toHaveBeenCalledWith(
-          `/projects/${PROJECT_ID}/files`,
-          expect.objectContaining({ path: "/logo.png" }),
+        expect(mockedApi.uploadBinaryFile).toHaveBeenCalledWith(
+          `/projects/${PROJECT_ID}/files/upload`,
+          file,
+          "/logo.png",
           expect.anything(),
         );
       });

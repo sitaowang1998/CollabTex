@@ -587,4 +587,75 @@ test.describe("Comment Threads", () => {
     await expect(threads.nth(0)).toContainText("AAA");
     await expect(threads.nth(1)).toContainText("CCC");
   });
+
+  test("add-comment tooltip has readable colors (dark bg, light text)", async ({
+    page,
+  }) => {
+    await registerUser(page, "Tooltip Color User");
+    await createProjectAndOpen(page, "Tooltip Color Project");
+    await openFileAndType(page, "main.tex", "Some sample text for selection");
+
+    await selectTextInEditor(page, "sample");
+    await expect(page.getByTestId("add-comment-btn")).toBeVisible();
+
+    // Compute luminance values inside the browser to handle any CSS color format
+    const luminances = await page.evaluate(() => {
+      const btn = document.querySelector(
+        "[data-testid='add-comment-btn']",
+      ) as HTMLElement | null;
+      if (!btn) throw new Error("add-comment-btn not found");
+
+      const tooltipWrapper = btn.closest(".cm-tooltip") as HTMLElement | null;
+      if (!tooltipWrapper) throw new Error("cm-tooltip wrapper not found");
+
+      // Use a canvas to convert any CSS color to RGB values
+      function cssColorToRgb(color: string): {
+        r: number;
+        g: number;
+        b: number;
+      } {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+        return { r, g, b };
+      }
+
+      function luminance(color: string): number {
+        const { r, g, b } = cssColorToRgb(color);
+        const [rl, gl, bl] = [r, g, b].map((v) => {
+          const c = v / 255;
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+      }
+
+      const wrapperStyles = window.getComputedStyle(tooltipWrapper);
+      const btnStyles = window.getComputedStyle(btn);
+
+      return {
+        wrapperBg: luminance(wrapperStyles.backgroundColor),
+        btnBg: luminance(btnStyles.backgroundColor),
+        btnColor: luminance(btnStyles.color),
+      };
+    });
+
+    // Tooltip wrapper background should be dark (luminance < 0.2)
+    expect(luminances.wrapperBg).toBeLessThan(0.2);
+
+    // Button background should also be dark (not a bright white rectangle)
+    expect(luminances.btnBg).toBeLessThan(0.2);
+
+    // Button text should be light for readability against dark bg
+    expect(luminances.btnColor).toBeGreaterThan(0.5);
+
+    // Contrast ratio should be at least 3:1
+    const lighter = Math.max(luminances.btnBg, luminances.btnColor);
+    const darker = Math.min(luminances.btnBg, luminances.btnColor);
+    const contrastRatio = (lighter + 0.05) / (darker + 0.05);
+    expect(contrastRatio).toBeGreaterThanOrEqual(3);
+  });
 });

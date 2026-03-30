@@ -109,15 +109,6 @@ export type RestoreProjectSnapshotInput = {
   actorUserId: string;
 };
 
-export type SnapshotResetPublisher = {
-  emitDocumentReset: (input: {
-    projectId: string;
-    documentId: string;
-    reason: string;
-    serverVersion: number;
-  }) => Promise<void> | void;
-};
-
 export type SnapshotService = {
   loadDocumentContent: (document: StoredDocument) => Promise<string | null>;
   captureProjectSnapshot: (
@@ -151,10 +142,6 @@ export class SnapshotNotFoundError extends Error {
   }
 }
 
-const noopResetPublisher: SnapshotResetPublisher = {
-  emitDocumentReset: async () => {},
-};
-
 export function createSnapshotService({
   snapshotRepository,
   snapshotStore,
@@ -164,7 +151,7 @@ export function createSnapshotService({
   binaryContentStore,
   documentLookup,
   commentThreadLookup,
-  getResetPublisher = () => noopResetPublisher,
+  invalidateActiveDocuments = () => {},
 }: {
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;
@@ -174,7 +161,9 @@ export function createSnapshotService({
   binaryContentStore: Pick<BinaryContentStore, "get" | "put" | "delete">;
   documentLookup: Pick<DocumentRepository, "listForProject">;
   commentThreadLookup: Pick<CommentRepository, "listThreadsForProject">;
-  getResetPublisher?: () => SnapshotResetPublisher;
+  invalidateActiveDocuments?: (
+    documents: Array<{ projectId: string; documentId: string }>,
+  ) => void;
 }): SnapshotService {
   const service: SnapshotService = {
     loadDocumentContent: async (document) => {
@@ -334,19 +323,19 @@ export function createSnapshotService({
         );
       }
 
-      const resetPublisher = getResetPublisher();
-
-      await Promise.all(
-        restoreResult.affectedTextDocuments.map(
-          ({ documentId, serverVersion }) =>
-            resetPublisher.emitDocumentReset({
-              projectId,
-              documentId,
-              reason: "snapshot_restore",
-              serverVersion,
-            }),
-        ),
-      );
+      try {
+        invalidateActiveDocuments(
+          restoreResult.affectedTextDocuments.map(({ documentId }) => ({
+            projectId,
+            documentId,
+          })),
+        );
+      } catch (error) {
+        console.error(
+          `Failed to invalidate active documents after snapshot restore for project ${projectId}`,
+          error,
+        );
+      }
 
       return restoreResult.snapshot;
     },

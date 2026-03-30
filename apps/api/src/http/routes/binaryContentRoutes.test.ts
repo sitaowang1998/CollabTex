@@ -166,6 +166,94 @@ describe("binary content routes", () => {
       });
   });
 
+  describe("POST /api/projects/:projectId/files/upload", () => {
+    it("creates binary file and returns 201", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      const res = await request(app)
+        .post(`/api/projects/${PROJECT_ID}/files/upload`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .field("path", "/images/photo.png")
+        .attach("file", Buffer.from("png data"), "photo.png")
+        .expect(201);
+
+      expect(res.body.document).toBeDefined();
+      expect(binaryContentService.createBinaryFile).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        actorUserId: "user-1",
+        path: "/images/photo.png",
+        mime: "image/png",
+        content: expect.any(Buffer),
+      });
+    });
+
+    it("returns 400 when no file is attached", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .post(`/api/projects/${PROJECT_ID}/files/upload`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .field("path", "/images/photo.png")
+        .expect(400)
+        .expect({ error: "file is required" });
+    });
+
+    it("returns 400 when path is missing", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .post(`/api/projects/${PROJECT_ID}/files/upload`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .attach("file", Buffer.from("data"), "image.png")
+        .expect(400)
+        .expect({ error: "path is required" });
+    });
+
+    it("returns 400 for invalid projectId", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .post(`/api/projects/not-a-uuid/files/upload`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .field("path", "/images/photo.png")
+        .attach("file", Buffer.from("data"), "image.png")
+        .expect(400)
+        .expect({ error: "projectId must be a valid UUID" });
+    });
+
+    it("returns 401 without a token", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      await request(app)
+        .post(`/api/projects/${PROJECT_ID}/files/upload`)
+        .field("path", "/images/photo.png")
+        .attach("file", Buffer.from("data"), "image.png")
+        .expect(401);
+    });
+
+    it("returns 413 when file exceeds size limit", async () => {
+      const binaryContentService = createMockBinaryContentService();
+      const app = createTestApp(binaryContentService);
+
+      const oversizedBuffer = Buffer.alloc(50 * 1024 * 1024 + 1);
+
+      await request(app)
+        .post(`/api/projects/${PROJECT_ID}/files/upload`)
+        .set("authorization", `Bearer ${createToken()}`)
+        .field("path", "/images/huge.bin")
+        .attach("file", oversizedBuffer, "huge.bin")
+        .expect(413)
+        .expect({ error: "file exceeds maximum size of 50 MB" });
+
+      expect(binaryContentService.createBinaryFile).not.toHaveBeenCalled();
+    });
+  });
+
   describe("GET /api/projects/:projectId/files/:fileId/content", () => {
     it("downloads binary content and returns 200", async () => {
       const binaryContentService = createMockBinaryContentService();
@@ -288,6 +376,18 @@ function createMockBinaryContentService() {
     downloadContent: vi
       .fn<BinaryContentService["downloadContent"]>()
       .mockResolvedValue(Buffer.from("")),
+    createBinaryFile: vi
+      .fn<BinaryContentService["createBinaryFile"]>()
+      .mockResolvedValue({
+        id: "new-doc-id",
+        projectId: "6f35c2aa-fd34-4905-a370-7d9642244166",
+        path: "/uploaded.png",
+        kind: "binary" as const,
+        mime: "image/png",
+        contentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
   };
 }
 

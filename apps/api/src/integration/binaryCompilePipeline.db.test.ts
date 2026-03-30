@@ -212,9 +212,6 @@ describe("binary compile pipeline integration", () => {
         commentThreadLookup: {
           listThreadsForProject: async () => [],
         },
-        getResetPublisher: () => ({
-          emitDocumentReset: async () => {},
-        }),
       });
 
       const snapshotRefreshTrigger = createSnapshotRefreshTrigger({

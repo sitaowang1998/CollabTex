@@ -12,7 +12,11 @@ import type { SnapshotManagementService } from "../services/snapshotManagement.j
 import { errorHandler } from "./middleware/errorHandler.js";
 import { createAuthRouter } from "./routes/authRoutes.js";
 import { createCommentRouter } from "./routes/commentRoutes.js";
-import type { CommentPublisher } from "../ws/socketServer.js";
+import type {
+  CommentPublisher,
+  FileTreePublisher,
+  SnapshotPublisher,
+} from "../ws/socketServer.js";
 import { createCompileRouter } from "./routes/compileRoutes.js";
 import { createBinaryContentRouter } from "./routes/binaryContentRoutes.js";
 import { createDocumentRouter } from "./routes/documentRoutes.js";
@@ -32,6 +36,8 @@ export type HttpAppDependencies = {
   projectService: ProjectService;
   snapshotManagementService: SnapshotManagementService;
   commentPublisherRef: { current: CommentPublisher | undefined };
+  fileTreePublisherRef: { current: FileTreePublisher | undefined };
+  snapshotPublisherRef: { current: SnapshotPublisher | undefined };
 };
 
 export function createHttpApp(
@@ -44,8 +50,20 @@ export function createHttpApp(
   app.use(createHealthRouter());
   app.use(createAuthRouter(config, dependencies.authService));
   app.use(createProjectRouter(config, dependencies.projectService));
-  app.use(createBinaryContentRouter(config, dependencies.binaryContentService));
-  app.use(createDocumentRouter(config, dependencies.documentService));
+  app.use(
+    createBinaryContentRouter(
+      config,
+      dependencies.binaryContentService,
+      dependencies.fileTreePublisherRef,
+    ),
+  );
+  app.use(
+    createDocumentRouter(
+      config,
+      dependencies.documentService,
+      dependencies.fileTreePublisherRef,
+    ),
+  );
   app.use(
     createCompileRouter(
       config,
@@ -53,7 +71,13 @@ export function createHttpApp(
       dependencies.compileRetrievalService,
     ),
   );
-  app.use(createSnapshotRouter(config, dependencies.snapshotManagementService));
+  app.use(
+    createSnapshotRouter(
+      config,
+      dependencies.snapshotManagementService,
+      dependencies.snapshotPublisherRef,
+    ),
+  );
   app.use(
     createProjectMembershipRouter(config, dependencies.membershipService),
   );

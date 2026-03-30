@@ -496,6 +496,12 @@ export function createStubBinaryContentService(): BinaryContentService {
     uploadContent: async () => {
       throw new Error("Not implemented for createTestApp");
     },
+    downloadContent: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
+    createBinaryFile: async () => {
+      throw new Error("Not implemented for createTestApp");
+    },
   };
 }
 

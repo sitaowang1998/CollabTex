@@ -32,10 +32,7 @@ import { createActiveDocumentStateLoader } from "./services/activeDocumentStateL
 import { createProjectAccessService } from "./services/projectAccess.js";
 import { createProjectService } from "./services/project.js";
 import { createRealtimeDocumentService } from "./services/realtimeDocument.js";
-import {
-  createSnapshotService,
-  type SnapshotResetPublisher,
-} from "./services/snapshot.js";
+import { createSnapshotService } from "./services/snapshot.js";
 import { createSnapshotManagementService } from "./services/snapshotManagement.js";
 import {
   createSnapshotRefreshProcessor,
@@ -47,7 +44,8 @@ import { createWorkspaceService } from "./services/workspace.js";
 import {
   createCommentPublisher,
   createCompileDonePublisher,
-  createSocketDocumentResetPublisher,
+  createFileTreePublisher,
+  createSnapshotPublisher,
   createSocketServer,
 } from "./ws/socketServer.js";
 
@@ -83,9 +81,13 @@ async function main() {
     const projectAccessService = createProjectAccessService({
       projectRepository,
     });
-    let resetPublisher: SnapshotResetPublisher = {
-      emitDocumentReset: async () => {},
-    };
+    const activeDocumentRegistryRef: {
+      current: {
+        invalidate: (input: { projectId: string; documentId: string }) => {
+          invalidatedGeneration: number;
+        };
+      } | null;
+    } = { current: null };
     const commentRepository = createCommentRepository(databaseClient);
     const snapshotService = createSnapshotService({
       snapshotRepository,
@@ -96,7 +98,17 @@ async function main() {
       binaryContentStore,
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
-      getResetPublisher: () => resetPublisher,
+      invalidateActiveDocuments: (documents) => {
+        if (!activeDocumentRegistryRef.current) {
+          console.warn(
+            "activeDocumentRegistry not yet initialized; skipping invalidation",
+          );
+          return;
+        }
+        for (const doc of documents) {
+          activeDocumentRegistryRef.current.invalidate(doc);
+        }
+      },
     });
     const currentTextStateService = createCurrentTextStateService({
       documentTextStateRepository,
@@ -114,6 +126,7 @@ async function main() {
         currentTextStateService,
       }),
     });
+    activeDocumentRegistryRef.current = activeDocumentRegistry;
     const snapshotRefreshProcessor = createSnapshotRefreshProcessor({
       snapshotRefreshJobRepository,
       projectLookup: projectRepository,
@@ -194,11 +207,18 @@ async function main() {
     const binaryContentService = createBinaryContentService({
       projectAccessService,
       documentRepository,
+      documentService,
       binaryContentStore,
       queueProjectSnapshot,
     });
     const commentPublisherRef: {
       current: ReturnType<typeof createCommentPublisher> | undefined;
+    } = { current: undefined };
+    const fileTreePublisherRef: {
+      current: ReturnType<typeof createFileTreePublisher> | undefined;
+    } = { current: undefined };
+    const snapshotPublisherRef: {
+      current: ReturnType<typeof createSnapshotPublisher> | undefined;
     } = { current: undefined };
     const app = createHttpApp(config, {
       authService,
@@ -211,6 +231,8 @@ async function main() {
       projectService,
       snapshotManagementService,
       commentPublisherRef,
+      fileTreePublisherRef,
+      snapshotPublisherRef,
     });
     const server = http.createServer(app);
     const io = createSocketServer(server, config, {
@@ -231,13 +253,11 @@ async function main() {
         projectRepository.touchUpdatedAt(projectId),
       queueProjectSnapshot,
     });
-    resetPublisher = createSocketDocumentResetPublisher(
-      io,
-      activeDocumentRegistry,
-    );
     const compileDonePublisher = createCompileDonePublisher(io);
     compileDoneNotifier = compileDonePublisher.emitCompileDone;
     commentPublisherRef.current = createCommentPublisher(io);
+    fileTreePublisherRef.current = createFileTreePublisher(io);
+    snapshotPublisherRef.current = createSnapshotPublisher(io);
 
     const snapshotPeriodicTrigger = createSnapshotPeriodicTrigger({
       activeDocumentRegistry,

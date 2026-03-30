@@ -16,10 +16,12 @@ import {
   SnapshotNotFoundError,
   type SnapshotManagementService,
 } from "../../services/snapshotManagement.js";
+import type { SnapshotPublisher } from "../../ws/socketServer.js";
 
 export function createSnapshotRouter(
   config: AppConfig,
   snapshotManagementService: SnapshotManagementService,
+  snapshotPublisherRef?: { current: SnapshotPublisher | undefined },
 ) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
@@ -112,6 +114,8 @@ export function createSnapshotRouter(
           snapshotId,
           userId: authenticatedRequest.userId,
         });
+
+        snapshotPublisherRef?.current?.emitSnapshotRestored({ projectId });
 
         res.json({
           snapshot: serializeSnapshot(snapshot),

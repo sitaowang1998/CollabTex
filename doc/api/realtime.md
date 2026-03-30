@@ -314,3 +314,116 @@ Behavior:
   produce logs (e.g., no main document found, internal error)
 - this event is a notification for connected clients; the HTTP endpoint that
   triggered the compile also returns the result synchronously
+
+### `comment:thread_created`
+
+```json
+{
+  "projectId": "project-123",
+  "documentId": "document-456",
+  "thread": {
+    "id": "thread-789",
+    "documentId": "document-456",
+    "projectId": "project-123",
+    "status": "open",
+    "startAnchor": "...",
+    "endAnchor": "...",
+    "quotedText": "selected text",
+    "createdAt": "2026-03-01T12:00:00.000Z",
+    "updatedAt": "2026-03-01T12:00:00.000Z",
+    "comments": [
+      {
+        "id": "comment-1",
+        "threadId": "thread-789",
+        "authorId": "user-1",
+        "authorName": "Alice",
+        "body": "Comment body",
+        "createdAt": "2026-03-01T12:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when a comment thread is created
+- sockets join the project room automatically during `workspace:join`
+- delivered to all project members
+
+### `comment:added`
+
+```json
+{
+  "projectId": "project-123",
+  "documentId": "document-456",
+  "threadId": "thread-789",
+  "comment": {
+    "id": "comment-2",
+    "threadId": "thread-789",
+    "authorId": "user-1",
+    "authorName": "Alice",
+    "body": "Reply body",
+    "createdAt": "2026-03-01T12:00:00.000Z"
+  }
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when a comment is added to an
+  existing thread
+- delivered to all project members
+
+### `comment:thread_status_changed`
+
+```json
+{
+  "projectId": "project-123",
+  "documentId": "document-456",
+  "threadId": "thread-789",
+  "status": "resolved"
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when a comment thread's status
+  changes (e.g., `"open"` to `"resolved"` or vice versa)
+- delivered to all project members
+
+### `project:tree_changed`
+
+```json
+{
+  "projectId": "project-123"
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when the file tree changes
+- sockets join the project room automatically during `workspace:join`
+- triggered by file creation, deletion, move, or rename operations
+- clients should refresh the file tree when received
+- delivered to all project members
+
+### `snapshot:restored`
+
+```json
+{
+  "projectId": "project-123"
+}
+```
+
+Behavior:
+
+- emitted to the `project:{projectId}` room when a snapshot restore completes
+- sockets join the project room automatically during `workspace:join`
+- triggered by a successful
+  `POST /api/projects/{projectId}/snapshots/{snapshotId}/restore`
+- clients should refresh the file tree, comment threads, and re-sync any open
+  document editors when received
+- the server invalidates active text document sessions before broadcasting, so
+  clients that rejoin after receiving this event will load the restored state
+- delivered to all project members
