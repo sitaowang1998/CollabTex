@@ -63,7 +63,7 @@ async function getSnapshotCount(
 /**
  * Polls the snapshot panel until at least `minCount` snapshots appear.
  * Re-opens the panel each poll cycle to refresh the list.
- * If the count doesn't reach minCount, periodically recompiles to
+ * If the count doesn't reach minCount, recompiles every 35s to
  * overcome the server's 30s snapshot dedup window.
  */
 async function waitForSnapshotCount(
@@ -72,7 +72,7 @@ async function waitForSnapshotCount(
   timeout = 90000,
 ) {
   const deadline = Date.now() + timeout;
-  let lastCompileTime = 0;
+  let lastCompileTime = Date.now();
   while (Date.now() < deadline) {
     if (
       await page
@@ -87,7 +87,6 @@ async function waitForSnapshotCount(
     if (count >= minCount) return count;
 
     // Recompile every 35s to overcome the 30s server dedup window.
-    // The first recompile fires immediately (lastCompileTime starts at 0).
     if (Date.now() - lastCompileTime > 35000) {
       await closeSnapshotsPanel(page);
       await compileAndWait(page);
@@ -272,14 +271,23 @@ test.describe("Snapshot Panel", () => {
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
 
-    // Verify main.tex has restored content
+    // Reload to ensure tree and editor reflect restored state
     await closeSnapshotsPanel(page);
-    await page.getByText("main.tex").click();
+    await page.reload();
+    const reloadedTree = page.getByTestId("file-tree");
+    await expect(reloadedTree).toBeVisible({ timeout: 10000 });
+
+    // Verify main.tex has restored content
+    await reloadedTree.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
-    await expect(page.locator(".cm-content")).toContainText("Original content");
+    await expect(page.locator(".cm-content")).toContainText("Original content", {
+      timeout: 15000,
+    });
 
     // Verify logo.png still in file tree
-    await expect(tree.getByText("logo.png")).toBeVisible({ timeout: 10000 });
+    await expect(reloadedTree.getByText("logo.png")).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("undo restore via Auto-save before restore", async ({ page }) => {

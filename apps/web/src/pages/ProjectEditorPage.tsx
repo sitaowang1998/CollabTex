@@ -805,7 +805,7 @@ export default function ProjectEditorPage() {
               />
             ) : (
               <BinaryPreview
-                key={selectedFile.documentId}
+                key={`${selectedFile.documentId}-${syncGeneration}`}
                 projectId={projectId!}
                 documentId={selectedFile.documentId}
                 path={selectedFile.path}
