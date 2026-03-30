@@ -5,7 +5,11 @@ import {
   createBinaryContentService,
   type BinaryContentStore,
 } from "./binaryContent.js";
-import { DocumentNotFoundError, type DocumentRepository } from "./document.js";
+import {
+  DocumentNotFoundError,
+  type DocumentRepository,
+  type DocumentService,
+} from "./document.js";
 import { ProjectNotFoundError, ProjectRoleRequiredError } from "./project.js";
 import type { ProjectAccessService } from "./projectAccess.js";
 
@@ -41,6 +45,17 @@ function createMockBinaryContentStore(): {
   };
 }
 
+function createMockDocumentService(): {
+  [K in keyof Pick<DocumentService, "createFile" | "deleteNode">]: ReturnType<
+    typeof vi.fn
+  >;
+} {
+  return {
+    createFile: vi.fn(),
+    deleteNode: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function createMockQueueProjectSnapshot() {
   return vi.fn().mockResolvedValue(undefined);
 }
@@ -73,6 +88,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -111,6 +127,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -138,6 +155,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -161,6 +179,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -189,6 +208,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -215,6 +235,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot,
       });
@@ -240,6 +261,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot,
       });
@@ -269,6 +291,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -304,6 +327,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -326,6 +350,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -353,6 +378,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -380,6 +406,7 @@ describe("binaryContentService", () => {
       const service = createBinaryContentService({
         projectAccessService,
         documentRepository,
+        documentService: createMockDocumentService(),
         binaryContentStore,
         queueProjectSnapshot: createMockQueueProjectSnapshot(),
       });
@@ -391,6 +418,113 @@ describe("binaryContentService", () => {
           fileId: FILE_ID,
         }),
       ).rejects.toThrow(BinaryContentNotFoundError);
+    });
+  });
+
+  describe("createBinaryFile", () => {
+    it("creates document and stores content atomically", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const documentService = createMockDocumentService();
+      const binaryContentStore = createMockBinaryContentStore();
+      const queueProjectSnapshot = createMockQueueProjectSnapshot();
+      const createdDoc = createBinaryDocument();
+      documentService.createFile.mockResolvedValue(createdDoc);
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        documentService,
+        binaryContentStore,
+        queueProjectSnapshot,
+      });
+
+      const content = Buffer.from("png data");
+      const result = await service.createBinaryFile({
+        projectId: PROJECT_ID,
+        actorUserId: USER_ID,
+        path: "/images/logo.png",
+        mime: "image/png",
+        content,
+      });
+
+      expect(result).toBe(createdDoc);
+      expect(documentService.createFile).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        actorUserId: USER_ID,
+        path: "/images/logo.png",
+        kind: "binary",
+        mime: "image/png",
+      });
+      expect(binaryContentStore.put).toHaveBeenCalledWith(
+        `${PROJECT_ID}/${FILE_ID}`,
+        content,
+      );
+      expect(queueProjectSnapshot).toHaveBeenCalledWith(PROJECT_ID, USER_ID);
+    });
+
+    it("cleans up document when storage fails", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const documentService = createMockDocumentService();
+      const binaryContentStore = createMockBinaryContentStore();
+      const createdDoc = createBinaryDocument();
+      documentService.createFile.mockResolvedValue(createdDoc);
+      binaryContentStore.put.mockRejectedValue(new Error("storage failure"));
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        documentService,
+        binaryContentStore,
+        queueProjectSnapshot: createMockQueueProjectSnapshot(),
+      });
+
+      await expect(
+        service.createBinaryFile({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          path: "/images/logo.png",
+          mime: "image/png",
+          content: Buffer.from("data"),
+        }),
+      ).rejects.toThrow("storage failure");
+
+      expect(documentService.deleteNode).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        actorUserId: USER_ID,
+        path: createdDoc.path,
+      });
+    });
+
+    it("does not queue snapshot when storage fails", async () => {
+      const projectAccessService = createMockProjectAccessService();
+      const documentRepository = createMockDocumentRepository();
+      const documentService = createMockDocumentService();
+      const binaryContentStore = createMockBinaryContentStore();
+      const queueProjectSnapshot = createMockQueueProjectSnapshot();
+      documentService.createFile.mockResolvedValue(createBinaryDocument());
+      binaryContentStore.put.mockRejectedValue(new Error("storage failure"));
+
+      const service = createBinaryContentService({
+        projectAccessService,
+        documentRepository,
+        documentService,
+        binaryContentStore,
+        queueProjectSnapshot,
+      });
+
+      await expect(
+        service.createBinaryFile({
+          projectId: PROJECT_ID,
+          actorUserId: USER_ID,
+          path: "/images/logo.png",
+          mime: "image/png",
+          content: Buffer.from("data"),
+        }),
+      ).rejects.toThrow("storage failure");
+
+      expect(queueProjectSnapshot).not.toHaveBeenCalled();
     });
   });
 });

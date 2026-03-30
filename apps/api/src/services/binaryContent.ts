@@ -3,6 +3,8 @@ import {
   DOCUMENT_WRITE_ROLES,
   DocumentNotFoundError,
   type DocumentRepository,
+  type DocumentService,
+  type StoredDocument,
 } from "./document.js";
 
 export type BinaryContentStore = {
@@ -37,16 +39,25 @@ export type BinaryContentService = {
     actorUserId: string;
     fileId: string;
   }): Promise<Buffer>;
+  createBinaryFile(input: {
+    projectId: string;
+    actorUserId: string;
+    path: string;
+    mime: string;
+    content: Buffer;
+  }): Promise<StoredDocument>;
 };
 
 export function createBinaryContentService({
   projectAccessService,
   documentRepository,
+  documentService,
   binaryContentStore,
   queueProjectSnapshot,
 }: {
   projectAccessService: ProjectAccessService;
   documentRepository: DocumentRepository;
+  documentService: Pick<DocumentService, "createFile" | "deleteNode">;
   binaryContentStore: BinaryContentStore;
   queueProjectSnapshot: (
     projectId: string,
@@ -83,6 +94,52 @@ export function createBinaryContentService({
           error,
         );
       });
+    },
+
+    createBinaryFile: async ({
+      projectId,
+      actorUserId,
+      path,
+      mime,
+      content,
+    }) => {
+      const document = await documentService.createFile({
+        projectId,
+        actorUserId,
+        path,
+        kind: "binary",
+        mime,
+      });
+
+      try {
+        const storagePath = `${projectId}/${document.id}`;
+        await binaryContentStore.put(storagePath, content);
+      } catch (error) {
+        try {
+          await documentService.deleteNode({
+            projectId,
+            actorUserId,
+            path: document.path,
+          });
+        } catch (cleanupError) {
+          console.error(
+            "Failed to clean up document after binary storage failure",
+            { projectId, documentId: document.id },
+            cleanupError,
+          );
+        }
+        throw error;
+      }
+
+      void queueProjectSnapshot(projectId, actorUserId).catch((error) => {
+        console.error(
+          "Failed to queue snapshot after binary file creation",
+          { projectId, documentId: document.id },
+          error,
+        );
+      });
+
+      return document;
     },
 
     downloadContent: async ({ projectId, actorUserId, fileId }) => {

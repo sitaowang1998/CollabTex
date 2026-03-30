@@ -277,6 +277,57 @@ async function uploadFile(
   }
 }
 
+async function uploadBinaryFile<T>(
+  path: string,
+  file: File,
+  filePath: string,
+  options?: RequestOptions,
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = localStorage.getItem("token");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const timeoutMs = 120_000;
+
+  function buildFormData(): FormData {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("path", filePath);
+    if (file.type) {
+      fd.append("mime", file.type);
+    }
+    return fd;
+  }
+
+  let res = await safeFetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: buildFormData(),
+    signal: buildSignal(options?.signal, timeoutMs),
+  });
+
+  if (res.status === 401 && token) {
+    const retryToken = await tryRefreshToken(path, token);
+    if (retryToken) {
+      headers["Authorization"] = `Bearer ${retryToken}`;
+      res = await safeFetch(`${BASE_URL}${path}`, {
+        method: "POST",
+        headers,
+        body: buildFormData(),
+        signal: buildSignal(options?.signal, timeoutMs),
+      });
+    }
+  }
+
+  if (!res.ok) {
+    await parseErrorResponse(res);
+  }
+
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>("GET", path, undefined, options),
@@ -293,4 +344,5 @@ export const api = {
     request<T>("PUT", path, body, options),
   getBlob,
   uploadFile,
+  uploadBinaryFile,
 };

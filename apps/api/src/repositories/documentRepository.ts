@@ -75,10 +75,12 @@ export function createDocumentRepository(
             },
           });
 
-          await queueSnapshotRefreshJob(tx, {
-            projectId,
-            requestedByUserId: actorUserId,
-          });
+          if (kind !== "binary") {
+            await queueSnapshotRefreshJob(tx, {
+              projectId,
+              requestedByUserId: actorUserId,
+            });
+          }
 
           return createdDocument;
         });

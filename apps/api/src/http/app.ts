@@ -50,7 +50,13 @@ export function createHttpApp(
   app.use(createHealthRouter());
   app.use(createAuthRouter(config, dependencies.authService));
   app.use(createProjectRouter(config, dependencies.projectService));
-  app.use(createBinaryContentRouter(config, dependencies.binaryContentService));
+  app.use(
+    createBinaryContentRouter(
+      config,
+      dependencies.binaryContentService,
+      dependencies.fileTreePublisherRef,
+    ),
+  );
   app.use(
     createDocumentRouter(
       config,

@@ -207,6 +207,7 @@ async function main() {
     const binaryContentService = createBinaryContentService({
       projectAccessService,
       documentRepository,
+      documentService,
       binaryContentStore,
       queueProjectSnapshot,
     });

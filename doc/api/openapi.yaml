@@ -742,6 +742,61 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+  /api/projects/{projectId}/files/upload:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags:
+        - Documents
+      summary: Upload a binary file (create document + store content atomically)
+      description: >
+        Creates a binary document at the given path and stores its content in a
+        single atomic operation. This is the preferred way to add binary files
+        to a project. Requires admin or editor role.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - path
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Binary file content (max 50 MB).
+                path:
+                  type: string
+                  description: Absolute project path (e.g. /images/logo.png).
+                mime:
+                  type: string
+                  description: >
+                    MIME type. Defaults to the uploaded file's content type.
+      responses:
+        "201":
+          description: Document created and content stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDocumentResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          description: Payload too large (uploaded file exceeds 50 MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{projectId}/files/{fileId}/content:
     parameters:
       - $ref: "#/components/parameters/ProjectId"

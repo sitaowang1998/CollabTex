@@ -908,37 +908,17 @@ function UploadAction({
       const controller = new AbortController();
       abortRef.current = controller;
 
-      let createdDocumentId: string | null = null;
       try {
-        const { document } = await api.post<ProjectDocumentResponse>(
-          `/projects/${projectId}/files`,
-          {
-            path: filePath,
-            kind: "binary",
-            mime: file.type || "application/octet-stream",
-          },
-          { signal: controller.signal },
-        );
-        createdDocumentId = document.id;
-        await api.uploadFile(
-          `/projects/${projectId}/files/${document.id}/content`,
+        await api.uploadBinaryFile<ProjectDocumentResponse>(
+          `/projects/${projectId}/files/upload`,
           file,
+          filePath,
           { signal: controller.signal },
         );
         onCompleteRef.current();
         onCloseRef.current();
       } catch (err) {
         if (controller.signal.aborted) return;
-        // Clean up orphaned document if creation succeeded but upload failed
-        if (createdDocumentId) {
-          try {
-            await api.delete(`/projects/${projectId}/nodes`, {
-              path: filePath,
-            });
-          } catch {
-            // best-effort cleanup
-          }
-        }
         if (err instanceof ApiError) {
           setError(
             err.status === 413
