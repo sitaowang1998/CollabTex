@@ -164,7 +164,7 @@ export function createSnapshotService({
   binaryContentStore,
   documentLookup,
   commentThreadLookup,
-  getResetPublisher = () => noopResetPublisher,
+  getResetPublisher: _getResetPublisher = () => noopResetPublisher,
 }: {
   snapshotRepository: SnapshotRepository;
   snapshotStore: SnapshotStore;

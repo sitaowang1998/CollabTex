@@ -14,7 +14,7 @@ import type {
   CommentAddedEvent,
   CommentThreadStatusChangedEvent,
   FileTreeChangedEvent,
-  DocumentResetEvent,
+  SnapshotRestoredEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { useApiQuery } from "@/lib/useApiQuery";
@@ -376,6 +376,7 @@ export default function ProjectEditorPage() {
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [syncGeneration, setSyncGeneration] = useState(0);
   const [pendingCommentSelection, setPendingCommentSelection] =
     useState<CommentSelection | null>(null);
 
@@ -492,7 +493,7 @@ export default function ProjectEditorPage() {
 
     function handleTreeChanged(data: FileTreeChangedEvent) {
       if (data.projectId !== projectId) return;
-      refreshTree();
+      refreshTree().catch(() => {});
     }
 
     socket.on("project:tree_changed", handleTreeChanged);
@@ -501,21 +502,23 @@ export default function ProjectEditorPage() {
     };
   }, [projectId, refreshTree]);
 
-  // Listen for doc.reset (snapshot restore) to refresh comments
+  // Listen for snapshot restore — refetch tree, comments, and re-sync editor
   useEffect(() => {
-    if (!projectId || !selectedDocId) return;
+    if (!projectId) return;
     const socket = getSocket();
 
-    function handleDocReset(data: DocumentResetEvent) {
-      if (data.reason !== "snapshot_restore") return;
+    function handleSnapshotRestored(data: SnapshotRestoredEvent) {
+      if (data.projectId !== projectId) return;
+      refreshTree().catch(() => {});
       fetchThreads();
+      setSyncGeneration((g) => g + 1);
     }
 
-    socket.on("doc.reset", handleDocReset);
+    socket.on("snapshot:restored", handleSnapshotRestored);
     return () => {
-      socket.off("doc.reset", handleDocReset);
+      socket.off("snapshot:restored", handleSnapshotRestored);
     };
-  }, [projectId, selectedDocId, fetchThreads]);
+  }, [projectId, refreshTree, fetchThreads]);
 
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
@@ -785,7 +788,7 @@ export default function ProjectEditorPage() {
           {selectedFile ? (
             selectedFile.documentKind === "text" ? (
               <Editor
-                key={selectedFile.documentId}
+                key={`${selectedFile.documentId}-${syncGeneration}`}
                 projectId={projectId!}
                 documentId={selectedFile.documentId}
                 path={selectedFile.path}
@@ -960,10 +963,6 @@ export default function ProjectEditorPage() {
           projectId={projectId}
           myRole={myRole}
           onClose={() => setShowSnapshots(false)}
-          onRestoreSuccess={() => {
-            refreshTree();
-            fetchThreads();
-          }}
         />
       )}
 

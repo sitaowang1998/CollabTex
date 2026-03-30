@@ -109,12 +109,10 @@ export default function SnapshotPanel({
   projectId,
   myRole,
   onClose,
-  onRestoreSuccess,
 }: {
   projectId: string;
   myRole: ProjectRole;
   onClose: () => void;
-  onRestoreSuccess?: () => void;
 }) {
   const {
     data: snapshots,
@@ -150,7 +148,6 @@ export default function SnapshotPanel({
       setConfirmSnapshot(null);
       setMutationError("");
       refetch();
-      onRestoreSuccess?.();
     },
   });
 
