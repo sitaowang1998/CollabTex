@@ -280,9 +280,12 @@ test.describe("Snapshot Panel", () => {
     // Verify main.tex has restored content
     await reloadedTree.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
-    await expect(page.locator(".cm-content")).toContainText("Original content", {
-      timeout: 15000,
-    });
+    await expect(page.locator(".cm-content")).toContainText(
+      "Original content",
+      {
+        timeout: 15000,
+      },
+    );
 
     // Verify logo.png still in file tree
     await expect(reloadedTree.getByText("logo.png")).toBeVisible({
