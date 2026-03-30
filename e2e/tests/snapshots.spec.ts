@@ -60,12 +60,19 @@ async function getSnapshotCount(
  * the server-side dedup window (compiles within 30s of the last snapshot
  * are silently skipped, so we retry until one succeeds).
  */
+/**
+ * Polls the snapshot panel until at least `minCount` snapshots appear.
+ * Re-opens the panel each poll cycle to refresh the list.
+ * If the count doesn't reach minCount, periodically recompiles to
+ * overcome the server's 30s snapshot dedup window.
+ */
 async function waitForSnapshotCount(
   page: import("@playwright/test").Page,
   minCount: number,
   timeout = 90000,
 ) {
   const deadline = Date.now() + timeout;
+  let lastCompileTime = 0;
   while (Date.now() < deadline) {
     if (
       await page
@@ -78,6 +85,15 @@ async function waitForSnapshotCount(
     await openSnapshotsPanel(page);
     const count = await getSnapshotCount(page);
     if (count >= minCount) return count;
+
+    // Recompile every 35s to overcome the 30s server dedup window.
+    // The first recompile fires immediately (lastCompileTime starts at 0).
+    if (Date.now() - lastCompileTime > 35000) {
+      await closeSnapshotsPanel(page);
+      await compileAndWait(page);
+      lastCompileTime = Date.now();
+    }
+
     await page.waitForTimeout(2000);
   }
   throw new Error(
