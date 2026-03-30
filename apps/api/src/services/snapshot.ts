@@ -109,15 +109,6 @@ export type RestoreProjectSnapshotInput = {
   actorUserId: string;
 };
 
-export type SnapshotResetPublisher = {
-  emitDocumentReset: (input: {
-    projectId: string;
-    documentId: string;
-    reason: string;
-    serverVersion: number;
-  }) => Promise<void> | void;
-};
-
 export type SnapshotService = {
   loadDocumentContent: (document: StoredDocument) => Promise<string | null>;
   captureProjectSnapshot: (

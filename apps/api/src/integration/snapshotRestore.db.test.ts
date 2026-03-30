@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DatabaseClient } from "../infrastructure/db/client.js";
 import { createLocalFilesystemSnapshotStore } from "../infrastructure/storage/localFilesystemSnapshotStore.js";
 import { createCommentRepository } from "../repositories/commentRepository.js";
@@ -129,9 +129,6 @@ describe("snapshot restore integration", () => {
       commentThreadLookup: {
         listThreadsForProject: async () => [],
       },
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     const restoredSnapshot = await service.restoreProjectSnapshot({
@@ -278,9 +275,6 @@ describe("snapshot restore integration", () => {
       commentThreadLookup: {
         listThreadsForProject: async () => [],
       },
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await expect(
@@ -371,9 +365,6 @@ describe("snapshot restore integration", () => {
       commentThreadLookup: {
         listThreadsForProject: async () => [],
       },
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await expect(
@@ -466,9 +457,6 @@ describe("snapshot restore integration", () => {
       commentThreadLookup: {
         listThreadsForProject: async () => [],
       },
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await expect(
@@ -562,9 +550,6 @@ describe("snapshot restore integration", () => {
       commentThreadLookup: {
         listThreadsForProject: async () => [],
       },
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await expect(
@@ -640,9 +625,6 @@ describe("snapshot restore integration", () => {
       binaryContentStore: createNoopBinaryContentStore(),
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     const capturedSnapshot = await service.captureProjectSnapshot({
@@ -755,9 +737,6 @@ describe("snapshot restore integration", () => {
       binaryContentStore: createNoopBinaryContentStore(),
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await service.restoreProjectSnapshot({
@@ -842,9 +821,6 @@ describe("snapshot restore integration", () => {
       binaryContentStore: createNoopBinaryContentStore(),
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     await service.restoreProjectSnapshot({
@@ -901,9 +877,6 @@ describe("snapshot restore integration", () => {
       binaryContentStore: createNoopBinaryContentStore(),
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
-      getResetPublisher: () => ({
-        emitDocumentReset: vi.fn(),
-      }),
     });
 
     // State 1: one open thread with one comment
