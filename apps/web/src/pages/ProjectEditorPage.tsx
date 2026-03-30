@@ -579,16 +579,33 @@ export default function ProjectEditorPage() {
     if (pendingAction) {
       if (pendingAction.type === "delete") {
         localFolderPathsRef.current.delete(pendingAction.path);
-        const lastSlash = pendingAction.path.lastIndexOf("/");
-        const parent =
-          lastSlash <= 0 ? "/" : pendingAction.path.slice(0, lastSlash);
-        if (parent !== "/") localFolderPathsRef.current.add(parent);
+        for (const p of [...localFolderPathsRef.current]) {
+          if (p.startsWith(pendingAction.path + "/")) {
+            localFolderPathsRef.current.delete(p);
+          }
+        }
+        let current = pendingAction.path;
+        while (true) {
+          const lastSlash = current.lastIndexOf("/");
+          if (lastSlash <= 0) break;
+          current = current.slice(0, lastSlash);
+          localFolderPathsRef.current.add(current);
+        }
       } else if (pendingAction.type === "delete-multiple") {
         for (const item of pendingAction.items) {
           localFolderPathsRef.current.delete(item.path);
-          const lastSlash = item.path.lastIndexOf("/");
-          const parent = lastSlash <= 0 ? "/" : item.path.slice(0, lastSlash);
-          if (parent !== "/") localFolderPathsRef.current.add(parent);
+          for (const p of [...localFolderPathsRef.current]) {
+            if (p.startsWith(item.path + "/")) {
+              localFolderPathsRef.current.delete(p);
+            }
+          }
+          let current = item.path;
+          while (true) {
+            const lastSlash = current.lastIndexOf("/");
+            if (lastSlash <= 0) break;
+            current = current.slice(0, lastSlash);
+            localFolderPathsRef.current.add(current);
+          }
         }
       }
 

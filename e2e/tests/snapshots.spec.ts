@@ -56,13 +56,6 @@ async function getSnapshotCount(
 /**
  * Polls the snapshot panel until at least `minCount` snapshots appear.
  * Re-opens the panel each poll cycle to refresh the list.
- * Optionally re-triggers compilation every `recompileIntervalMs` to handle
- * the server-side dedup window (compiles within 30s of the last snapshot
- * are silently skipped, so we retry until one succeeds).
- */
-/**
- * Polls the snapshot panel until at least `minCount` snapshots appear.
- * Re-opens the panel each poll cycle to refresh the list.
  * If the count doesn't reach minCount, recompiles every 35s to
  * overcome the server's 30s snapshot dedup window.
  */
