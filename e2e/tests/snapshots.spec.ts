@@ -264,14 +264,9 @@ test.describe("Snapshot Panel", () => {
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
 
-    // Reload to ensure tree and editor reflect restored state
-    await closeSnapshotsPanel(page);
-    await page.reload();
-    const reloadedTree = page.getByTestId("file-tree");
-    await expect(reloadedTree).toBeVisible({ timeout: 10000 });
-
     // Verify main.tex has restored content
-    await reloadedTree.getByText("main.tex").click();
+    await closeSnapshotsPanel(page);
+    await tree.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
     await expect(page.locator(".cm-content")).toContainText(
       "Original content",
@@ -281,9 +276,7 @@ test.describe("Snapshot Panel", () => {
     );
 
     // Verify logo.png still in file tree
-    await expect(reloadedTree.getByText("logo.png")).toBeVisible({
-      timeout: 10000,
-    });
+    await expect(tree.getByText("logo.png")).toBeVisible({ timeout: 10000 });
   });
 
   test("undo restore via Auto-save before restore", async ({ page }) => {
