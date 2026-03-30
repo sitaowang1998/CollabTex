@@ -142,7 +142,6 @@ export class SnapshotNotFoundError extends Error {
   }
 }
 
-
 export function createSnapshotService({
   snapshotRepository,
   snapshotStore,

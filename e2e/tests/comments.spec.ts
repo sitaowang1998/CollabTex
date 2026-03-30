@@ -609,9 +609,11 @@ test.describe("Comment Threads", () => {
       if (!tooltipWrapper) throw new Error("cm-tooltip wrapper not found");
 
       // Use a canvas to convert any CSS color to RGB values
-      function cssColorToRgb(
-        color: string,
-      ): { r: number; g: number; b: number } {
+      function cssColorToRgb(color: string): {
+        r: number;
+        g: number;
+        b: number;
+      } {
         const canvas = document.createElement("canvas");
         canvas.width = 1;
         canvas.height = 1;
@@ -626,9 +628,7 @@ test.describe("Comment Threads", () => {
         const { r, g, b } = cssColorToRgb(color);
         const [rl, gl, bl] = [r, g, b].map((v) => {
           const c = v / 255;
-          return c <= 0.03928
-            ? c / 12.92
-            : Math.pow((c + 0.055) / 1.055, 2.4);
+          return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
         });
         return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
       }

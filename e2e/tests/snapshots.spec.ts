@@ -180,7 +180,6 @@ test.describe("Snapshot Panel", () => {
     const initialCount = await getSnapshotCount(page);
     await closeSnapshotsPanel(page);
 
-
     // Type content and compile
     await page.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
@@ -200,7 +199,6 @@ test.describe("Snapshot Panel", () => {
 
     await registerUser(page, "Snap Restore User");
     await createProjectAndOpen(page, "Snap Restore Project");
-
 
     // Type LaTeX content (compilable without the image)
     await page.getByText("main.tex").click();
@@ -222,7 +220,6 @@ test.describe("Snapshot Panel", () => {
     await openSnapshotsPanel(page);
     const countAfterFirstCompile = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
-
 
     // Edit main.tex to modified content
     await page.getByText("main.tex").click();
@@ -290,7 +287,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Snap Undo User");
     await createProjectAndOpen(page, "Snap Undo Project");
 
-
     // Type Version A
     await page.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
@@ -304,7 +300,6 @@ test.describe("Snapshot Panel", () => {
     await openSnapshotsPanel(page);
     await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
-
 
     // Edit to Version B
     await page.getByText("main.tex").click();
@@ -372,7 +367,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Tree Restore User");
     await createProjectAndOpen(page, "Tree Restore Project");
 
-
     // Type compilable content and compile → snapshot A (only main.tex)
     await page.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
@@ -385,7 +379,6 @@ test.describe("Snapshot Panel", () => {
     await openSnapshotsPanel(page);
     const countA = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
-
 
     // Create a new file chapter1.tex
     const tree = page.getByTestId("file-tree");
@@ -440,7 +433,6 @@ test.describe("Snapshot Panel", () => {
     await registerUser(page, "Comment Restore User");
     await createProjectAndOpen(page, "Comment Restore Project");
 
-
     // Type compilable content and compile → snapshot A (no comments)
     await page.getByText("main.tex").click();
     await expect(page.locator(".cm-editor")).toBeVisible();
@@ -453,7 +445,6 @@ test.describe("Snapshot Panel", () => {
     await openSnapshotsPanel(page);
     const countA = await waitForSnapshotCount(page, 2);
     await closeSnapshotsPanel(page);
-
 
     // Create a comment thread on "Hello"
     await page.getByText("main.tex").click();
@@ -482,8 +473,7 @@ test.describe("Snapshot Panel", () => {
         }
 
         const found = findTextNode(content);
-        if (!found)
-          throw new Error(`Text "${searchText}" not found in editor`);
+        if (!found) throw new Error(`Text "${searchText}" not found in editor`);
 
         const range = document.createRange();
         range.setStart(found.node, found.offset);

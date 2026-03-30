@@ -82,7 +82,11 @@ async function main() {
       projectRepository,
     });
     const activeDocumentRegistryRef: {
-      current: { invalidate: (input: { projectId: string; documentId: string }) => { invalidatedGeneration: number } } | null;
+      current: {
+        invalidate: (input: { projectId: string; documentId: string }) => {
+          invalidatedGeneration: number;
+        };
+      } | null;
     } = { current: null };
     const commentRepository = createCommentRepository(databaseClient);
     const snapshotService = createSnapshotService({
