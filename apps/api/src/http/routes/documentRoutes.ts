@@ -27,12 +27,14 @@ import {
   ProjectNotFoundError,
   ProjectRoleRequiredError,
 } from "../../services/project.js";
+import type { FileTreePublisher } from "../../ws/socketServer.js";
 
 const DOCUMENT_KINDS = ["text", "binary"] as const;
 
 export function createDocumentRouter(
   config: AppConfig,
   documentService: DocumentService,
+  fileTreePublisherRef?: { current: FileTreePublisher | undefined },
 ) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
@@ -89,6 +91,8 @@ export function createDocumentRouter(
           mime: body.mime,
         });
 
+        fileTreePublisherRef?.current?.emitTreeChanged({ projectId });
+
         const response: ProjectDocumentResponse = {
           document: serializeDocument(document),
         };
@@ -126,6 +130,7 @@ export function createDocumentRouter(
           destinationParentPath: body.destinationParentPath,
         });
 
+        fileTreePublisherRef?.current?.emitTreeChanged({ projectId });
         res.status(204).send();
       } catch (error) {
         next(mapDocumentError(error));
@@ -160,6 +165,7 @@ export function createDocumentRouter(
           name: body.name,
         });
 
+        fileTreePublisherRef?.current?.emitTreeChanged({ projectId });
         res.status(204).send();
       } catch (error) {
         next(mapDocumentError(error));
@@ -193,6 +199,7 @@ export function createDocumentRouter(
           path: body.path,
         });
 
+        fileTreePublisherRef?.current?.emitTreeChanged({ projectId });
         res.status(204).send();
       } catch (error) {
         next(mapDocumentError(error));

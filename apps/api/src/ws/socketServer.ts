@@ -8,6 +8,7 @@ import type {
   CommentThreadCreatedEvent,
   CommentThreadStatusChangedEvent,
   CompileDoneEvent,
+  FileTreeChangedEvent,
   ServerToClientEvents,
   ClientDocumentUpdateEvent,
   WorkspaceErrorEvent,
@@ -475,6 +476,29 @@ export function createCommentPublisher(
       } catch (error) {
         console.error(
           "Failed to broadcast comment:thread_status_changed",
+          { projectId: event.projectId },
+          error,
+        );
+      }
+    },
+  };
+}
+
+export type FileTreePublisher = ReturnType<typeof createFileTreePublisher>;
+
+export function createFileTreePublisher(
+  io: ReturnType<typeof createSocketServer>,
+) {
+  return {
+    emitTreeChanged: (event: FileTreeChangedEvent) => {
+      try {
+        io.to(createProjectRoomName(event.projectId)).emit(
+          "project:tree_changed",
+          event,
+        );
+      } catch (error) {
+        console.error(
+          "Failed to broadcast project:tree_changed",
           { projectId: event.projectId },
           error,
         );

@@ -176,7 +176,7 @@ describe("ProjectEditorPage", () => {
     });
     expect(screen.getByText("main.tex")).toBeInTheDocument();
     expect(screen.getByText("chapters")).toBeInTheDocument();
-    expect(screen.getByText("CollabTex")).toBeInTheDocument();
+    expect(screen.getByText("Projects")).toBeInTheDocument();
   });
 
   it("shows 'Project not found' on 404", async () => {
@@ -353,6 +353,54 @@ describe("ProjectEditorPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Select a file to edit")).toBeInTheDocument();
     });
+  });
+
+  it("preserves empty parent folder after deleting the last file in it", async () => {
+    const user = userEvent.setup();
+    setupApiMocks();
+    renderEditor();
+
+    await waitFor(() => {
+      expect(screen.getByText("chapters")).toBeInTheDocument();
+      expect(screen.getByText("intro.tex")).toBeInTheDocument();
+    });
+
+    // Expand the chapters folder and right-click delete intro.tex
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByText("intro.tex"),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    // Confirm delete — server returns tree WITHOUT the chapters folder
+    mockedApi.delete.mockResolvedValueOnce(undefined);
+    mockedApi.get.mockImplementation((path: string) => {
+      if (path === "/auth/me") return Promise.resolve(authUser);
+      if (path.endsWith("/tree")) {
+        return Promise.resolve({
+          nodes: [
+            {
+              type: "file",
+              name: "main.tex",
+              path: "/main.tex",
+              documentId: "doc-main",
+              documentKind: "text",
+              mime: "text/x-tex",
+            },
+          ],
+        });
+      }
+      if (path.endsWith("/main-document"))
+        return Promise.resolve({ mainDocument: null });
+      return Promise.resolve({});
+    });
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    // intro.tex should be gone but the chapters folder should remain
+    await waitFor(() => {
+      expect(screen.queryByText("intro.tex")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("chapters")).toBeInTheDocument();
   });
 
   it("renders binary preview for binary files instead of editor", async () => {

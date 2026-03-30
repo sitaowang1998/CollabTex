@@ -587,4 +587,65 @@ test.describe("Comment Threads", () => {
     await expect(threads.nth(0)).toContainText("AAA");
     await expect(threads.nth(1)).toContainText("CCC");
   });
+
+  test("add-comment tooltip has readable colors (dark bg, light text)", async ({
+    page,
+  }) => {
+    await registerUser(page, "Tooltip Color User");
+    await createProjectAndOpen(page, "Tooltip Color Project");
+    await openFileAndType(page, "main.tex", "Some sample text for selection");
+
+    await selectTextInEditor(page, "sample");
+    await expect(page.getByTestId("add-comment-btn")).toBeVisible();
+
+    const colors = await page.evaluate(() => {
+      const btn = document.querySelector(
+        "[data-testid='add-comment-btn']",
+      ) as HTMLElement | null;
+      if (!btn) throw new Error("add-comment-btn not found");
+
+      const tooltipWrapper = btn.closest(".cm-tooltip") as HTMLElement | null;
+      if (!tooltipWrapper) throw new Error("cm-tooltip wrapper not found");
+
+      const wrapperStyles = window.getComputedStyle(tooltipWrapper);
+      const btnStyles = window.getComputedStyle(btn);
+
+      return {
+        wrapperBg: wrapperStyles.backgroundColor,
+        btnBg: btnStyles.backgroundColor,
+        btnColor: btnStyles.color,
+      };
+    });
+
+    // Parse rgb(r, g, b) and compute relative luminance
+    function luminance(rgb: string): number {
+      const match = rgb.match(/(\d+),\s*(\d+),\s*(\d+)/);
+      if (!match) return -1;
+      const [r, g, b] = [match[1], match[2], match[3]].map((v) => {
+        const c = parseInt(v, 10) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    // Tooltip wrapper background should be dark (luminance < 0.2)
+    const wrapperLum = luminance(colors.wrapperBg);
+    expect(wrapperLum).toBeGreaterThanOrEqual(0);
+    expect(wrapperLum).toBeLessThan(0.2);
+
+    // Button background should also be dark (not a bright white rectangle)
+    const btnBgLum = luminance(colors.btnBg);
+    expect(btnBgLum).toBeGreaterThanOrEqual(0);
+    expect(btnBgLum).toBeLessThan(0.2);
+
+    // Button text should be light for readability against dark bg
+    const btnColorLum = luminance(colors.btnColor);
+    expect(btnColorLum).toBeGreaterThan(0.5);
+
+    // Contrast ratio should be at least 3:1
+    const lighter = Math.max(btnBgLum, btnColorLum);
+    const darker = Math.min(btnBgLum, btnColorLum);
+    const contrastRatio = (lighter + 0.05) / (darker + 0.05);
+    expect(contrastRatio).toBeGreaterThanOrEqual(3);
+  });
 });

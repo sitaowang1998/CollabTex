@@ -253,6 +253,10 @@ export type CommentThreadStatusChangedEvent = {
   status: CommentThreadStatus;
 };
 
+export type FileTreeChangedEvent = {
+  projectId: string;
+};
+
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
@@ -267,6 +271,7 @@ export type ServerToClientEvents = {
   "comment:thread_status_changed": (
     data: CommentThreadStatusChangedEvent,
   ) => void;
+  "project:tree_changed": (data: FileTreeChangedEvent) => void;
 };
 
 export type ClientToServerEvents = {

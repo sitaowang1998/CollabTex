@@ -13,6 +13,8 @@ import type {
   CommentThreadCreatedEvent,
   CommentAddedEvent,
   CommentThreadStatusChangedEvent,
+  FileTreeChangedEvent,
+  DocumentResetEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { useApiQuery } from "@/lib/useApiQuery";
@@ -483,6 +485,38 @@ export default function ProjectEditorPage() {
     }
   }, [projectId, setNodes]);
 
+  // Listen for file tree changes from other users (create, delete, move, rename, restore)
+  useEffect(() => {
+    if (!projectId) return;
+    const socket = getSocket();
+
+    function handleTreeChanged(data: FileTreeChangedEvent) {
+      if (data.projectId !== projectId) return;
+      refreshTree();
+    }
+
+    socket.on("project:tree_changed", handleTreeChanged);
+    return () => {
+      socket.off("project:tree_changed", handleTreeChanged);
+    };
+  }, [projectId, refreshTree]);
+
+  // Listen for doc.reset (snapshot restore) to refresh comments
+  useEffect(() => {
+    if (!projectId || !selectedDocId) return;
+    const socket = getSocket();
+
+    function handleDocReset(data: DocumentResetEvent) {
+      if (data.reason !== "snapshot_restore") return;
+      fetchThreads();
+    }
+
+    socket.on("doc.reset", handleDocReset);
+    return () => {
+      socket.off("doc.reset", handleDocReset);
+    };
+  }, [projectId, selectedDocId, fetchThreads]);
+
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
       parentPath === "/" ? `/${name}` : `${parentPath}/${name}`;
@@ -540,9 +574,16 @@ export default function ProjectEditorPage() {
     if (pendingAction) {
       if (pendingAction.type === "delete") {
         localFolderPathsRef.current.delete(pendingAction.path);
+        const lastSlash = pendingAction.path.lastIndexOf("/");
+        const parent =
+          lastSlash <= 0 ? "/" : pendingAction.path.slice(0, lastSlash);
+        if (parent !== "/") localFolderPathsRef.current.add(parent);
       } else if (pendingAction.type === "delete-multiple") {
         for (const item of pendingAction.items) {
           localFolderPathsRef.current.delete(item.path);
+          const lastSlash = item.path.lastIndexOf("/");
+          const parent = lastSlash <= 0 ? "/" : item.path.slice(0, lastSlash);
+          if (parent !== "/") localFolderPathsRef.current.add(parent);
         }
       }
 
@@ -649,7 +690,7 @@ export default function ProjectEditorPage() {
           to="/"
           className="text-sm font-semibold text-muted-foreground hover:text-foreground"
         >
-          CollabTex
+          Projects
         </Link>
         <span className="text-muted-foreground">/</span>
         <h1 className="truncate text-sm font-semibold">{project.name}</h1>
@@ -919,6 +960,10 @@ export default function ProjectEditorPage() {
           projectId={projectId}
           myRole={myRole}
           onClose={() => setShowSnapshots(false)}
+          onRestoreSuccess={() => {
+            refreshTree();
+            fetchThreads();
+          }}
         />
       )}
 
