@@ -16,12 +16,12 @@ import {
   SnapshotNotFoundError,
   type SnapshotManagementService,
 } from "../../services/snapshotManagement.js";
-import type { FileTreePublisher } from "../../ws/socketServer.js";
+import type { SnapshotPublisher } from "../../ws/socketServer.js";
 
 export function createSnapshotRouter(
   config: AppConfig,
   snapshotManagementService: SnapshotManagementService,
-  fileTreePublisherRef?: { current: FileTreePublisher | undefined },
+  snapshotPublisherRef?: { current: SnapshotPublisher | undefined },
 ) {
   const router = Router();
   const requireAuth = createRequireAuth(config);
@@ -115,7 +115,7 @@ export function createSnapshotRouter(
           userId: authenticatedRequest.userId,
         });
 
-        fileTreePublisherRef?.current?.emitTreeChanged({ projectId });
+        snapshotPublisherRef?.current?.emitSnapshotRestored({ projectId });
 
         res.json({
           snapshot: serializeSnapshot(snapshot),

@@ -554,18 +554,6 @@ describe("snapshot service", () => {
     expect(binaryContentStore.delete).toHaveBeenCalledWith(
       "project-1/document-3",
     );
-    expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(1, {
-      projectId: "project-1",
-      documentId: "document-1",
-      reason: "snapshot_restore",
-      serverVersion: 3,
-    });
-    expect(resetPublisher.emitDocumentReset).toHaveBeenNthCalledWith(2, {
-      projectId: "project-1",
-      documentId: "deleted-text-doc",
-      reason: "snapshot_restore",
-      serverVersion: 0,
-    });
     expect(restored.id).toBe("snapshot-2");
   });
 

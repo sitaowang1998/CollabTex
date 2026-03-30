@@ -257,6 +257,10 @@ export type FileTreeChangedEvent = {
   projectId: string;
 };
 
+export type SnapshotRestoredEvent = {
+  projectId: string;
+};
+
 export type ServerToClientEvents = {
   "workspace:opened": (data: WorkspaceOpenedEvent) => void;
   "realtime:error": (data: WorkspaceErrorEvent) => void;
@@ -272,6 +276,7 @@ export type ServerToClientEvents = {
     data: CommentThreadStatusChangedEvent,
   ) => void;
   "project:tree_changed": (data: FileTreeChangedEvent) => void;
+  "snapshot:restored": (data: SnapshotRestoredEvent) => void;
 };
 
 export type ClientToServerEvents = {

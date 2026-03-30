@@ -15,6 +15,7 @@ import { createCommentRouter } from "./routes/commentRoutes.js";
 import type {
   CommentPublisher,
   FileTreePublisher,
+  SnapshotPublisher,
 } from "../ws/socketServer.js";
 import { createCompileRouter } from "./routes/compileRoutes.js";
 import { createBinaryContentRouter } from "./routes/binaryContentRoutes.js";
@@ -36,6 +37,7 @@ export type HttpAppDependencies = {
   snapshotManagementService: SnapshotManagementService;
   commentPublisherRef: { current: CommentPublisher | undefined };
   fileTreePublisherRef: { current: FileTreePublisher | undefined };
+  snapshotPublisherRef: { current: SnapshotPublisher | undefined };
 };
 
 export function createHttpApp(
@@ -67,7 +69,7 @@ export function createHttpApp(
     createSnapshotRouter(
       config,
       dependencies.snapshotManagementService,
-      dependencies.fileTreePublisherRef,
+      dependencies.snapshotPublisherRef,
     ),
   );
   app.use(

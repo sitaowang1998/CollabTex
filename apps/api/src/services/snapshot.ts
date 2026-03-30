@@ -334,20 +334,6 @@ export function createSnapshotService({
         );
       }
 
-      const resetPublisher = getResetPublisher();
-
-      await Promise.all(
-        restoreResult.affectedTextDocuments.map(
-          ({ documentId, serverVersion }) =>
-            resetPublisher.emitDocumentReset({
-              projectId,
-              documentId,
-              reason: "snapshot_restore",
-              serverVersion,
-            }),
-        ),
-      );
-
       return restoreResult.snapshot;
     },
   };

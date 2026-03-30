@@ -48,6 +48,7 @@ import {
   createCommentPublisher,
   createCompileDonePublisher,
   createFileTreePublisher,
+  createSnapshotPublisher,
   createSocketDocumentResetPublisher,
   createSocketServer,
 } from "./ws/socketServer.js";
@@ -204,6 +205,9 @@ async function main() {
     const fileTreePublisherRef: {
       current: ReturnType<typeof createFileTreePublisher> | undefined;
     } = { current: undefined };
+    const snapshotPublisherRef: {
+      current: ReturnType<typeof createSnapshotPublisher> | undefined;
+    } = { current: undefined };
     const app = createHttpApp(config, {
       authService,
       binaryContentService,
@@ -216,6 +220,7 @@ async function main() {
       snapshotManagementService,
       commentPublisherRef,
       fileTreePublisherRef,
+      snapshotPublisherRef,
     });
     const server = http.createServer(app);
     const io = createSocketServer(server, config, {
@@ -244,6 +249,7 @@ async function main() {
     compileDoneNotifier = compileDonePublisher.emitCompileDone;
     commentPublisherRef.current = createCommentPublisher(io);
     fileTreePublisherRef.current = createFileTreePublisher(io);
+    snapshotPublisherRef.current = createSnapshotPublisher(io);
 
     const snapshotPeriodicTrigger = createSnapshotPeriodicTrigger({
       activeDocumentRegistry,
