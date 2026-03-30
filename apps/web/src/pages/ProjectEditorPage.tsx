@@ -493,7 +493,7 @@ export default function ProjectEditorPage() {
 
     function handleTreeChanged(data: FileTreeChangedEvent) {
       if (data.projectId !== projectId) return;
-      refreshTree().catch(() => {});
+      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
     }
 
     socket.on("project:tree_changed", handleTreeChanged);
@@ -509,7 +509,7 @@ export default function ProjectEditorPage() {
 
     function handleSnapshotRestored(data: SnapshotRestoredEvent) {
       if (data.projectId !== projectId) return;
-      refreshTree().catch(() => {});
+      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
       fetchThreads();
       setSyncGeneration((g) => g + 1);
     }
@@ -697,7 +697,10 @@ export default function ProjectEditorPage() {
         </Link>
         <span className="text-muted-foreground">/</span>
         <h1 className="truncate text-sm font-semibold">{project.name}</h1>
-        <div className="ml-auto flex items-center gap-2">
+        <span className="mx-auto text-sm font-semibold text-muted-foreground">
+          CollabTex
+        </span>
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"

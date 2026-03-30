@@ -177,6 +177,7 @@ describe("ProjectEditorPage", () => {
     expect(screen.getByText("main.tex")).toBeInTheDocument();
     expect(screen.getByText("chapters")).toBeInTheDocument();
     expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.getByText("CollabTex")).toBeInTheDocument();
   });
 
   it("shows 'Project not found' on 404", async () => {

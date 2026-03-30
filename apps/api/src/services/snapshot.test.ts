@@ -13,7 +13,6 @@ import {
   createSnapshotService,
   parseProjectSnapshotState,
   type SnapshotRepository,
-  type SnapshotResetPublisher,
   type SnapshotStore,
   type StoredSnapshot,
 } from "./snapshot.js";
@@ -426,7 +425,7 @@ describe("snapshot service", () => {
     const store = createSnapshotStore();
     const documentTextStateRepository = createDocumentTextStateRepository();
     const projectStateRepository = createProjectStateRepository();
-    const resetPublisher = createResetPublisher();
+    const invalidateActiveDocuments = vi.fn();
     const binaryContentStore = createBinaryContentStore();
     const documentLookup = createDocumentLookup();
     documentLookup.listForProject.mockResolvedValue([
@@ -453,7 +452,7 @@ describe("snapshot service", () => {
       binaryContentStore,
       documentLookup,
       commentThreadLookup: createCommentThreadLookup(),
-      getResetPublisher: () => resetPublisher,
+      invalidateActiveDocuments,
     });
     const targetSnapshot = createStoredSnapshot();
 
@@ -555,6 +554,10 @@ describe("snapshot service", () => {
       "project-1/document-3",
     );
     expect(restored.id).toBe("snapshot-2");
+    expect(invalidateActiveDocuments).toHaveBeenCalledWith([
+      { projectId: "project-1", documentId: "document-1" },
+      { projectId: "project-1", documentId: "deleted-text-doc" },
+    ]);
   });
 
   it("propagates unexpected errors from the binary content store during capture", async () => {
@@ -1126,12 +1129,6 @@ function createDocumentLookup() {
 function createCommentThreadLookup() {
   return {
     listThreadsForProject: vi.fn().mockResolvedValue([]),
-  };
-}
-
-function createResetPublisher() {
-  return {
-    emitDocumentReset: vi.fn<SnapshotResetPublisher["emitDocumentReset"]>(),
   };
 }
 

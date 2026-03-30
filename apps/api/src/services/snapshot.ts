@@ -333,12 +333,19 @@ export function createSnapshotService({
         );
       }
 
-      invalidateActiveDocuments(
-        restoreResult.affectedTextDocuments.map(({ documentId }) => ({
-          projectId,
-          documentId,
-        })),
-      );
+      try {
+        invalidateActiveDocuments(
+          restoreResult.affectedTextDocuments.map(({ documentId }) => ({
+            projectId,
+            documentId,
+          })),
+        );
+      } catch (error) {
+        console.error(
+          `Failed to invalidate active documents after snapshot restore for project ${projectId}`,
+          error,
+        );
+      }
 
       return restoreResult.snapshot;
     },

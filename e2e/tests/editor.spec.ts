@@ -41,6 +41,7 @@ test.describe("Editor Page", () => {
     await registerAndCreateProject(page, "My Editor Project");
 
     await expect(page.getByRole("link", { name: "Projects" })).toBeVisible();
+    await expect(page.getByText("CollabTex")).toBeVisible();
     await expect(page.getByText("My Editor Project")).toBeVisible();
     // New projects auto-create main.tex
     await expect(page.getByText("main.tex")).toBeVisible();

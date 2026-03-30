@@ -95,8 +95,14 @@ async function main() {
       documentLookup: documentRepository,
       commentThreadLookup: commentRepository,
       invalidateActiveDocuments: (documents) => {
+        if (!activeDocumentRegistryRef.current) {
+          console.warn(
+            "activeDocumentRegistry not yet initialized; skipping invalidation",
+          );
+          return;
+        }
         for (const doc of documents) {
-          activeDocumentRegistryRef.current?.invalidate(doc);
+          activeDocumentRegistryRef.current.invalidate(doc);
         }
       },
     });
