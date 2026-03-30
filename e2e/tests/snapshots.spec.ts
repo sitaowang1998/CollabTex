@@ -63,13 +63,9 @@ async function getSnapshotCount(
 async function waitForSnapshotCount(
   page: import("@playwright/test").Page,
   minCount: number,
-  {
-    timeout = 90000,
-    recompileIntervalMs = 32000,
-  }: { timeout?: number; recompileIntervalMs?: number } = {},
+  timeout = 90000,
 ) {
   const deadline = Date.now() + timeout;
-  let lastCompileTime = Date.now();
   while (Date.now() < deadline) {
     if (
       await page
@@ -82,17 +78,6 @@ async function waitForSnapshotCount(
     await openSnapshotsPanel(page);
     const count = await getSnapshotCount(page);
     if (count >= minCount) return count;
-
-    // Re-trigger compilation periodically to overcome the dedup window
-    if (Date.now() - lastCompileTime > recompileIntervalMs) {
-      await closeSnapshotsPanel(page);
-      await compileAndWait(page);
-      lastCompileTime = Date.now();
-      await openSnapshotsPanel(page);
-      const countAfterCompile = await getSnapshotCount(page);
-      if (countAfterCompile >= minCount) return countAfterCompile;
-    }
-
     await page.waitForTimeout(2000);
   }
   throw new Error(
