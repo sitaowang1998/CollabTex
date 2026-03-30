@@ -509,10 +509,9 @@ export default function ProjectEditorPage() {
 
     function handleSnapshotRestored(data: SnapshotRestoredEvent) {
       if (data.projectId !== projectId) return;
+      localFolderPathsRef.current.clear();
+      setSelectedFile(null);
       refreshTree().catch((err) => console.error("Tree refresh failed:", err));
-      if (selectedDocId && selectedDocKind === "text") {
-        fetchThreads();
-      }
       setSyncGeneration((g) => g + 1);
     }
 
@@ -520,7 +519,7 @@ export default function ProjectEditorPage() {
     return () => {
       socket.off("snapshot:restored", handleSnapshotRestored);
     };
-  }, [projectId, refreshTree, fetchThreads, selectedDocId, selectedDocKind]);
+  }, [projectId, refreshTree]);
 
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
