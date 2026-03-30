@@ -748,11 +748,12 @@ paths:
     post:
       tags:
         - Documents
-      summary: Upload a binary file (create document + store content atomically)
+      summary: Upload a binary file (create document + store content in one request)
       description: >
         Creates a binary document at the given path and stores its content in a
-        single atomic operation. This is the preferred way to add binary files
-        to a project. Requires admin or editor role.
+        single request. If the content store write fails, the created document
+        is cleaned up on a best-effort basis. This is the preferred way to add
+        binary files to a project. Requires admin or editor role.
       security:
         - BearerAuth: []
       requestBody:

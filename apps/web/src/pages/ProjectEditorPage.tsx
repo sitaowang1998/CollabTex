@@ -502,7 +502,7 @@ export default function ProjectEditorPage() {
     };
   }, [projectId, refreshTree]);
 
-  // Listen for snapshot restore — refetch tree, comments, and re-sync editor
+  // Listen for snapshot restore — clear selection, refetch tree, and re-sync editor
   useEffect(() => {
     if (!projectId) return;
     const socket = getSocket();
