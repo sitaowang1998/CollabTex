@@ -65,11 +65,11 @@ async function waitForSnapshotCount(
   minCount: number,
   {
     timeout = 90000,
-    recompileIntervalMs = 15000,
+    recompileIntervalMs = 32000,
   }: { timeout?: number; recompileIntervalMs?: number } = {},
 ) {
   const deadline = Date.now() + timeout;
-  let lastCompileTime = 0;
+  let lastCompileTime = Date.now();
   while (Date.now() < deadline) {
     if (
       await page

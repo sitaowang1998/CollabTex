@@ -486,7 +486,7 @@ export default function ProjectEditorPage() {
     }
   }, [projectId, setNodes]);
 
-  // Listen for file tree changes from other users (create, delete, move, rename)
+  // Listen for file tree changes broadcast to the project room
   useEffect(() => {
     if (!projectId) return;
     const socket = getSocket();

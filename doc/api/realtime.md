@@ -324,6 +324,7 @@ Behavior:
   "thread": {
     "id": "thread-789",
     "documentId": "document-456",
+    "projectId": "project-123",
     "status": "open",
     "startAnchor": "...",
     "endAnchor": "...",
