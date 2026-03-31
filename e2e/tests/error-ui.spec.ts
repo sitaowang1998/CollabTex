@@ -91,14 +91,16 @@ test.describe("Error UI", () => {
     await page.goto("/login");
     await page.goto("/");
 
-    // Wait for the error UI to appear
-    // The fetch will be blocked, so the error should surface after the auth check passes
-    // We need to wait for re-auth + project fetch failure
-    await page.waitForTimeout(2000);
+    // Assert error UI appears
+    await expect(page.getByText("Something went wrong")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 
-    // Unblock the route and reload to get a clean state
+    // Unblock the route, then click Retry
     await page.unroute("**/api/projects");
-    await page.goto("/");
+    await page.getByRole("button", { name: "Retry" }).click();
+
     await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   });
 

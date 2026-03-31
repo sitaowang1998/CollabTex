@@ -15,8 +15,10 @@ const variantStyles = {
   info: "bg-blue-50 border-blue-300 text-blue-800 dark:bg-blue-950/30 dark:border-blue-700 dark:text-blue-200",
 } as const;
 
+type AlertVariant = keyof typeof icons;
+
 type AlertBannerProps = {
-  variant?: "error" | "warning" | "info";
+  variant?: AlertVariant;
   message: string;
   onDismiss?: () => void;
   onRetry?: () => void;

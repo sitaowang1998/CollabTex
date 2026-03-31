@@ -14,6 +14,16 @@ function TestConsumer() {
   );
 }
 
+describe("useToast", () => {
+  it("throws when used outside ToastProvider", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<TestConsumer />)).toThrow(
+      "useToast must be used within a ToastProvider",
+    );
+    spy.mockRestore();
+  });
+});
+
 describe("Toaster", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });

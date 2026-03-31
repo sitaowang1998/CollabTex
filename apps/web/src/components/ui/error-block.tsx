@@ -54,14 +54,16 @@ export function ErrorBlock({
       <p className="max-w-md text-sm text-muted-foreground" role="alert">
         {message}
       </p>
-      <div className="flex gap-2">
-        {onRetry && (
-          <Button variant="outline" onClick={onRetry}>
-            {retryLabel}
-          </Button>
-        )}
-        {actions}
-      </div>
+      {(onRetry || actions) && (
+        <div className="flex gap-2">
+          {onRetry && (
+            <Button variant="outline" onClick={onRetry}>
+              {retryLabel}
+            </Button>
+          )}
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

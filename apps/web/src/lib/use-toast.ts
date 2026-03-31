@@ -16,13 +16,14 @@ export type ToastInput = {
 };
 
 export type ToastContextValue = {
-  toasts: Toast[];
+  toasts: readonly Toast[];
   addToast: (input: ToastInput) => void;
   removeToast: (id: string) => void;
 };
 
 export const ToastContext = createContext<ToastContextValue | null>(null);
 
+const MAX_TOASTS = 5;
 let nextId = 0;
 
 export function useToastState(): ToastContextValue {
@@ -40,7 +41,7 @@ export function useToastState(): ToastContextValue {
       message: input.message,
       duration: input.duration ?? 5000,
     };
-    setToasts((prev) => [...prev, toast]);
+    setToasts((prev) => [...prev.slice(-(MAX_TOASTS - 1)), toast]);
   }, []);
 
   return { toasts, addToast, removeToast };
