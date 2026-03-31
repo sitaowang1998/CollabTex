@@ -4,10 +4,6 @@ import type {
   WorkspaceJoinRequest,
 } from "@collab-tex/shared";
 
-export function encodeBase64(value: Uint8Array): string {
-  return Buffer.from(value).toString("base64");
-}
-
 export function parseWorkspaceJoinRequest(
   value: unknown,
 ): WorkspaceJoinRequest | WorkspaceErrorEvent {
@@ -110,7 +106,7 @@ function decodeBase64Update(value: string): Uint8Array {
   return Buffer.from(value, "base64");
 }
 
-export function isStrictBase64(value: string): boolean {
+function isStrictBase64(value: string): boolean {
   return value.length > 0 && value.length % 4 === 0
     ? /^[A-Za-z0-9+/]+={0,2}$/.test(value)
     : false;

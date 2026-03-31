@@ -1,10 +1,5 @@
 import { useEffect, useRef } from "react";
 
-export const MIN_PANEL_WIDTH = 150;
-export const MIN_COMMENT_HEIGHT = 100;
-export const MAX_COMMENT_HEIGHT = 600;
-export const DEFAULT_COMMENT_HEIGHT = 250;
-
 export function ResizeHandle({
   onCommit,
   targetRef,

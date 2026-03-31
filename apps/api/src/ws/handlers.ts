@@ -18,7 +18,7 @@ import {
   isUnexpectedSyncRequestError,
   shouldSuppressStaleSessionFailure,
 } from "./errorMapping.js";
-import { encodeBase64, type ParsedDocumentUpdateRequest } from "./parsers.js";
+import type { ParsedDocumentUpdateRequest } from "./parsers.js";
 import {
   createTextWorkspaceRoomName,
   createWorkspaceRoomName,
@@ -30,6 +30,10 @@ import {
   leaveActiveTextSession,
 } from "./sessionHelpers.js";
 import type { WorkspaceSocket, ActiveTextSessionState } from "./types.js";
+
+function encodeBase64(value: Uint8Array): string {
+  return Buffer.from(value).toString("base64");
+}
 
 export async function openWorkspace(
   socket: WorkspaceSocket,

@@ -20,7 +20,7 @@ export function removeNodeFromTree(
     );
 }
 
-export function pathExistsInTree(nodes: FileTreeNode[], path: string): boolean {
+function pathExistsInTree(nodes: FileTreeNode[], path: string): boolean {
   for (const node of nodes) {
     if (node.path === path) return true;
     if (node.type === "folder" && pathExistsInTree(node.children, path)) {

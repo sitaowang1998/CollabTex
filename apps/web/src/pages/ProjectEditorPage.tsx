@@ -25,14 +25,12 @@ import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
 import { ErrorBlock } from "@/components/ui/error-block";
 import { AlertBanner } from "@/components/ui/alert-banner";
-import {
-  ResizeHandle,
-  ResizeHandleVertical,
-  MIN_PANEL_WIDTH,
-  MIN_COMMENT_HEIGHT,
-  MAX_COMMENT_HEIGHT,
-  DEFAULT_COMMENT_HEIGHT,
-} from "@/components/ResizeHandle";
+import { ResizeHandle, ResizeHandleVertical } from "@/components/ResizeHandle";
+
+const MIN_PANEL_WIDTH = 150;
+const MIN_COMMENT_HEIGHT = 100;
+const MAX_COMMENT_HEIGHT = 600;
+const DEFAULT_COMMENT_HEIGHT = 250;
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
