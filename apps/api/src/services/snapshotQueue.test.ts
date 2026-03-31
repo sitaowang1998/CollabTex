@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueueProjectSnapshot } from "./snapshotQueue.js";
 
-vi.mock("../repositories/snapshotRefreshJobRepository.js", () => ({
-  hasRecentPendingJob: vi.fn().mockResolvedValue(false),
-  queueSnapshotRefreshJob: vi.fn().mockResolvedValue(undefined),
-}));
-
 import {
   hasRecentPendingJob,
   queueSnapshotRefreshJob,
 } from "../repositories/snapshotRefreshJobRepository.js";
+
+vi.mock("../repositories/snapshotRefreshJobRepository.js", () => ({
+  hasRecentPendingJob: vi.fn().mockResolvedValue(false),
+  queueSnapshotRefreshJob: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mockedHasRecentPendingJob = vi.mocked(hasRecentPendingJob);
 const mockedQueueSnapshotRefreshJob = vi.mocked(queueSnapshotRefreshJob);

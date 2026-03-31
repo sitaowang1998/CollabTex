@@ -26,11 +26,6 @@ import { Button } from "@/components/ui/button";
 import { ErrorBlock } from "@/components/ui/error-block";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { ResizeHandle, ResizeHandleVertical } from "@/components/ResizeHandle";
-
-const MIN_PANEL_WIDTH = 150;
-const MIN_COMMENT_HEIGHT = 100;
-const MAX_COMMENT_HEIGHT = 600;
-const DEFAULT_COMMENT_HEIGHT = 250;
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
@@ -40,6 +35,11 @@ import CommentPanel from "@/components/CommentPanel";
 import type { CommentSelection } from "@/components/CreateCommentForm";
 import MembersPanel from "@/components/MembersPanel";
 import SnapshotPanel from "@/components/SnapshotPanel";
+
+const MIN_PANEL_WIDTH = 150;
+const MIN_COMMENT_HEIGHT = 100;
+const MAX_COMMENT_HEIGHT = 600;
+const DEFAULT_COMMENT_HEIGHT = 250;
 
 export default function ProjectEditorPage() {
   const { projectId } = useParams<{ projectId: string }>();

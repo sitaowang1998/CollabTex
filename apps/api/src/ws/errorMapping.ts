@@ -50,15 +50,15 @@ export function mapDocumentUpdateError(error: unknown): WorkspaceErrorEvent {
     error instanceof InvalidCollaborationUpdateError ||
     error instanceof ActiveDocumentSessionInvalidatedError
   ) {
-    return {
-      code: "INVALID_REQUEST",
-      message:
-        error instanceof RealtimeDocumentSessionMismatchError
-          ? "socket is not joined to this document"
-          : error instanceof ActiveDocumentSessionInvalidatedError
-            ? "socket session is no longer current"
-            : "update payload is not a valid Yjs update",
-    };
+    let message: string;
+    if (error instanceof RealtimeDocumentSessionMismatchError) {
+      message = "socket is not joined to this document";
+    } else if (error instanceof ActiveDocumentSessionInvalidatedError) {
+      message = "socket session is no longer current";
+    } else {
+      message = "update payload is not a valid Yjs update";
+    }
+    return { code: "INVALID_REQUEST", message };
   }
 
   if (error instanceof ProjectNotFoundError) {

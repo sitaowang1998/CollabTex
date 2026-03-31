@@ -8,8 +8,12 @@ import {
   Decoration,
   type DecorationSet,
 } from "@codemirror/view";
-import { EditorState, StateField, StateEffect } from "@codemirror/state";
-import { RangeSetBuilder } from "@codemirror/state";
+import {
+  EditorState,
+  StateField,
+  StateEffect,
+  RangeSetBuilder,
+} from "@codemirror/state";
 import { bracketMatching } from "@codemirror/language";
 import * as Y from "yjs";
 import { yCollab } from "y-codemirror.next";

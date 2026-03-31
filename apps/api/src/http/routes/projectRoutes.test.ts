@@ -7,6 +7,7 @@ import {
   DuplicateEmailError,
   signToken,
   type AuthUserRepository,
+  AuthService,
 } from "../../services/auth.js";
 import {
   createProjectService,
@@ -16,12 +17,13 @@ import {
   ProjectOwnerNotFoundError,
   type ProjectRepository,
 } from "../../services/project.js";
-import type { StoredDocument } from "../../services/document.js";
-import type { AuthService } from "../../services/auth.js";
+import type {
+  StoredDocument,
+  DocumentService,
+} from "../../services/document.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { CompileDispatchService } from "../../services/compileDispatch.js";
 import type { CompileRetrievalService } from "../../services/compileRetrieval.js";
-import type { DocumentService } from "../../services/document.js";
 import type { MembershipService } from "../../services/membership.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
 import {

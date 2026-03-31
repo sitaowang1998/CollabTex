@@ -1,5 +1,6 @@
 const js = require("@eslint/js");
 const globals = require("globals");
+const importPlugin = require("eslint-plugin-import");
 const reactHooks = require("eslint-plugin-react-hooks");
 const reactRefresh = require("eslint-plugin-react-refresh").default;
 const jsonc = require("eslint-plugin-jsonc");
@@ -48,6 +49,17 @@ module.exports = defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.node,
+    },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    plugins: { import: importPlugin },
+    rules: {
+      "import/first": "error",
+      "import/newline-after-import": "error",
+      "import/no-duplicates": "error",
+      "import/no-self-import": "error",
+      "import/no-useless-path-segments": "error",
     },
   },
   ...jsonc.configs["flat/recommended-with-json"],

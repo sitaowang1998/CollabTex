@@ -7,6 +7,8 @@ import {
   createAuthService,
   DuplicateEmailError,
   type AuthUserRepository,
+  signToken,
+  type AuthService,
 } from "../../services/auth.js";
 import type { DocumentService } from "../../services/document.js";
 import {
@@ -28,7 +30,6 @@ import {
 } from "../../services/project.js";
 import type { CommentService } from "../../services/commentService.js";
 import type { SnapshotManagementService } from "../../services/snapshotManagement.js";
-import { signToken, type AuthService } from "../../services/auth.js";
 import {
   createTestPasswordHasher,
   TEST_DUMMY_PASSWORD_HASH,
