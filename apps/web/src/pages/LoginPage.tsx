@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
+import { FieldError } from "@/components/ui/field-error";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -67,9 +69,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
               />
-              {fieldErrors.email && (
-                <p className="text-sm text-destructive">{fieldErrors.email}</p>
-              )}
+              <FieldError message={fieldErrors.email} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -80,17 +80,9 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
-              {fieldErrors.password && (
-                <p className="text-sm text-destructive">
-                  {fieldErrors.password}
-                </p>
-              )}
+              <FieldError message={fieldErrors.password} />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Logging in\u2026" : "Log in"}
             </Button>

@@ -7,6 +7,8 @@ import type {
 import { api } from "@/lib/api";
 import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { AlertBanner } from "@/components/ui/alert-banner";
 import CreateCommentForm, {
   type CommentSelection,
 } from "@/components/CreateCommentForm";
@@ -70,14 +72,7 @@ export default function CommentPanel({
   }
 
   if (error) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-4">
-        <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          Retry
-        </Button>
-      </div>
-    );
+    return <ErrorBlock className="h-full" message={error} onRetry={onRetry} />;
   }
 
   function handleCreated() {
@@ -203,9 +198,7 @@ function ThreadCard({
             : thread.quotedText}
         </span>
         {statusError && (
-          <span className="truncate text-xs text-destructive">
-            {statusError}
-          </span>
+          <AlertBanner message={statusError} className="text-xs" />
         )}
         {canComment && (
           <Button
@@ -254,7 +247,7 @@ function ThreadCard({
                 aria-label="Reply"
               />
               {replyError && (
-                <p className="text-xs text-destructive">{replyError}</p>
+                <AlertBanner message={replyError} className="text-xs" />
               )}
               <Button
                 type="submit"

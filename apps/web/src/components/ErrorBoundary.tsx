@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { ErrorBlock } from "./ui/error-block";
 
 interface Props {
   children: ReactNode;
@@ -30,15 +31,13 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error !== null) {
       return (
-        <div style={{ padding: "2rem", textAlign: "center" }}>
-          <h1>Something went wrong</h1>
-          <p>{this.state.error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}
-          >
-            Reload
-          </button>
+        <div className="flex min-h-screen items-center justify-center p-4">
+          <ErrorBlock
+            title="Something went wrong"
+            message={this.state.error}
+            onRetry={() => window.location.reload()}
+            retryLabel="Reload"
+          />
         </div>
       );
     }

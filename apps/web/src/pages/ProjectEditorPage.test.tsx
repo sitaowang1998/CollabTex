@@ -185,7 +185,7 @@ describe("ProjectEditorPage", () => {
     renderEditor();
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Project not found");
+      expect(screen.getByRole("status")).toHaveTextContent("Project not found");
     });
   });
 
@@ -194,7 +194,7 @@ describe("ProjectEditorPage", () => {
     renderEditor();
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
+      expect(screen.getByRole("status")).toHaveTextContent(
         "You don't have access to this project",
       );
     });
@@ -205,7 +205,7 @@ describe("ProjectEditorPage", () => {
     renderEditor();
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+      expect(screen.getByRole("status")).toHaveTextContent("Server error");
     });
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
@@ -236,7 +236,7 @@ describe("ProjectEditorPage", () => {
     renderEditor();
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /retry/i }));
@@ -277,7 +277,7 @@ describe("ProjectEditorPage", () => {
     renderEditor();
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toBeInTheDocument();
     });
     expect(
       screen.getByRole("button", { name: /back to dashboard/i }),

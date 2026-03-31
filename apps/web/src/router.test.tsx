@@ -139,9 +139,8 @@ describe("ProtectedRoute", () => {
     mockedApi.get.mockRejectedValue(new ApiError(500, "Network error"));
     renderWithRouter("/");
     await waitFor(() => {
-      expect(
-        screen.getByText(/Authentication failed: Network error/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Authentication failed")).toBeInTheDocument();
+      expect(screen.getByText("Network error")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(
@@ -156,9 +155,7 @@ describe("ProtectedRoute", () => {
     mockedApi.get.mockRejectedValueOnce(new ApiError(500, "Network error"));
     renderWithRouter("/");
     await waitFor(() => {
-      expect(
-        screen.getByText(/Authentication failed: Network error/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Authentication failed")).toBeInTheDocument();
     });
 
     const user: AuthUser = { id: "1", email: "a@b.com", name: "Alice" };
@@ -179,9 +176,7 @@ describe("ProtectedRoute", () => {
     mockedApi.get.mockRejectedValue(new ApiError(500, "Network error"));
     renderWithRouter("/");
     await waitFor(() => {
-      expect(
-        screen.getByText(/Authentication failed: Network error/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Authentication failed")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Go to Login" }));

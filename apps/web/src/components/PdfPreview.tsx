@@ -5,6 +5,7 @@ import type { ProjectRole, CompileDoneEvent } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
+import { AlertBanner } from "@/components/ui/alert-banner";
 import { Download } from "lucide-react";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -368,9 +369,7 @@ export default function PdfPreview({ projectId, projectName, role }: Props) {
             {compileStatus === "compiling" ? "Compiling…" : "Compile"}
           </Button>
         )}
-        {error && (
-          <span className="truncate text-xs text-destructive">{error}</span>
-        )}
+        {error && <AlertBanner message={error} className="text-xs" />}
         {pdfData && (
           <Button
             variant="outline"

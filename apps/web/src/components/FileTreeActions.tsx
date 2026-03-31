@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
 
 function parentDir(path: string): string {
   const lastSlash = path.lastIndexOf("/");
@@ -279,11 +280,7 @@ function CreateAction({
                 onChange={(e) => setPath(e.target.value)}
               />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -351,11 +348,7 @@ function CreateFolderAction({
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -436,11 +429,7 @@ function RenameAction({
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -505,11 +494,7 @@ function DeleteAction({
           <p className="text-sm">
             Delete <strong>{action.name}</strong>? This cannot be undone.
           </p>
-          {error && (
-            <div className="text-sm text-destructive" role="alert">
-              {error}
-            </div>
-          )}
+          {error && <AlertBanner message={error} />}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>
               Cancel
@@ -594,9 +579,7 @@ function DeleteMultipleAction({
           </p>
           {error && (
             <>
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
+              <AlertBanner message={error} />
               <p className="text-xs text-muted-foreground">
                 Some items may have been deleted.
               </p>
@@ -696,11 +679,7 @@ function MoveAction({
                 placeholder="/ (root)"
               />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -816,9 +795,7 @@ function MoveMultipleAction({
             </div>
             {error && (
               <>
-                <div className="text-sm text-destructive" role="alert">
-                  {error}
-                </div>
+                <AlertBanner message={error} />
                 <p className="text-xs text-muted-foreground">
                   Some items may have been moved.
                 </p>
@@ -957,9 +934,7 @@ function UploadAction({
             <h2 className="text-xl font-semibold">Upload Error</h2>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="text-sm text-destructive" role="alert">
-              {error}
-            </div>
+            <AlertBanner message={error} />
             <div className="flex justify-end">
               <Button variant="outline" onClick={onClose}>
                 Close
@@ -1055,7 +1030,7 @@ function SetMainAction({
           <h2 className="text-xl font-semibold">Error</h2>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-destructive">{error}</p>
+          <AlertBanner message={error} />
           <div className="flex justify-end">
             <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
               Close

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
+import { FieldError } from "@/components/ui/field-error";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -70,9 +72,7 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
               />
-              {fieldErrors.email && (
-                <p className="text-sm text-destructive">{fieldErrors.email}</p>
-              )}
+              <FieldError message={fieldErrors.email} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
@@ -83,9 +83,7 @@ export default function RegisterPage() {
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
               />
-              {fieldErrors.name && (
-                <p className="text-sm text-destructive">{fieldErrors.name}</p>
-              )}
+              <FieldError message={fieldErrors.name} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
@@ -96,17 +94,9 @@ export default function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
               />
-              {fieldErrors.password && (
-                <p className="text-sm text-destructive">
-                  {fieldErrors.password}
-                </p>
-              )}
+              <FieldError message={fieldErrors.password} />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Creating account\u2026" : "Create account"}
             </Button>

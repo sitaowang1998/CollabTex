@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
+import { ErrorBlock } from "@/components/ui/error-block";
 
 const ROLES: ProjectRole[] = ["admin", "editor", "commenter", "reader"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -91,11 +93,7 @@ function ConfirmDialogInner({
               placeholder={confirmPhrase}
             />
           </div>
-          {error && (
-            <div className="text-sm text-destructive" role="alert">
-              {error}
-            </div>
-          )}
+          {error && <AlertBanner message={error} />}
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
@@ -454,9 +452,7 @@ export default function MembersPanel({
                 </Button>
               </div>
               {addError && (
-                <p className="text-xs text-destructive" role="alert">
-                  {addError}
-                </p>
+                <AlertBanner message={addError} className="text-xs" />
               )}
             </form>
           )}
@@ -470,32 +466,21 @@ export default function MembersPanel({
 
           {/* Error */}
           {!isLoading && error && (
-            <div className="p-3">
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-              <button
-                className="mt-1 text-xs underline"
-                onClick={retryFetchMembers}
-              >
-                Retry
-              </button>
-            </div>
+            <ErrorBlock
+              className="p-3"
+              message={error}
+              onRetry={retryFetchMembers}
+            />
           )}
 
           {/* Mutation error */}
           {mutationError && (
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <p className="text-xs text-destructive" role="alert">
-                {mutationError}
-              </p>
-              <button
-                className="ml-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setMutationError("")}
-                aria-label="Dismiss error"
-              >
-                ✕
-              </button>
+            <div className="border-b px-3 py-2">
+              <AlertBanner
+                message={mutationError}
+                onDismiss={() => setMutationError("")}
+                className="text-xs"
+              />
             </div>
           )}
 

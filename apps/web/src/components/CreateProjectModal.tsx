@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
+import { FieldError } from "@/components/ui/field-error";
 
 type ProjectMutationResponse = { project: Project };
 
@@ -130,15 +132,9 @@ export default function CreateProjectModal({
                 onChange={(e) => setName(e.target.value)}
                 maxLength={160}
               />
-              {fieldError && (
-                <p className="text-sm text-destructive">{fieldError}</p>
-              )}
+              <FieldError message={fieldError} />
             </div>
-            {error && (
-              <div className="text-sm text-destructive" role="alert">
-                {error}
-              </div>
-            )}
+            {error && <AlertBanner message={error} />}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel

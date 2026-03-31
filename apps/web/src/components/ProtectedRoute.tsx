@@ -1,5 +1,8 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/useAuth";
+import { ErrorBlock } from "./ui/error-block";
+import { AlertBanner } from "./ui/alert-banner";
+import { Button } from "./ui/button";
 
 export default function ProtectedRoute() {
   const { state, retryAuth, logout } = useAuth();
@@ -7,13 +10,25 @@ export default function ProtectedRoute() {
 
   switch (state.status) {
     case "loading":
-      return <div>Loading…</div>;
+      return (
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-muted-foreground">Loading…</p>
+        </div>
+      );
     case "error":
       return (
-        <div>
-          <p>Authentication failed: {state.error}</p>
-          <button onClick={() => retryAuth()}>Retry</button>
-          <button onClick={() => logout()}>Go to Login</button>
+        <div className="flex min-h-screen items-center justify-center p-4">
+          <ErrorBlock
+            icon="auth"
+            title="Authentication failed"
+            message={state.error}
+            onRetry={() => retryAuth()}
+            actions={
+              <Button variant="outline" onClick={() => logout()}>
+                Go to Login
+              </Button>
+            }
+          />
         </div>
       );
     case "unauthenticated":
@@ -25,17 +40,11 @@ export default function ProtectedRoute() {
     case "backgroundError":
       return (
         <>
-          <div
-            role="alert"
-            style={{
-              padding: "8px 16px",
-              background: "#fef3c7",
-              color: "#92400e",
-            }}
-          >
-            <span>Something went wrong: {state.error}</span>{" "}
-            <button onClick={() => retryAuth()}>Retry</button>
-          </div>
+          <AlertBanner
+            variant="warning"
+            message={`Something went wrong: ${state.error}`}
+            onRetry={() => retryAuth()}
+          />
           <Outlet />
         </>
       );
