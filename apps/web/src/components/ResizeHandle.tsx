@@ -96,7 +96,7 @@ export function ResizeHandle({
       Math.min(currentWidth + effectiveDelta, max),
     );
     targetRef.current.style.width = `${newWidth}px`;
-    onCommitRef.current(effectiveDelta);
+    onCommitRef.current(delta);
   }
 
   return (
