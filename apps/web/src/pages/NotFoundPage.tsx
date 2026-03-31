@@ -6,7 +6,8 @@ export default function NotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center p-4">
+      <h2 className="mb-8 text-3xl font-bold tracking-tight">CollabTex</h2>
       <ErrorBlock
         icon="not-found"
         title="Page not found"
