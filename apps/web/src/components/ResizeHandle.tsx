@@ -107,6 +107,9 @@ export function ResizeHandle({
       tabIndex={0}
       role="separator"
       aria-orientation="vertical"
+      aria-label="Resize panel"
+      aria-valuemin={min}
+      aria-valuemax={max}
     />
   );
 }
@@ -213,6 +216,9 @@ export function ResizeHandleVertical({
       tabIndex={0}
       role="separator"
       aria-orientation="horizontal"
+      aria-label="Resize panel height"
+      aria-valuemin={min}
+      aria-valuemax={max}
     />
   );
 }
