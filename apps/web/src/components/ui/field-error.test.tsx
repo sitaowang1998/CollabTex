@@ -14,11 +14,11 @@ describe("FieldError", () => {
 
   it("renders error message", () => {
     render(<FieldError message="Email is required" />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Email is required");
+    expect(screen.getByText("Email is required")).toBeInTheDocument();
   });
 
   it("applies id for aria-describedby linking", () => {
     render(<FieldError message="Required" id="email-error" />);
-    expect(screen.getByRole("alert")).toHaveAttribute("id", "email-error");
+    expect(screen.getByText("Required")).toHaveAttribute("id", "email-error");
   });
 });

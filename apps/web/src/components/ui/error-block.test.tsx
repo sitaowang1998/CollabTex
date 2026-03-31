@@ -41,8 +41,8 @@ describe("ErrorBlock", () => {
     expect(screen.getByRole("button", { name: "Go Home" })).toBeInTheDocument();
   });
 
-  it("renders message with role alert", () => {
+  it("renders message with role status", () => {
     render(<ErrorBlock message="Server error" />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+    expect(screen.getByRole("status")).toHaveTextContent("Server error");
   });
 });

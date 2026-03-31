@@ -135,7 +135,7 @@ describe("DashboardPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Server error");
+      expect(screen.getByRole("status")).toHaveTextContent("Server error");
     });
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
@@ -165,7 +165,7 @@ describe("DashboardPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /retry/i }));

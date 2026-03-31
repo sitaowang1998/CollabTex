@@ -110,7 +110,7 @@ test.describe("Error UI", () => {
     await registerAndLand(page);
 
     // Navigate to a project that doesn't exist
-    await page.goto("/projects/00000000-0000-0000-0000-000000000000");
+    await page.goto("/projects/00000000-0000-4000-a000-000000000000");
 
     await expect(page.getByText("Something went wrong")).toBeVisible();
     await expect(page.getByText("Project not found")).toBeVisible();

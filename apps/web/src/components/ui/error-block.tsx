@@ -51,7 +51,7 @@ export function ErrorBlock({
     >
       <Icon className="size-10 text-muted-foreground" />
       <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="max-w-md text-sm text-muted-foreground" role="alert">
+      <p className="max-w-md text-sm text-muted-foreground" role="status">
         {message}
       </p>
       {(onRetry || actions) && (

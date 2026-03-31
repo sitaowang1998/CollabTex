@@ -25,8 +25,11 @@ describe("useToast", () => {
 });
 
 describe("Toaster", () => {
+  let user: ReturnType<typeof userEvent.setup>;
+
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   });
 
   afterEach(() => {
@@ -39,7 +42,7 @@ describe("Toaster", () => {
         <TestConsumer />
       </ToastProvider>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Show Toast" }));
+    await user.click(screen.getByRole("button", { name: "Show Toast" }));
     expect(screen.getByText("Test toast")).toBeInTheDocument();
   });
 
@@ -49,7 +52,7 @@ describe("Toaster", () => {
         <TestConsumer />
       </ToastProvider>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Show Toast" }));
+    await user.click(screen.getByRole("button", { name: "Show Toast" }));
     expect(screen.getByText("Test toast")).toBeInTheDocument();
 
     act(() => {
@@ -65,10 +68,10 @@ describe("Toaster", () => {
         <TestConsumer />
       </ToastProvider>,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Show Toast" }));
+    await user.click(screen.getByRole("button", { name: "Show Toast" }));
     expect(screen.getByText("Test toast")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText("Test toast")).not.toBeInTheDocument();
   });
 });
