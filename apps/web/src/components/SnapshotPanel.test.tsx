@@ -81,8 +81,8 @@ describe("SnapshotPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Initial commit")).toBeInTheDocument();
     });
-    expect(screen.getByText(/3 days ago/)).toBeInTheDocument();
-    expect(screen.getByText(/5 minutes ago/)).toBeInTheDocument();
+    expect(screen.getByText(/3d ago/)).toBeInTheDocument();
+    expect(screen.getByText(/5m ago/)).toBeInTheDocument();
   });
 
   it("renders empty state when no snapshots", async () => {

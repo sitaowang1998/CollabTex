@@ -5,6 +5,7 @@ import type {
   CommentResponse,
 } from "@collab-tex/shared";
 import { api } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 import { ErrorBlock } from "@/components/ui/error-block";
@@ -26,18 +27,6 @@ type Props = {
   onClearSelection: () => void;
   threadPositions: Map<string, number>;
 };
-
-function formatRelativeTime(dateString: string): string {
-  const ms = Date.now() - new Date(dateString).getTime();
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 export default function CommentPanel({
   projectId,

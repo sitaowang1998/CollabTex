@@ -6,32 +6,13 @@ import type {
   ProjectRole,
 } from "@collab-tex/shared";
 import { api } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { useApiQuery } from "@/lib/useApiQuery";
 import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { AlertBanner } from "@/components/ui/alert-banner";
 import { ErrorBlock } from "@/components/ui/error-block";
-
-const SECOND = 1000;
-const MINUTE = 60 * SECOND;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-
-function formatRelativeTime(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
-  if (diff < MINUTE) return "just now";
-  if (diff < HOUR) {
-    const m = Math.floor(diff / MINUTE);
-    return `${m} minute${m === 1 ? "" : "s"} ago`;
-  }
-  if (diff < DAY) {
-    const h = Math.floor(diff / HOUR);
-    return `${h} hour${h === 1 ? "" : "s"} ago`;
-  }
-  const d = Math.floor(diff / DAY);
-  return `${d} day${d === 1 ? "" : "s"} ago`;
-}
 
 function ConfirmRestoreDialog({
   snapshot,
