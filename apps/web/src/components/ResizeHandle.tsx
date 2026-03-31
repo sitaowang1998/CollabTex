@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+const KEYBOARD_STEP = 10;
+
 export function ResizeHandle({
   onCommit,
   targetRef,
@@ -74,10 +76,35 @@ export function ResizeHandle({
     document.body.style.userSelect = "none";
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!targetRef.current) return;
+
+    let delta = 0;
+    if (e.key === "ArrowLeft") {
+      delta = -KEYBOARD_STEP;
+    } else if (e.key === "ArrowRight") {
+      delta = KEYBOARD_STEP;
+    } else {
+      return;
+    }
+
+    e.preventDefault();
+    const currentWidth = targetRef.current.offsetWidth;
+    const effectiveDelta = invert ? -delta : delta;
+    const newWidth = Math.max(
+      min,
+      Math.min(currentWidth + effectiveDelta, max),
+    );
+    targetRef.current.style.width = `${newWidth}px`;
+    onCommitRef.current(effectiveDelta);
+  }
+
   return (
     <div
       className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent/50 active:bg-accent"
       onMouseDown={handleMouseDown}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
       role="separator"
       aria-orientation="vertical"
     />
@@ -157,10 +184,33 @@ export function ResizeHandleVertical({
     document.body.style.userSelect = "none";
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!targetRef.current) return;
+
+    const currentHeight = targetRef.current.offsetHeight;
+    let newHeight = currentHeight;
+
+    if (e.key === "ArrowUp") {
+      newHeight = Math.min(max, currentHeight + KEYBOARD_STEP);
+    } else if (e.key === "ArrowDown") {
+      newHeight = Math.max(min, currentHeight - KEYBOARD_STEP);
+    } else {
+      return;
+    }
+
+    if (newHeight === currentHeight) return;
+
+    e.preventDefault();
+    targetRef.current.style.height = `${newHeight}px`;
+    onCommitRef.current(currentHeight - newHeight);
+  }
+
   return (
     <div
       className="flex h-1.5 shrink-0 cursor-row-resize items-center justify-center hover:bg-accent/50 active:bg-accent"
       onMouseDown={handleMouseDown}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
       role="separator"
       aria-orientation="horizontal"
     />

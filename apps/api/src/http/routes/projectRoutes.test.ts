@@ -7,7 +7,7 @@ import {
   DuplicateEmailError,
   signToken,
   type AuthUserRepository,
-  AuthService,
+  type AuthService,
 } from "../../services/auth.js";
 import {
   createProjectService,
