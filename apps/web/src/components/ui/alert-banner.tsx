@@ -38,13 +38,13 @@ export function AlertBanner({
     <div
       role="alert"
       className={cn(
-        "flex items-start gap-2 rounded-lg border-l-4 px-3 py-2 text-sm",
+        "flex min-w-0 items-start gap-2 rounded-lg border-l-4 px-3 py-2 text-sm",
         variantStyles[variant],
         className,
       )}
     >
       <Icon className="mt-0.5 size-4 shrink-0" />
-      <span className="flex-1">{message}</span>
+      <span className="min-w-0 flex-1 break-words">{message}</span>
       {onRetry && (
         <Button variant="outline" size="xs" onClick={onRetry}>
           Retry

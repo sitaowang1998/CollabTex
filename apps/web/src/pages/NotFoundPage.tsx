@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ErrorBlock } from "@/components/ui/error-block";
 import { Button } from "@/components/ui/button";
 
@@ -14,9 +14,9 @@ export default function NotFoundPage() {
         message="The page you are looking for does not exist or has been moved."
         actions={
           <>
-            <Link to="/">
-              <Button variant="outline">Back to Dashboard</Button>
-            </Link>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Dashboard
+            </Button>
             <Button variant="ghost" onClick={() => navigate(-1)}>
               Go back
             </Button>

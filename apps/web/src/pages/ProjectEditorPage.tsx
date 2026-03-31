@@ -677,9 +677,9 @@ export default function ProjectEditorPage() {
           message={error}
           onRetry={retryLoad}
           actions={
-            <Link to="/">
-              <Button variant="outline">Back to Dashboard</Button>
-            </Link>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Dashboard
+            </Button>
           }
         />
       </div>
@@ -693,9 +693,9 @@ export default function ProjectEditorPage() {
           message="Something went wrong. Please try again."
           onRetry={retryLoad}
           actions={
-            <Link to="/">
-              <Button variant="outline">Back to Dashboard</Button>
-            </Link>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              Back to Dashboard
+            </Button>
           }
         />
       </div>
