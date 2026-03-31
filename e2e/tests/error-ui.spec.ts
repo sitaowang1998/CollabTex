@@ -113,7 +113,7 @@ test.describe("Error UI", () => {
     await page.goto("/projects/00000000-0000-0000-0000-000000000000");
 
     await expect(page.getByText("Something went wrong")).toBeVisible();
-    await expect(page.getByText("project not found")).toBeVisible();
+    await expect(page.getByText("Project not found")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Back to Dashboard" }),
     ).toBeVisible();

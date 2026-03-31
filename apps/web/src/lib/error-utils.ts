@@ -15,9 +15,14 @@ export type ErrorCategory =
 export function categorizeApiError(error: unknown): ErrorCategory {
   if (!(error instanceof ApiError)) return "unknown";
 
+  // Status 0 is used for both real network failures (via wrapNetworkError,
+  // which sets cause) and non-network client errors (e.g., invalid token
+  // responses). Only classify as "network" when cause is present.
+  if (error.status === NETWORK_ERROR_STATUS) {
+    return error.cause instanceof Error ? "network" : "unknown";
+  }
+
   switch (error.status) {
-    case NETWORK_ERROR_STATUS:
-      return "network";
     case 401:
       return "auth";
     case 403:

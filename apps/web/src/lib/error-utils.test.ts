@@ -6,10 +6,22 @@ import {
 } from "./error-utils";
 
 describe("categorizeApiError", () => {
-  it("returns 'network' for network errors", () => {
+  it("returns 'network' for status-0 errors with a cause (real network failure)", () => {
     expect(
-      categorizeApiError(new ApiError(NETWORK_ERROR_STATUS, "Network error")),
+      categorizeApiError(
+        new ApiError(NETWORK_ERROR_STATUS, "Network error", undefined, {
+          cause: new TypeError("Failed to fetch"),
+        }),
+      ),
     ).toBe("network");
+  });
+
+  it("returns 'unknown' for status-0 errors without a cause (non-network)", () => {
+    expect(
+      categorizeApiError(
+        new ApiError(NETWORK_ERROR_STATUS, "Invalid refresh response"),
+      ),
+    ).toBe("unknown");
   });
 
   it("returns 'auth' for 401", () => {
