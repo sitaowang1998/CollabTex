@@ -3,6 +3,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import ProjectEditorPage from "./pages/ProjectEditorPage";
+import NotFoundPage from "./pages/NotFoundPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PublicRoute from "./components/PublicRoute";
 import { RouteErrorFallback } from "./components/RouteErrorFallback";
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
           { path: "/projects/:projectId", element: <ProjectEditorPage /> },
         ],
       },
-      { path: "*", element: <div>Page not found</div> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

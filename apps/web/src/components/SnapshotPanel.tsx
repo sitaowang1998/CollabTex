@@ -10,6 +10,8 @@ import { useApiQuery } from "@/lib/useApiQuery";
 import { useApiMutation } from "@/lib/useApiMutation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { AlertBanner } from "@/components/ui/alert-banner";
+import { ErrorBlock } from "@/components/ui/error-block";
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -82,11 +84,7 @@ function ConfirmRestoreDialog({
             All current work will be replaced. A new snapshot of the current
             state will be created automatically.
           </p>
-          {error && (
-            <div className="text-sm text-destructive" role="alert">
-              {error}
-            </div>
-          )}
+          {error && <AlertBanner message={error} />}
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
@@ -201,28 +199,16 @@ export default function SnapshotPanel({
           )}
 
           {!isLoading && error && (
-            <div className="p-3">
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-              <button className="mt-1 text-xs underline" onClick={refetch}>
-                Retry
-              </button>
-            </div>
+            <ErrorBlock className="p-3" message={error} onRetry={refetch} />
           )}
 
           {mutationError && (
-            <div className="flex items-center justify-between border-b px-3 py-2">
-              <p className="text-xs text-destructive" role="alert">
-                {mutationError}
-              </p>
-              <button
-                className="ml-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={() => setMutationError("")}
-                aria-label="Dismiss error"
-              >
-                ✕
-              </button>
+            <div className="border-b px-3 py-2">
+              <AlertBanner
+                message={mutationError}
+                onDismiss={() => setMutationError("")}
+                className="text-xs"
+              />
             </div>
           )}
 

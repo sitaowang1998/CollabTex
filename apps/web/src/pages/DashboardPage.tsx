@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/useAuth";
 import { api } from "../lib/api";
 import { useApiQuery } from "../lib/useApiQuery";
 import { Button } from "@/components/ui/button";
+import { ErrorBlock } from "@/components/ui/error-block";
 import ProjectCard from "@/components/ProjectCard";
 import CreateProjectModal from "@/components/CreateProjectModal";
 
@@ -62,14 +63,7 @@ export default function DashboardPage() {
       )}
 
       {!isLoading && error && (
-        <div className="py-12 text-center">
-          <p className="mb-4 text-destructive" role="alert">
-            {error}
-          </p>
-          <Button variant="outline" onClick={refetch}>
-            Retry
-          </Button>
-        </div>
+        <ErrorBlock className="py-12" message={error} onRetry={refetch} />
       )}
 
       {!isLoading && !error && projects.length === 0 && (

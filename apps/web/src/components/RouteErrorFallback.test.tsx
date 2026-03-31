@@ -54,11 +54,13 @@ describe("RouteErrorFallback", () => {
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
   });
 
-  it("renders status text for route error responses", async () => {
+  it("renders friendly message for 404 route error responses", async () => {
     renderWithLoader(async () => {
       throw new Response("", { status: 404, statusText: "Not Found" });
     });
-    expect(await screen.findByText("Not Found")).toBeInTheDocument();
+    expect(
+      await screen.findByText("The page you are looking for does not exist."),
+    ).toBeInTheDocument();
   });
 
   it("renders status code when route error response has no statusText", async () => {

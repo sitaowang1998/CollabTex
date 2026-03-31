@@ -21,6 +21,8 @@ import { useApiQuery } from "@/lib/useApiQuery";
 import { getSocket } from "@/lib/socket";
 import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
+import { ErrorBlock } from "@/components/ui/error-block";
+import { AlertBanner } from "@/components/ui/alert-banner";
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
@@ -670,36 +672,32 @@ export default function ProjectEditorPage() {
 
   if (error) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <p className="text-destructive" role="alert">
-          {error}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={retryLoad}>
-            Retry
-          </Button>
-          <Link to="/">
-            <Button variant="outline">Back to Dashboard</Button>
-          </Link>
-        </div>
+      <div className="flex h-screen items-center justify-center p-4">
+        <ErrorBlock
+          message={error}
+          onRetry={retryLoad}
+          actions={
+            <Link to="/">
+              <Button variant="outline">Back to Dashboard</Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   if (!project || !myRole || !projectId) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4">
-        <p className="text-destructive">
-          Something went wrong. Please try again.
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={retryLoad}>
-            Retry
-          </Button>
-          <Link to="/">
-            <Button variant="outline">Back to Dashboard</Button>
-          </Link>
-        </div>
+      <div className="flex h-screen items-center justify-center p-4">
+        <ErrorBlock
+          message="Something went wrong. Please try again."
+          onRetry={retryLoad}
+          actions={
+            <Link to="/">
+              <Button variant="outline">Back to Dashboard</Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -776,12 +774,11 @@ export default function ProjectEditorPage() {
                 </span>
               </div>
               {treeError && (
-                <div className="border-b px-2 py-1 text-xs text-destructive">
-                  {treeError}{" "}
-                  <button className="underline" onClick={refreshTree}>
-                    Retry
-                  </button>
-                </div>
+                <AlertBanner
+                  message={treeError}
+                  onRetry={refreshTree}
+                  className="mx-2 my-1 text-xs"
+                />
               )}
               <FileTree
                 nodes={nodes}
