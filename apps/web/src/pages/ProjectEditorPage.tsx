@@ -10,19 +10,22 @@ import type {
   MainDocumentResponse,
   CommentThread,
   CommentThreadListResponse,
-  CommentThreadCreatedEvent,
-  CommentAddedEvent,
-  CommentThreadStatusChangedEvent,
-  FileTreeChangedEvent,
-  SnapshotRestoredEvent,
 } from "@collab-tex/shared";
 import { api, ApiError } from "@/lib/api";
+import {
+  removeNodeFromTree,
+  insertFolderIntoTree,
+  mergeLocalFolders,
+  type SelectedFile,
+} from "@/lib/fileTreeUtils";
 import { useApiQuery } from "@/lib/useApiQuery";
-import { getSocket } from "@/lib/socket";
+import { useCommentSocket } from "@/lib/useCommentSocket";
+import { useProjectSocket } from "@/lib/useProjectSocket";
 import { useAuth } from "@/contexts/useAuth";
 import { Button } from "@/components/ui/button";
 import { ErrorBlock } from "@/components/ui/error-block";
 import { AlertBanner } from "@/components/ui/alert-banner";
+import { ResizeHandle, ResizeHandleVertical } from "@/components/ResizeHandle";
 import FileTree, { type FileTreeAction } from "@/components/FileTree";
 import FileTreeActions from "@/components/FileTreeActions";
 import Editor from "@/components/Editor";
@@ -33,251 +36,10 @@ import type { CommentSelection } from "@/components/CreateCommentForm";
 import MembersPanel from "@/components/MembersPanel";
 import SnapshotPanel from "@/components/SnapshotPanel";
 
-type SelectedFile = {
-  documentId: string;
-  path: string;
-  documentKind: "text" | "binary";
-  mime: string | null;
-};
-
-function removeNodeFromTree(
-  nodes: FileTreeNode[],
-  path: string,
-): FileTreeNode[] {
-  return nodes
-    .filter((n) => n.path !== path)
-    .map((n) =>
-      n.type === "folder"
-        ? { ...n, children: removeNodeFromTree(n.children, path) }
-        : n,
-    );
-}
-
-function pathExistsInTree(nodes: FileTreeNode[], path: string): boolean {
-  for (const node of nodes) {
-    if (node.path === path) return true;
-    if (node.type === "folder" && pathExistsInTree(node.children, path)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function mergeLocalFolders(
-  apiNodes: FileTreeNode[],
-  localPaths: Set<string>,
-): FileTreeNode[] {
-  if (localPaths.size === 0) return apiNodes;
-
-  let result = apiNodes;
-  for (const folderPath of localPaths) {
-    if (pathExistsInTree(result, folderPath)) continue;
-
-    const lastSlash = folderPath.lastIndexOf("/");
-    const parentPath = lastSlash <= 0 ? "/" : folderPath.slice(0, lastSlash);
-    const name = folderPath.slice(lastSlash + 1);
-    const folder: FileTreeFolderNode = {
-      type: "folder",
-      name,
-      path: folderPath,
-      children: [],
-    };
-
-    if (parentPath === "/") {
-      result = [...result, folder];
-    } else {
-      result = insertFolderIntoTree(result, parentPath, folder);
-    }
-  }
-  return result;
-}
-
-function insertFolderIntoTree(
-  nodes: FileTreeNode[],
-  parentPath: string,
-  folder: FileTreeFolderNode,
-): FileTreeNode[] {
-  return nodes.map((node) => {
-    if (node.type === "folder" && node.path === parentPath) {
-      return { ...node, children: [...node.children, folder] };
-    }
-    if (node.type === "folder") {
-      return {
-        ...node,
-        children: insertFolderIntoTree(node.children, parentPath, folder),
-      };
-    }
-    return node;
-  });
-}
-
 const MIN_PANEL_WIDTH = 150;
 const MIN_COMMENT_HEIGHT = 100;
 const MAX_COMMENT_HEIGHT = 600;
 const DEFAULT_COMMENT_HEIGHT = 250;
-
-function ResizeHandle({
-  onCommit,
-  targetRef,
-  min,
-  max,
-  invert,
-}: {
-  onCommit: (totalDelta: number) => void;
-  targetRef: React.RefObject<HTMLElement | null>;
-  min: number;
-  max: number;
-  invert?: boolean;
-}) {
-  const dragging = useRef(false);
-  const lastX = useRef(0);
-  const onCommitRef = useRef(onCommit);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    onCommitRef.current = onCommit;
-  });
-
-  useEffect(() => {
-    return () => {
-      cleanupRef.current?.();
-    };
-  }, []);
-
-  function handleMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    dragging.current = true;
-    lastX.current = e.clientX;
-    const startWidth = targetRef.current?.offsetWidth ?? 0;
-    let accumulated = 0;
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!dragging.current) return;
-      const delta = ev.clientX - lastX.current;
-      lastX.current = ev.clientX;
-      accumulated += delta;
-
-      if (targetRef.current) {
-        const effectiveDelta = invert ? -accumulated : accumulated;
-        const newWidth = Math.max(
-          min,
-          Math.min(startWidth + effectiveDelta, max),
-        );
-        targetRef.current.style.width = `${newWidth}px`;
-      }
-    }
-
-    function onMouseUp() {
-      dragging.current = false;
-      cleanupRef.current = null;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      onCommitRef.current(accumulated);
-    }
-
-    cleanupRef.current = () => {
-      dragging.current = false;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }
-
-  return (
-    <div
-      className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center hover:bg-accent/50 active:bg-accent"
-      onMouseDown={handleMouseDown}
-      role="separator"
-      aria-orientation="vertical"
-    />
-  );
-}
-
-function ResizeHandleVertical({
-  onCommit,
-  targetRef,
-}: {
-  onCommit: (totalDelta: number) => void;
-  targetRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const dragging = useRef(false);
-  const lastY = useRef(0);
-  const onCommitRef = useRef(onCommit);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    onCommitRef.current = onCommit;
-  });
-
-  useEffect(() => {
-    return () => {
-      cleanupRef.current?.();
-    };
-  }, []);
-
-  function handleMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    dragging.current = true;
-    lastY.current = e.clientY;
-    const startHeight = targetRef.current?.offsetHeight ?? 0;
-    let accumulated = 0;
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!dragging.current) return;
-      const delta = ev.clientY - lastY.current;
-      lastY.current = ev.clientY;
-      accumulated += delta;
-
-      // Direct DOM manipulation — no React re-render during drag
-      if (targetRef.current) {
-        const newHeight = Math.max(
-          MIN_COMMENT_HEIGHT,
-          Math.min(startHeight - accumulated, MAX_COMMENT_HEIGHT),
-        );
-        targetRef.current.style.height = `${newHeight}px`;
-      }
-    }
-
-    function onMouseUp() {
-      dragging.current = false;
-      cleanupRef.current = null;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      // Commit final delta to React state
-      onCommitRef.current(accumulated);
-    }
-
-    cleanupRef.current = () => {
-      dragging.current = false;
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-  }
-
-  return (
-    <div
-      className="flex h-1.5 shrink-0 cursor-row-resize items-center justify-center hover:bg-accent/50 active:bg-accent"
-      onMouseDown={handleMouseDown}
-      role="separator"
-      aria-orientation="horizontal"
-    />
-  );
-}
 
 export default function ProjectEditorPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -420,51 +182,11 @@ export default function ProjectEditorPage() {
   }, [selectedDocId]);
 
   // Socket listeners for realtime comment updates
-  useEffect(() => {
-    if (!projectId || !selectedDocId) return;
-    const socket = getSocket();
-
-    function handleThreadCreated(data: CommentThreadCreatedEvent) {
-      if (data.projectId !== projectId || data.documentId !== selectedDocId)
-        return;
-      setThreads((prev) => {
-        if (prev.some((t) => t.id === data.thread.id)) return prev;
-        return [...prev, data.thread];
-      });
-    }
-
-    function handleCommentAdded(data: CommentAddedEvent) {
-      if (data.projectId !== projectId || data.documentId !== selectedDocId)
-        return;
-      setThreads((prev) =>
-        prev.map((t) => {
-          if (t.id !== data.threadId) return t;
-          if (t.comments.some((c) => c.id === data.comment.id)) return t;
-          return { ...t, comments: [...t.comments, data.comment] };
-        }),
-      );
-    }
-
-    function handleStatusChanged(data: CommentThreadStatusChangedEvent) {
-      if (data.projectId !== projectId || data.documentId !== selectedDocId)
-        return;
-      setThreads((prev) =>
-        prev.map((t) =>
-          t.id === data.threadId ? { ...t, status: data.status } : t,
-        ),
-      );
-    }
-
-    socket.on("comment:thread_created", handleThreadCreated);
-    socket.on("comment:added", handleCommentAdded);
-    socket.on("comment:thread_status_changed", handleStatusChanged);
-
-    return () => {
-      socket.off("comment:thread_created", handleThreadCreated);
-      socket.off("comment:added", handleCommentAdded);
-      socket.off("comment:thread_status_changed", handleStatusChanged);
-    };
-  }, [projectId, selectedDocId, setThreads]);
+  useCommentSocket({
+    projectId,
+    documentId: selectedDocId,
+    setThreads,
+  });
 
   const refreshTree = useCallback(async () => {
     if (!projectId) return;
@@ -488,40 +210,19 @@ export default function ProjectEditorPage() {
     }
   }, [projectId, setNodes]);
 
-  // Listen for file tree changes broadcast to the project room
-  useEffect(() => {
-    if (!projectId) return;
-    const socket = getSocket();
+  const handleSnapshotRestored = useCallback(() => {
+    localFolderPathsRef.current.clear();
+    setSelectedFile(null);
+    refreshTree().catch((err) => console.error("Tree refresh failed:", err));
+    setSyncGeneration((g) => g + 1);
+  }, [refreshTree]);
 
-    function handleTreeChanged(data: FileTreeChangedEvent) {
-      if (data.projectId !== projectId) return;
-      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
-    }
-
-    socket.on("project:tree_changed", handleTreeChanged);
-    return () => {
-      socket.off("project:tree_changed", handleTreeChanged);
-    };
-  }, [projectId, refreshTree]);
-
-  // Listen for snapshot restore — clear selection, refetch tree, and re-sync editor
-  useEffect(() => {
-    if (!projectId) return;
-    const socket = getSocket();
-
-    function handleSnapshotRestored(data: SnapshotRestoredEvent) {
-      if (data.projectId !== projectId) return;
-      localFolderPathsRef.current.clear();
-      setSelectedFile(null);
-      refreshTree().catch((err) => console.error("Tree refresh failed:", err));
-      setSyncGeneration((g) => g + 1);
-    }
-
-    socket.on("snapshot:restored", handleSnapshotRestored);
-    return () => {
-      socket.off("snapshot:restored", handleSnapshotRestored);
-    };
-  }, [projectId, refreshTree]);
+  // Socket listeners for tree changes and snapshot restores
+  useProjectSocket({
+    projectId,
+    refreshTree,
+    onSnapshotRestored: handleSnapshotRestored,
+  });
 
   function handleCreateFolder(parentPath: string, name: string) {
     const folderPath =
@@ -904,6 +605,8 @@ export default function ProjectEditorPage() {
                 <ResizeHandleVertical
                   onCommit={handleCommentResizeCommit}
                   targetRef={commentSectionRef}
+                  min={MIN_COMMENT_HEIGHT}
+                  max={MAX_COMMENT_HEIGHT}
                 />
               )}
 

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CurrentTextStateService } from "./currentTextState.js";
+import type {
+  CurrentTextStateService,
+  StoredDocumentTextState,
+} from "./currentTextState.js";
+import { UnsupportedCurrentTextStateDocumentError } from "./currentTextState.js";
 import type { DocumentRepository, StoredDocument } from "./document.js";
 import {
   ActiveDocumentStateDocumentNotFoundError,
   createActiveDocumentStateLoader,
 } from "./activeDocumentStateLoader.js";
-import {
-  UnsupportedCurrentTextStateDocumentError,
-  type StoredDocumentTextState,
-} from "./currentTextState.js";
 
 describe("active document state loader", () => {
   it("hydrates active sessions from persisted current yjs state", async () => {

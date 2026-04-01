@@ -1,13 +1,13 @@
 import { getSocket, disconnectSocket } from "./socket";
 
+import { io } from "socket.io-client";
+
 const mockDisconnect = vi.fn();
 const mockSocket = { disconnect: mockDisconnect };
 
 vi.mock("socket.io-client", () => ({
   io: vi.fn(() => ({ ...mockSocket })),
 }));
-
-import { io } from "socket.io-client";
 
 const mockedIo = vi.mocked(io);
 
