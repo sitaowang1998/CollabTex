@@ -1110,18 +1110,30 @@ test.describe("Editor Page", () => {
   test("upload a binary file via Upload File button", async ({ page }) => {
     await registerAndCreateProject(page, "Upload Test Project");
     const tree = page.getByTestId("file-tree");
+    let chooserCount = 0;
+    const handleFileChooser = () => {
+      chooserCount += 1;
+    };
+    page.on("filechooser", handleFileChooser);
 
-    await page.getByRole("button", { name: "New" }).click();
-    const fileChooserPromise = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "Upload File" }).click();
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles({
-      name: "test-image.png",
-      mimeType: "image/png",
-      buffer: Buffer.from("fake-png-content"),
-    });
+    try {
+      await page.getByRole("button", { name: "New" }).click();
+      const fileChooserPromise = page.waitForEvent("filechooser");
+      await page.getByRole("menuitem", { name: "Upload File" }).click();
+      const fileChooser = await fileChooserPromise;
+      await expect.poll(() => chooserCount).toBe(1);
+      await fileChooser.setFiles({
+        name: "test-image.png",
+        mimeType: "image/png",
+        buffer: Buffer.from("fake-png-content"),
+      });
 
-    await expect(tree.getByText("test-image.png")).toBeVisible();
+      await expect(tree.getByText("test-image.png")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(chooserCount).toBe(1);
+    } finally {
+      page.off("filechooser", handleFileChooser);
+    }
   });
 
   test("upload a binary file into a subfolder via context menu", async ({
@@ -1129,28 +1141,40 @@ test.describe("Editor Page", () => {
   }) => {
     await registerAndCreateProject(page, "Upload Subfolder Project");
     const tree = page.getByTestId("file-tree");
+    let chooserCount = 0;
+    const handleFileChooser = () => {
+      chooserCount += 1;
+    };
+    page.on("filechooser", handleFileChooser);
 
-    // Create a folder first
-    await clickToolbarAction(page, "New Folder");
-    await page.getByLabel("Folder name").fill("images");
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Create" })
-      .click();
-    await expect(tree.getByText("images")).toBeVisible();
+    try {
+      // Create a folder first
+      await clickToolbarAction(page, "New Folder");
+      await page.getByLabel("Folder name").fill("images");
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Create" })
+        .click();
+      await expect(tree.getByText("images")).toBeVisible();
 
-    // Right-click folder and choose Upload File
-    await tree.getByText("images").click({ button: "right" });
-    const fileChooserPromise = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "Upload File" }).click();
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles({
-      name: "logo.png",
-      mimeType: "image/png",
-      buffer: Buffer.from("fake-logo"),
-    });
+      // Right-click folder and choose Upload File
+      await tree.getByText("images").click({ button: "right" });
+      const fileChooserPromise = page.waitForEvent("filechooser");
+      await page.getByRole("menuitem", { name: "Upload File" }).click();
+      const fileChooser = await fileChooserPromise;
+      await expect.poll(() => chooserCount).toBe(1);
+      await fileChooser.setFiles({
+        name: "logo.png",
+        mimeType: "image/png",
+        buffer: Buffer.from("fake-logo"),
+      });
 
-    await expect(tree.getByText("logo.png")).toBeVisible();
+      await expect(tree.getByText("logo.png")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(chooserCount).toBe(1);
+    } finally {
+      page.off("filechooser", handleFileChooser);
+    }
   });
 
   test("LaTeX syntax highlighting applies to .tex files", async ({ page }) => {

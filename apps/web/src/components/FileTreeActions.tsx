@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { AlertBanner } from "@/components/ui/alert-banner";
 
+let lastOpenedUploadRequestId: string | null = null;
+
 function parentDir(path: string): string {
   const lastSlash = path.lastIndexOf("/");
   return lastSlash <= 0 ? "/" : path.slice(0, lastSlash);
@@ -853,18 +855,27 @@ function UploadAction({
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
 
     function handleCancel() {
       onCloseRef.current();
     }
     input.addEventListener("cancel", handleCancel);
-    input.click();
+
+    if (lastOpenedUploadRequestId !== action.requestId) {
+      openTimer = setTimeout(() => {
+        if (lastOpenedUploadRequestId === action.requestId) return;
+        lastOpenedUploadRequestId = action.requestId;
+        inputRef.current?.click();
+      }, 0);
+    }
 
     return () => {
+      if (openTimer) clearTimeout(openTimer);
       input.removeEventListener("cancel", handleCancel);
       abortRef.current?.abort();
     };
-  }, []);
+  }, [action.requestId]);
 
   const handleFileSelected = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
