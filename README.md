@@ -243,65 +243,118 @@ Yjs awareness protocol over WebSocket, giving collaborators visibility into who 
 
 ### Registration and Login
 
-Create an account with your email, name, and password. Log in to access your projects.
+Users need to log in or register to use CollabTeX.
 
-![Registration Page](screenshots/register.png)
-![Login Page](screenshots/login.png)
+1. Users are directed to login page.
 
-### Dashboard
+![Empty Login Page](doc/assets/login_empty.png)
 
-The dashboard displays all projects you belong to, sorted by last updated. From here you can:
+2. Existing users log in using email and password.
 
-- **Create a new project** using the "New Project" button
-- **Open an existing project** by clicking its name
-- **Delete a project** (admin only)
+![Filled Login Page](doc/assets/login_filled.png)
 
-![Dashboard](screenshots/dashboard.png)
+3. New users register with email, username and password.
 
-### Workspace and Editing
+![Registration Page](doc/assets/register.png)
 
-Opening a project takes you to the workspace with three panels:
+### Dashboard and Project Creation
 
-1. **File tree (left):** Browse, create, rename, move, and delete files and folders. Upload binary files. Right-click
-   for context menus. Set a file as the main `.tex` document for compilation.
+Start from the dashboard after logging in.
 
-![File Tree](screenshots/file-tree.png)
+1. A new user starts on an empty dashboard with no projects yet. From here, use `Create your first project` or
+   `New Project`.
 
-2. **Editor (center):** Edit LaTeX files with syntax highlighting. When collaborating, you see other users' cursors
-   and
-   selections in real time.
+![Empty Dashboard](doc/assets/dashboard_empty.png)
 
-![Editor with Collaboration](screenshots/editor-collab.png)
+2. Enter the project name in the creation dialog and confirm.
 
-3. **PDF preview (right):** Click "Compile" to build the project. The PDF preview updates when compilation completes.
-   Download the PDF using the download button. If compilation fails, view error logs.
+![New Project Dialog](doc/assets/dashboard_new.png)
 
-![PDF Preview](screenshots/pdf-preview.png)
+3. After creation, the project appears in the dashboard list and shows your current role as an admin.
 
-### Managing Members
+![Dashboard With Project](doc/assets/dashboard_project.png)
 
-Admins can manage project members from the members panel:
+### Workspace Overview
 
-- Invite users by email address
-- Assign roles (Admin, Editor, Commenter, Reader)
-- Change existing member roles
-- Remove members
+Opening a project brings you to the main workspace. The left panel is the file list, the center is the LaTeX editor,
+and the right side combines PDF preview and comments. The top bar gives access to `Snapshots`, `Members`, and logout.
 
-![Members Management](screenshots/members.png)
+![Workspace Overview](doc/assets/editor.png)
+
+### File Management and Asset Upload
+
+Use the file panel to create, organize, and upload project files.
+
+1. Open the `New` menu in the file panel to create a file, create a folder, or upload a file.
+
+![New Menu](doc/assets/editor_new.png)
+
+2. Creating a folder opens a dialog where you provide the folder name, such as `assets` for images.
+
+![New Folder Dialog](doc/assets/editor_new_folder.png)
+
+3. Right-click on the mouse opens the context menu on the selected item to create new file, upload file, rename, move,
+   or delete it.
+
+![File Context Menu](doc/assets/editor_file_context.png)
+
+4. Click on upload file. Use the system file picker to pick the files to upload.
+
+4. Once an image is uploaded, reference it from LaTeX source and compile. The uploaded asset appears in the file tree,
+   and the rendered figure appears in the PDF preview.
+
+![Uploaded Asset and Preview](doc/assets/editor_image.png)
+
+### Member Management
+
+Open `Members` to invite collaborators and manage roles as an admin, or view all members for all users.
+
+1. Open `Members`, enter the collaborator's email, choose a role, and add them to the project.
+
+![Add Member Dialog](doc/assets/member_add.png)
+
+2. Change a member's role, or remove a member.
+
+![Member List and Role Selection](doc/assets/member_view.png)
 
 ### Comments
 
-Select text in the editor to create a comment thread. Reply to existing threads, and resolve threads when the discussion
-is complete.
+Use comments to discuss specific text in the document.
 
-![Comments](screenshots/comments.png)
+1. Select text in the editor and click on the `Add Comment` tooltip.
+
+![Add Comment Action](doc/assets/comment_add.png)
+
+2. A new draft thread appears in the comments panel with the selected text quoted. Enter the first message and submit
+   it.
+
+![New Comment Draft](doc/assets/commnet_new.png)
+
+3. Other collaborators can reply in the same thread while continuing to edit the document.
+
+![Reply in Comment Thread](doc/assets/commnet_reply.png)
+
+4. When the discussion is finished, resolve the thread. Resolved threads remain visible and can be reopened later.
+
+![Resolved Comment Thread](doc/assets/comment_resolve.png)
 
 ### Snapshots
 
-Create snapshots to save the current project state. Browse the version history and restore any previous snapshot.
-Restoring a snapshot replaces the current working state for all collaborators.
+Use snapshots to review project history and restore an earlier version.
 
-![Snapshots](screenshots/snapshots.png)
+1. Open `Snapshots` to view recent saved states of the project.
+
+![Snapshot History](doc/assets/snapshot_view.png)
+
+2. Choose a snapshot and confirm the restore. The confirmation dialog warns that the current working state will be
+   replaced.
+
+![Restore Confirmation](doc/assets/snaoshot_restore.png)
+
+3. After the restore completes, the history records both the restored snapshot and the automatic save created before the
+   restore.
+
+![Snapshot History After Restore](doc/assets/snapshot_after_restore.png)
 
 ## 7. Development Guide
 
