@@ -260,10 +260,13 @@ describe("FileTree", () => {
 
     await user.click(screen.getByRole("button", { name: "New" }));
     await user.click(screen.getByRole("menuitem", { name: "Upload File" }));
-    expect(props.onAction).toHaveBeenCalledWith({
-      type: "upload",
-      parentPath: "/",
-    });
+    expect(props.onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upload",
+        parentPath: "/",
+        requestId: expect.any(String),
+      }),
+    );
   });
 
   it("calls onAction from context menu item", async () => {

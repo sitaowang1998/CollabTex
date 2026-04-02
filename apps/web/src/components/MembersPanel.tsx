@@ -18,6 +18,10 @@ import { ErrorBlock } from "@/components/ui/error-block";
 
 const ROLES: ProjectRole[] = ["admin", "editor", "commenter", "reader"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ROLE_SELECT_BASE_CLASS =
+  "border border-input bg-background text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+const ROLE_OPTION_CLASS =
+  "bg-background text-foreground dark:bg-popover dark:text-popover-foreground";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -434,11 +438,11 @@ export default function MembersPanel({
                 <select
                   value={addRole}
                   onChange={(e) => setAddRole(e.target.value as ProjectRole)}
-                  className="h-7 rounded-lg border border-input bg-transparent px-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className={`h-7 rounded-lg px-1.5 text-xs ${ROLE_SELECT_BASE_CLASS}`}
                   aria-label="Role"
                 >
                   {ROLES.map((r) => (
-                    <option key={r} value={r}>
+                    <option key={r} value={r} className={ROLE_OPTION_CLASS}>
                       {r}
                     </option>
                   ))}
@@ -521,11 +525,15 @@ export default function MembersPanel({
                           )
                         }
                         disabled={pendingMemberIds.has(member.userId)}
-                        className="h-6 rounded border border-input bg-transparent px-1 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+                        className={`h-6 rounded px-1 text-xs disabled:opacity-50 ${ROLE_SELECT_BASE_CLASS}`}
                         aria-label={`Role for ${member.name}`}
                       >
                         {ROLES.map((r) => (
-                          <option key={r} value={r}>
+                          <option
+                            key={r}
+                            value={r}
+                            className={ROLE_OPTION_CLASS}
+                          >
                             {r}
                           </option>
                         ))}

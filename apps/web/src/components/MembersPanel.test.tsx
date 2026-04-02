@@ -110,6 +110,31 @@ describe("MembersPanel", () => {
     expect(screen.getByLabelText("Remove Bob")).toBeInTheDocument();
   });
 
+  it("uses explicit select colors for Chrome-compatible role dropdowns", async () => {
+    renderPanel({ myRole: "admin" });
+    await waitFor(() => {
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    const addRoleSelect = screen.getByLabelText("Role");
+    const memberRoleSelect = screen.getByLabelText("Role for Bob");
+
+    expect(addRoleSelect).toHaveClass("bg-background", "text-foreground");
+    expect(addRoleSelect).not.toHaveClass("bg-transparent");
+    expect(memberRoleSelect).toHaveClass("bg-background", "text-foreground");
+    expect(memberRoleSelect).not.toHaveClass("bg-transparent");
+
+    const addRoleOption = within(addRoleSelect).getByRole("option", {
+      name: "admin",
+    });
+    const memberRoleOption = within(memberRoleSelect).getByRole("option", {
+      name: "editor",
+    });
+
+    expect(addRoleOption).toHaveClass("bg-background", "text-foreground");
+    expect(memberRoleOption).toHaveClass("bg-background", "text-foreground");
+  });
+
   it("non-admin sees read-only list", async () => {
     renderPanel({ myRole: "reader", currentUserId: "u3" });
     await waitFor(() => {

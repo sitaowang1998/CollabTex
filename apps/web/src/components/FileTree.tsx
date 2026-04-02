@@ -30,7 +30,7 @@ export type FileTreeAction =
   | { type: "delete"; path: string; name: string }
   | { type: "delete-multiple"; items: { path: string; name: string }[] }
   | { type: "set-main"; documentId: string; path: string }
-  | { type: "upload"; parentPath: string };
+  | { type: "upload"; parentPath: string; requestId: string };
 
 type FileTreeProps = {
   nodes: FileTreeNode[];
@@ -55,6 +55,21 @@ type ContextMenuState = {
 } | null;
 
 const canMutate = (role: ProjectRole) => role === "admin" || role === "editor";
+let uploadRequestCounter = 0;
+
+function createUploadAction(parentPath: string): Extract<
+  FileTreeAction,
+  {
+    type: "upload";
+  }
+> {
+  uploadRequestCounter += 1;
+  return {
+    type: "upload",
+    parentPath,
+    requestId: `upload-${uploadRequestCounter}`,
+  };
+}
 
 function sortNodes(nodes: FileTreeNode[]): FileTreeNode[] {
   return [...nodes].sort((a, b) => {
@@ -538,7 +553,7 @@ function ToolbarMenu({
     },
     {
       label: "Upload File",
-      action: { type: "upload", parentPath: activeParent },
+      action: createUploadAction(activeParent),
     },
   ];
 
@@ -666,7 +681,7 @@ function ContextMenuOverlay({
     });
     items.push({
       label: "Upload File",
-      action: { type: "upload", parentPath: node.path },
+      action: createUploadAction(node.path),
     });
   }
 

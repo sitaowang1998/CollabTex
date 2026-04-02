@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FileTreeAction } from "@/components/FileTree";
@@ -681,6 +682,7 @@ describe("FileTreeActions", () => {
     const uploadAction: FileTreeAction = {
       type: "upload",
       parentPath: "/chapters",
+      requestId: "upload-1",
     };
 
     it("renders a hidden file input", () => {
@@ -716,6 +718,39 @@ describe("FileTreeActions", () => {
 
       expect(onComplete).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
+    });
+
+    it("opens the file picker once for a single upload request in StrictMode", async () => {
+      const onClose = vi.fn();
+      const onComplete = vi.fn();
+      const onMainDocumentChange = vi.fn();
+      const onCreateFolder = vi.fn();
+      const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click");
+      const strictModeUploadAction: FileTreeAction = {
+        type: "upload",
+        parentPath: "/chapters",
+        requestId: "upload-strict-mode",
+      };
+
+      render(
+        <StrictMode>
+          <FileTreeActions
+            projectId={PROJECT_ID}
+            action={strictModeUploadAction}
+            localFolderPaths={new Set()}
+            onClose={onClose}
+            onComplete={onComplete}
+            onMainDocumentChange={onMainDocumentChange}
+            onCreateFolder={onCreateFolder}
+          />
+        </StrictMode>,
+      );
+
+      await waitFor(() => {
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+      });
+
+      clickSpy.mockRestore();
     });
 
     it("shows 413 error with specific message", async () => {
@@ -807,7 +842,11 @@ describe("FileTreeActions", () => {
     });
 
     it("builds correct path when parentPath is root", async () => {
-      const rootUpload: FileTreeAction = { type: "upload", parentPath: "/" };
+      const rootUpload: FileTreeAction = {
+        type: "upload",
+        parentPath: "/",
+        requestId: "upload-root",
+      };
       mockedApi.uploadBinaryFile.mockResolvedValueOnce({
         document: { id: "doc-new", path: "/logo.png" },
       });
