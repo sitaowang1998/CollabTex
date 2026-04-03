@@ -3,7 +3,7 @@
 A full-stack, collaborative web platform for LaTeX authoring. Multiple users can edit, manage, compile, and review
 LaTeX projects within a shared workspace in real time.
 
-**Video Demo:** [PLACEHOLDER_LINK]
+**Video Demo:** https://youtu.be/s5PjIvNoC1M
 
 ## 1. Team Information
 
